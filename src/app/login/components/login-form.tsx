@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -11,9 +11,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/components/providers/auth-provider';
 import { authService } from '@/services';
 import { ForgotPasswordDialog } from './forgot-password-dialog';
+import { Loader } from '@/components/ui/loader';
 
 export const LoginForm = () => {
-  const { login } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +22,23 @@ export const LoginForm = () => {
   const [error, setError] = useState('');
   const router = useRouter();
   const { toast } = useToast();
+
+  // If user is already authenticated, redirect immediately
+  useEffect(() => {
+    if (user && !authLoading) {
+      router.replace('/dashboard/');
+    }
+  }, [user, authLoading, router]);
+
+  // Show loader while auth is being checked or user is authenticated
+  if (authLoading || user) {
+    return (
+      <Loader 
+        overlay 
+        size="lg"
+      />
+    );
+  }
 
   const getReadableError = (err: any) => {
     if (err?.response?.status === 401) return 'Invalid email or password. Please try again.';

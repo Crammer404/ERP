@@ -9,8 +9,8 @@ interface PermissionGuardProps {
   action: PermissionAction;
   children: React.ReactNode;
   fallback?: React.ReactNode;
-  requireAll?: boolean; // If true, requires all actions to be true
-  actions?: PermissionAction[]; // For multiple action checks
+  requireAll?: boolean;
+  actions?: PermissionAction[];
 }
 
 export function PermissionGuard({
@@ -23,7 +23,6 @@ export function PermissionGuard({
 }: PermissionGuardProps) {
   const { hasPermission, isLoading } = usePermissions();
 
-  // Show loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-4">
@@ -32,13 +31,11 @@ export function PermissionGuard({
     );
   }
 
-  // Check single permission
   if (actions.length === 0) {
     const hasAccess = hasPermission(module, action);
     return hasAccess ? <>{children}</> : <>{fallback}</>;
   }
 
-  // Check multiple permissions
   const hasAllPermissions = actions.every(action => hasPermission(module, action));
   const hasAnyPermission = actions.some(action => hasPermission(module, action));
 
@@ -47,7 +44,6 @@ export function PermissionGuard({
   return hasAccess ? <>{children}</> : <>{fallback}</>;
 }
 
-// Convenience components for common use cases
 export function ReadGuard({ module, children, fallback }: Omit<PermissionGuardProps, 'action'>) {
   return (
     <PermissionGuard module={module} action="read" fallback={fallback}>
@@ -80,7 +76,6 @@ export function DeleteGuard({ module, children, fallback }: Omit<PermissionGuard
   );
 }
 
-// Component for conditional rendering based on permissions
 interface PermissionButtonProps {
   module: ManagementModule;
   action: PermissionAction;
@@ -115,10 +110,9 @@ export function PermissionButton({
   const hasAccess = hasPermission(module, action);
 
   if (!hasAccess) {
-    return null; // Don't render the button if no permission
+    return null;
   }
 
-  // Import Button component dynamically to avoid circular dependencies
   const { Button } = require('@/components/ui/button');
 
   return (
@@ -135,7 +129,6 @@ export function PermissionButton({
   );
 }
 
-// Component for showing permission-based content
 interface PermissionContentProps {
   module: ManagementModule;
   action: PermissionAction;

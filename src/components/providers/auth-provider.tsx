@@ -71,15 +71,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isAuth = isAuthenticated();
 
       if (isAuth) {
-        // Get fresh data to ensure we have the latest format
-        const userData = await authService.refreshUserData();
-
+        // First, try to use cached user data (much faster)
+        let userData = authService.getCachedUserData();
+        
         if (userData) {
+          // Set user immediately from cache
           setUser(userData);
+          console.log('AuthProvider: Using cached user data');
+          
+          // Then refresh in background (don't wait for it)
+          authService.refreshUserData()
+            .then(freshData => {
+              if (freshData) {
+                setUser(freshData);
+                console.log('AuthProvider: Updated with fresh user data');
+              }
+            })
+            .catch(error => {
+              console.warn('AuthProvider: Background refresh failed:', error);
+              // Don't clear user on background refresh failure - cache is still valid
+            });
         } else {
-          // Token exists but user data fetch failed - clear token
-          await authService.logout();
-          setUser(null);
+          // No cache, fetch fresh data (this is the first time or cache expired)
+          const freshData = await authService.refreshUserData();
+          if (freshData) {
+            setUser(freshData);
+          } else {
+            // Token exists but user data fetch failed - clear token
+            await authService.logout();
+            setUser(null);
+          }
         }
       } else {
         setUser(null);
