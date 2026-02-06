@@ -1,0 +1,289 @@
+/* Custom styles for react-phone-input-2 to match the design */
+
+.react-tel-input {
+  width: 100% !important;
+}
+
+.react-tel-input .form-control {
+  width: 100% !important;
+  height: 40px !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 6px !important;
+  padding-left: 60px !important;
+  font-size: 14px !important;
+  color: hsl(var(--foreground)) !important;
+  background-color: hsl(var(--background)) !important;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out !important;
+}
+
+.react-tel-input .form-control:focus {
+  border-color: hsl(var(--ring)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1) !important;
+  outline: none !important;
+}
+
+.react-tel-input .form-control.error {
+  border-color: #ef4444 !important;
+}
+
+.react-tel-input .flag-dropdown {
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 6px 0 0 6px !important;
+  background-color: hsl(var(--background)) !important;
+  border-right: none !important;
+}
+
+.react-tel-input .flag-dropdown.open {
+  background-color: hsl(var(--background)) !important;
+}
+
+.react-tel-input .flag-dropdown.open .selected-flag {
+  background-color: hsl(var(--background)) !important;
+}
+
+.react-tel-input .selected-flag {
+  width: 60px !important;
+  height: 38px !important;
+  padding: 0 8px !important;
+  border-radius: 6px 0 0 6px !important;
+  background-color: hsl(var(--background)) !important;
+  border: none !important;
+}
+
+.react-tel-input .selected-flag:hover {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.react-tel-input .selected-flag .flag {
+  margin-right: 8px !important;
+}
+
+.react-tel-input .selected-flag .arrow {
+  border-left: 4px solid transparent !important;
+  border-right: 4px solid transparent !important;
+  border-top: 4px solid hsl(var(--muted-foreground)) !important;
+  margin-left: 4px !important;
+}
+
+.react-tel-input .selected-flag .arrow.up {
+  border-bottom: 4px solid hsl(var(--muted-foreground)) !important;
+  border-top: none !important;
+}
+
+.react-tel-input .country-list {
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  background-color: hsl(var(--popover)) !important;
+  max-height: 200px !important;
+  overflow-y: auto !important;
+}
+
+.react-tel-input .country-list .country {
+  padding: 8px 12px !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  font-size: 14px !important;
+}
+
+.react-tel-input .country-list .country:hover {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.react-tel-input .country-list .country.highlight {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.react-tel-input .country-list .country .flag {
+  margin-right: 8px !important;
+}
+
+.react-tel-input .country-list .search-box {
+  padding: 8px 12px !important;
+  border: none !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
+  border-radius: 6px 6px 0 0 !important;
+  font-size: 14px !important;
+  color: hsl(var(--foreground)) !important;
+  background-color: hsl(var(--background)) !important;
+}
+
+.react-tel-input .country-list .search-box:focus {
+  outline: none !important;
+  border-bottom-color: hsl(var(--ring)) !important;
+}
+
+.react-tel-input .country-list .search-box::placeholder {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Dark mode support */
+.dark .react-tel-input .form-control {
+  background-color: hsl(var(--background)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .react-tel-input .form-control:focus {
+  border-color: hsl(var(--ring)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1) !important;
+}
+
+.dark .react-tel-input .flag-dropdown {
+  background-color: hsl(var(--background)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .react-tel-input .selected-flag {
+  background-color: hsl(var(--background)) !important;
+}
+
+.dark .react-tel-input .selected-flag:hover {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.dark .react-tel-input .country-list {
+  background-color: hsl(var(--popover)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .react-tel-input .country-list .country {
+  color: hsl(var(--popover-foreground)) !important;
+  background-color: hsl(var(--popover)) !important;
+  border-bottom-color: hsl(var(--border)) !important;
+}
+
+.dark .react-tel-input .country-list .country:hover {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.dark .react-tel-input .country-list .country.highlight {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.dark .react-tel-input .country-list .search-box {
+  background-color: hsl(var(--background)) !important;
+  border-bottom-color: hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .react-tel-input .country-list .search-box::placeholder {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Additional dark mode fixes for search box */
+.dark .react-tel-input .country-list .search-box:focus {
+  background-color: hsl(var(--background)) !important;
+  border-bottom-color: hsl(var(--ring)) !important;
+}
+
+/* Ensure all dropdown elements are dark */
+.dark .react-tel-input .country-list .country .flag {
+  filter: none !important;
+}
+
+/* Fix for the dropdown container */
+.dark .react-tel-input .country-list {
+  background-color: hsl(var(--popover)) !important;
+}
+
+/* Ensure search icon is visible in dark mode */
+.dark .react-tel-input .country-list .search-box::before {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Additional comprehensive dark mode fixes */
+.dark .react-tel-input .country-list .country:first-child {
+  background-color: hsl(var(--popover)) !important;
+}
+
+.dark .react-tel-input .country-list .country:last-child {
+  background-color: hsl(var(--popover)) !important;
+}
+
+/* Fix for any remaining white backgrounds */
+.dark .react-tel-input .country-list .country {
+  background-color: hsl(var(--popover)) !important;
+}
+
+.dark .react-tel-input .country-list .country:nth-child(even) {
+  background-color: hsl(var(--popover)) !important;
+}
+
+.dark .react-tel-input .country-list .country:nth-child(odd) {
+  background-color: hsl(var(--popover)) !important;
+}
+
+/* Ensure the dropdown itself is dark */
+.dark .react-tel-input .country-list {
+  background-color: hsl(var(--popover)) !important;
+}
+
+/* Fix for search input specifically */
+.dark .react-tel-input .country-list .search-box {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Force dark mode on all child elements */
+.dark .phone-input-wrapper .react-tel-input .country-list .country {
+  background-color: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+}
+
+.dark .phone-input-wrapper .react-tel-input .country-list .search-box {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .phone-input-wrapper .react-tel-input .country-list {
+  background-color: hsl(var(--popover)) !important;
+}
+
+/* Override any inline styles that might be causing white backgrounds */
+.dark .react-tel-input .country-list .country[style*="background-color: white"] {
+  background-color: hsl(var(--popover)) !important;
+}
+
+.dark .react-tel-input .country-list .search-box[style*="background-color: white"] {
+  background-color: hsl(var(--background)) !important;
+}
+
+/* Ensure dropdown is positioned correctly and inherits dark mode */
+.dark .react-tel-input .country-list {
+  position: absolute !important;
+  z-index: 9999 !important;
+  background-color: hsl(var(--popover)) !important;
+}
+
+/* Fix for any remaining white elements in the dropdown */
+.dark .react-tel-input .country-list * {
+  background-color: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+}
+
+/* Specific fix for search box in dark mode */
+.dark .react-tel-input .country-list .search-box {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
+}
+
+/* Fix for country items in dark mode */
+.dark .react-tel-input .country-list .country {
+  background-color: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
+}
+
+/* Hover state for country items in dark mode */
+.dark .react-tel-input .country-list .country:hover {
+  background-color: hsl(var(--accent)) !important;
+  color: hsl(var(--accent-foreground)) !important;
+}
+
+/* Selected/highlighted country in dark mode */
+.dark .react-tel-input .country-list .country.highlight {
+  background-color: hsl(var(--accent)) !important;
+  color: hsl(var(--accent-foreground)) !important;
+}

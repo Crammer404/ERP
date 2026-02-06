@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 96.1%; /* #F5F5F5 */
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%; /* #FFFFFF */
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 10% 3.9%; /* #09090b */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%; /* A slightly darker gray for secondary elements */
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%; /* #E5E5E5 */
+    --input: 0 0% 89.8%;
+    --ring: 240 10% 3.9%;
+    --radius: 0.5rem;
+    --chart-1: 240 10% 3.9%;
+    --chart-2: 88 50% 53%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+ 
+  .dark {
+    --background: 0 0% 4.3%; /* #0B0B0B */
+    --foreground: 0 0% 98%;
+    --card: 0 0% 8.6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 8.6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%; /* Light primary for dark mode */
+    --primary-foreground: 240 10% 3.9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 98%;
+    --chart-1: 0 0% 98%;
+    --chart-2: 88 50% 53%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    #receipt-card, #receipt-card * {
+        visibility: visible;
+    }
+    #receipt-card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+    }
+}
+
+/* Loader Animations */
+
+@keyframes bounce-delay-1 {
+  0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-10px); }
+  60% { transform: translateY(-5px); }
+}
+
+@keyframes bounce-delay-2 {
+  0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-10px); }
+  60% { transform: translateY(-5px); }
+}
+
+@keyframes bounce-delay-3 {
+  0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-10px); }
+  60% { transform: translateY(-5px); }
+}
+
+
+.animate-bounce-delay-1 {
+  animation: bounce-delay-1 1.4s ease-in-out infinite;
+}
+
+.animate-bounce-delay-2 {
+  animation: bounce-delay-2 1.4s ease-in-out infinite 0.2s;
+}
+
+.animate-bounce-delay-3 {
+  animation: bounce-delay-3 1.4s ease-in-out infinite 0.4s;
+}
