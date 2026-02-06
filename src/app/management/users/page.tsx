@@ -445,22 +445,24 @@ export default function UserPage() {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       const frontCanvas = await html2canvas(frontCardRef.current, {
-        backgroundColor: null,
-        scale: 2,
+        background: undefined,
         useCORS: true,
         logging: false,
-      });
+        dpi: 300,
+        scale: 2,
+      } as any);
 
       await downloadCanvasImage(frontCanvas, `${fileName}_ID_Front.png`);
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
       const backCanvas = await html2canvas(backCardRef.current, {
-        backgroundColor: null,
-        scale: 2,
+        background: undefined,
         useCORS: true,
         logging: false,
-      });
+        dpi: 300,
+        scale: 2,
+      } as any);
 
       await downloadCanvasImage(backCanvas, `${fileName}_ID_Back.png`);
 

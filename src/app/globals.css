@@ -117,3 +117,12 @@
 .animate-bounce-delay-3 {
   animation: bounce-delay-3 1.4s ease-in-out infinite 0.4s;
 }
+
+/* Hide scrollbars visually but keep scrolling functional */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
