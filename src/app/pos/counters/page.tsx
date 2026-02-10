@@ -217,10 +217,6 @@ export default function CountersPage() {
       newErrors.code = 'Code is required.';
     }
     
-    if (!formData.assigned_user_id) {
-      newErrors.assigned_user_id = 'Cashier is required.';
-    }
-    
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;

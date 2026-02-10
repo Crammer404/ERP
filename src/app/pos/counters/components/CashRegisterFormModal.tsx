@@ -171,7 +171,7 @@ export function CashRegisterFormModal({
 
           {/* Cashier */}
           <div className="space-y-2">
-            <Label htmlFor="assigned_user_id">  Cashier <span className="text-red-500">*</span></Label>
+            <Label htmlFor="assigned_user_id">Cashier</Label>
             {loadingUsers ? (
               <Skeleton className="h-10 w-full" />
             ) : (
@@ -186,7 +186,7 @@ export function CashRegisterFormModal({
                 <SelectContent>
                   {availableUsers.length > 0 ? (
                     <>
-                       <SelectItem value="unassigned">Select a user</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
                       {availableUsers.map((user) => (
                         <SelectItem key={user.id} value={user.id.toString()}>
                           {getUserDisplayName(user)}

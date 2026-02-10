@@ -3,7 +3,7 @@ import { API_ENDPOINTS } from "../../../../config/api.config";
 
 export interface Ingredient {
   id: number;
-  stock_id: number;
+  stock_id?: number;
   name: string;
   description?: string | null;
   quantity: number;
@@ -45,13 +45,11 @@ export interface Ingredient {
 }
 
 export interface CreateIngredientRequest {
-  stock_id: number;
   name: string;
   description?: string;
   quantity: number;
   unit?: string;
   measurement_id?: number;
-  conversion_factor: number;
 }
 
 export interface UpdateIngredientRequest {
@@ -61,7 +59,6 @@ export interface UpdateIngredientRequest {
   quantity?: number;
   unit?: string;
   measurement_id?: number;
-  conversion_factor?: number;
 }
 
 export interface Stock {

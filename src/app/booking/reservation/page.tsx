@@ -9,8 +9,8 @@ import { Pagination, PaginationContent, PaginationItem, PaginationLink, Paginati
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { WithAuthProtection } from '@/components/auth/with-auth-protection';
 import { bookingService } from '@/app/booking/reservation/service/bookingService';
-import { Loader2, CheckCircle2, XCircle, AlertCircle, Database, Calendar, RefreshCw, Search, MoreVertical } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Loader2, CheckCircle2, AlertCircle, Database, Calendar, RefreshCw, Search, MoreVertical } from 'lucide-react';
+import { FetchError } from '@/components/ui/fetch-error';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -223,11 +223,10 @@ function BookingContent() {
                 <span className="ml-2 text-muted-foreground">Loading bookings...</span>
               </div>
             ) : error ? (
-              <Alert variant="destructive">
-                <XCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
+              <FetchError
+                error={error}
+                onRetry={fetchBookings}
+              />
             ) : bookings.length === 0 ? (
               <div className="text-center py-12">
                 <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

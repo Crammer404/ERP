@@ -179,10 +179,14 @@ export default function IngredientsPage() {
       </div>
 
       <Tabs defaultValue="ingredients" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="ingredients">Ingredients</TabsTrigger>
-          <TabsTrigger value="recipes">Recipes</TabsTrigger>
-        </TabsList>
+        <Card className="bg-transparent border-none shadow-none">
+          <CardContent className="pt-6 pb-0">
+            <TabsList className="w-full inline-flex">
+              <TabsTrigger value="ingredients" className="flex-1">Ingredients</TabsTrigger>
+              <TabsTrigger value="recipes" className="flex-1">Recipes</TabsTrigger>
+            </TabsList>
+          </CardContent>
+        </Card>
 
         <TabsContent value="ingredients">
           <div className="space-y-6">

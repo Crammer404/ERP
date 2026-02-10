@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
-import { fetchAvailableCashRegisters, openSession, closeSession, fetchSessionPaymentSummary, fetchExpectedBalances, type CashRegister, type ExpectedBalances, type CashRegisterClosingCase } from '@/app/pos/counters/service/cashRegisterService';
+import { fetchAvailableCashRegisters, openSession, closeSession, fetchSessionPaymentSummary, fetchExpectedBalances, createCashRegister, type CashRegister, type ExpectedBalances, type CashRegisterClosingCase } from '@/app/pos/counters/service/cashRegisterService';
+import { CashRegisterFormModal } from '@/app/pos/counters/components/CashRegisterFormModal';
 import { Plus, Minus, Calculator, Banknote, Coins, ChevronDown } from 'lucide-react';
+import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { cn } from '@/lib/utils';
 import { BillCounts, BILLS, COINS, DENOMINATIONS, getHighlightColorClasses } from '../lib/cashRegisterDenominations';
 import { useCurrency } from '@/contexts/CurrencyContext';
@@ -98,6 +100,15 @@ export function CashRegisterOpeningModal({
     shortBy: number;
   } | null>(null);
   const [closeSuccessDialogOpen, setCloseSuccessDialogOpen] = useState(false);
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    code: '',
+    assigned_user_id: null as number | null,
+    is_active: true,
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [isFormLoading, setIsFormLoading] = useState(false);
   const { defaultCurrency } = useCurrency();
   const { paymentMethods } = usePaymentMethods();
   const { toast } = useToast();
@@ -320,6 +331,111 @@ export function CashRegisterOpeningModal({
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddCashRegister = () => {
+    setFormData({
+      name: '',
+      code: '',
+      assigned_user_id: null,
+      is_active: true,
+    });
+    setFormErrors({});
+    setIsFormModalOpen(true);
+  };
+
+  const handleFormInputChange = (field: string, value: string | number | boolean | null) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = 'Cash register name is required.';
+    }
+    
+    if (!formData.code.trim()) {
+      newErrors.code = 'Code is required.';
+    }
+    
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+      return;
+    }
+    
+    setFormErrors({});
+
+    try {
+      setIsFormLoading(true);
+      const branchContext = tenantContextService.getStoredBranchContext();
+
+      if (!branchContext?.id) {
+        setFormErrors({ general: 'Branch context is required.' });
+        return;
+      }
+
+      const response = await createCashRegister({
+        branch_id: branchContext.id,
+        name: formData.name,
+        code: formData.code,
+        assigned_user_id: formData.assigned_user_id,
+        is_active: formData.is_active,
+      });
+      
+      const newCashRegisterId = response?.data?.id || response?.data?.cash_register?.id || response?.id;
+      
+      toast({
+        title: 'Success',
+        description: 'Cash register created successfully.',
+      });
+
+      setIsFormModalOpen(false);
+      
+      setFormData({
+        name: '',
+        code: '',
+        assigned_user_id: null,
+        is_active: true,
+      });
+      
+      await loadCashRegisters();
+      
+      if (newCashRegisterId) {
+        setSelectedCashRegisterId(newCashRegisterId.toString());
+      } else {
+        const refreshedResponse = await fetchAvailableCashRegisters();
+        if (refreshedResponse?.data && Array.isArray(refreshedResponse.data)) {
+          const newlyCreated = refreshedResponse.data.find(
+            (cr: CashRegister) => cr.name === formData.name && cr.assigned_user_id === formData.assigned_user_id
+          );
+          if (newlyCreated) {
+            setSelectedCashRegisterId(newlyCreated.id.toString());
+          }
+        }
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || 'Failed to save cash register.';
+      const errorData = error.response?.data?.errors || {};
+      
+      setFormErrors(errorData);
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsFormLoading(false);
     }
   };
 
@@ -647,44 +763,65 @@ export function CashRegisterOpeningModal({
                 {loading ? (
                   <p className="text-sm text-muted-foreground">Loading cash registers...</p>
                 ) : (
-                  <Select
-                    value={selectedCashRegisterId}
-                    onValueChange={setSelectedCashRegisterId}
-                    disabled={submitting}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select cash register" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cashRegisters.map((register) => (
-                        <SelectItem key={register.id} value={register.id.toString()}>
-                          <div className="flex flex-col gap-1 w-full">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="truncate font-medium">{register.name}</span>
-                              <span className="relative h-1.5 w-1.5 shrink-0">
-                                <span
-                                  className={cn(
-                                    "absolute inset-0 rounded-full",
-                                    register.open_session?.status === 'OPEN' 
-                                      ? "bg-emerald-500" 
-                                      : "bg-red-500"
-                                  )}
-                                />
-                                <span
-                                  className={cn(
-                                    "absolute inset-0 rounded-full animate-ping opacity-75",
-                                    register.open_session?.status === 'OPEN' 
-                                      ? "bg-emerald-500" 
-                                      : "bg-red-500"
-                                  )}
-                                />
-                              </span>
-                            </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={selectedCashRegisterId}
+                      onValueChange={setSelectedCashRegisterId}
+                      disabled={submitting || cashRegisters.length === 0}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={cashRegisters.length === 0 ? "No counters available" : "Select cash register"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cashRegisters.length === 0 ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            No active counters available. Click the + button to add one.
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        ) : (
+                          cashRegisters.map((register) => (
+                            <SelectItem key={register.id} value={register.id.toString()}>
+                              <div className="flex flex-col gap-1 w-full">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate font-medium">{register.name}</span>
+                                  <span className="relative h-1.5 w-1.5 shrink-0">
+                                    <span
+                                      className={cn(
+                                        "absolute inset-0 rounded-full",
+                                        register.open_session?.status === 'OPEN' 
+                                          ? "bg-emerald-500" 
+                                          : "bg-red-500"
+                                      )}
+                                    />
+                                    <span
+                                      className={cn(
+                                        "absolute inset-0 rounded-full animate-ping opacity-75",
+                                        register.open_session?.status === 'OPEN' 
+                                          ? "bg-emerald-500" 
+                                          : "bg-red-500"
+                                      )}
+                                    />
+                                  </span>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {cashRegisters.length === 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={handleAddCashRegister}
+                        disabled={submitting}
+                        className="h-10 w-10 flex-shrink-0"
+                        title="Add new counter"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -1197,6 +1334,22 @@ export function CashRegisterOpeningModal({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <CashRegisterFormModal
+      isOpen={isFormModalOpen}
+      onOpenChange={setIsFormModalOpen}
+      isEdit={false}
+      formData={formData}
+      onInputChange={handleFormInputChange}
+      errors={formErrors}
+      isLoading={isFormLoading}
+      onSubmit={handleFormSubmit}
+      currentCashRegisterId={null}
+      existingCashRegisters={cashRegisters.map(cr => ({
+        id: cr.id,
+        assigned_user_id: cr.assigned_user_id,
+      }))}
+    />
     </>
   );
 }

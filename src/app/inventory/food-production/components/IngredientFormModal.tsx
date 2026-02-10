@@ -30,9 +30,7 @@ export function IngredientFormModal({
 }: IngredientFormModalProps) {
   const {
     formData,
-    stocks,
     measurements,
-    loadingStocks,
     loadingMeasurements,
     errors: formErrors,
     handleInputChange,
@@ -58,8 +56,6 @@ export function IngredientFormModal({
     onOpenChange(false);
   };
 
-  const selectedStock = stocks.find((s) => s.id.toString() === formData.stock_id);
-
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -73,41 +69,6 @@ export function IngredientFormModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Stock Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="stock_id">
-              Stock <span className="text-red-500">*</span>
-            </Label>
-            <Select
-              value={formData.stock_id}
-              onValueChange={(value) => handleInputChange('stock_id', value)}
-              disabled={isLoading || loadingStocks}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a stock" />
-              </SelectTrigger>
-              <SelectContent>
-                {stocks.map((stock) => {
-                  const productName = stock.product?.name || 'Unknown Product';
-                  const variant = stock.variant_specification?.name;
-                  const displayName = variant ? `${productName} (${variant})` : productName;
-                  return (
-                    <SelectItem key={stock.id} value={stock.id.toString()}>
-                      {displayName}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-            {allErrors.stock_id && <p className="text-red-500 text-sm">{allErrors.stock_id}</p>}
-            {selectedStock && (
-              <p className="text-sm text-muted-foreground">
-                Stock Cost: {selectedStock.cost} | Available Quantity: {selectedStock.quantity}
-              </p>
-            )}
-          </div>
-
-          {/* Name */}
           <div className="space-y-2">
             <Label htmlFor="name">
               Name <span className="text-red-500">*</span>
@@ -176,29 +137,6 @@ export function IngredientFormModal({
               </Select>
               {allErrors.measurement_id && <p className="text-red-500 text-sm">{allErrors.measurement_id}</p>}
             </div>
-          </div>
-
-          {/* Conversion Factor */}
-          <div className="space-y-2">
-            <Label htmlFor="conversion_factor">
-              Conversion Factor <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="conversion_factor"
-              type="number"
-              step="0.0001"
-              min="0.0001"
-              disabled={isLoading}
-              value={formData.conversion_factor}
-              onChange={(e) => handleInputChange('conversion_factor', e.target.value)}
-              placeholder="1.0000"
-            />
-            <p className="text-xs text-muted-foreground">
-              Factor to convert stock cost to ingredient cost per unit
-            </p>
-            {allErrors.conversion_factor && (
-              <p className="text-red-500 text-sm">{allErrors.conversion_factor}</p>
-            )}
           </div>
 
           {allErrors.general && (
