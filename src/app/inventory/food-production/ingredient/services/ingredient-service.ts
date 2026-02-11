@@ -1,22 +1,24 @@
 import { api } from "@/services/api";
-import { API_ENDPOINTS } from "../../../../config/api.config";
+import { API_ENDPOINTS } from "../../../../../config/api.config";
 
 export interface Ingredient {
   id: number;
-  stock_id?: number;
+  branch_id?: number | null;
   name: string;
   description?: string | null;
   quantity: number;
-  unit?: string | null;
   measurement_id?: number | null;
+  cost_price?: number | null;
+  category?: string | null;
+  image_path?: string | null;
   measurement?: {
     id: number;
     name: string;
     description?: string | null;
+    symbol?: string | null;
   } | null;
-  conversion_factor: number;
-  cost: number; // Accessor from backend
-  total_cost: number; // Accessor from backend
+  cost: number;
+  total_cost: number;
   stock?: {
     id: number;
     product_id: number;
@@ -48,17 +50,22 @@ export interface CreateIngredientRequest {
   name: string;
   description?: string;
   quantity: number;
-  unit?: string;
   measurement_id?: number;
+  cost_price?: number;
+  category?: string;
+  image_path?: string;
+  branch_id?: number;
 }
 
 export interface UpdateIngredientRequest {
-  stock_id?: number;
   name?: string;
   description?: string;
   quantity?: number;
-  unit?: string;
   measurement_id?: number;
+  cost_price?: number;
+  category?: string;
+  image_path?: string;
+  branch_id?: number;
 }
 
 export interface Stock {
@@ -134,11 +141,43 @@ export async function fetchIngredient(id: number): Promise<{
 }
 
 // Create a new ingredient
-export async function createIngredient(ingredientData: CreateIngredientRequest): Promise<{
+export async function createIngredient(ingredientData: CreateIngredientRequest & { image?: File }): Promise<{
   data: Ingredient;
   message: string;
 }> {
   try {
+    const hasImage = typeof (ingredientData as any).image !== 'undefined';
+
+    if (hasImage) {
+      const formData = new FormData();
+      if (ingredientData.name) formData.append('name', ingredientData.name);
+      if (ingredientData.description) formData.append('description', ingredientData.description);
+      if (typeof ingredientData.quantity === 'number') formData.append('quantity', ingredientData.quantity.toString());
+      if (typeof ingredientData.measurement_id === 'number') {
+        formData.append('measurement_id', ingredientData.measurement_id.toString());
+      }
+      if (typeof ingredientData.cost_price === 'number') {
+        formData.append('cost_price', ingredientData.cost_price.toString());
+      }
+      if (ingredientData.category) formData.append('category', ingredientData.category);
+      if (typeof ingredientData.branch_id === 'number') {
+        formData.append('branch_id', ingredientData.branch_id.toString());
+      }
+      const image = (ingredientData as any).image as File;
+      if (image instanceof File) {
+        formData.append('image', image);
+      }
+
+      const response = await api(API_ENDPOINTS.INGREDIENTS.CREATE, {
+        method: 'POST',
+        body: formData,
+      });
+      return {
+        data: response.data,
+        message: response.message || 'Ingredient created successfully.',
+      };
+    }
+
     const response = await api(API_ENDPOINTS.INGREDIENTS.CREATE, {
       method: 'POST',
       body: JSON.stringify(ingredientData),
@@ -156,12 +195,51 @@ export async function createIngredient(ingredientData: CreateIngredientRequest):
 // Update an ingredient
 export async function updateIngredient(
   id: number,
-  ingredientData: UpdateIngredientRequest
+  ingredientData: UpdateIngredientRequest & { image?: File | null }
 ): Promise<{
   data: Ingredient;
   message: string;
 }> {
   try {
+    const hasImageKey = Object.prototype.hasOwnProperty.call(ingredientData, 'image');
+
+    if (hasImageKey) {
+      const formData = new FormData();
+      formData.append('_method', 'PATCH');
+
+      if (ingredientData.name) formData.append('name', ingredientData.name);
+      if (ingredientData.description) formData.append('description', ingredientData.description);
+      if (typeof ingredientData.quantity === 'number') {
+        formData.append('quantity', ingredientData.quantity.toString());
+      }
+      if (typeof ingredientData.measurement_id === 'number') {
+        formData.append('measurement_id', ingredientData.measurement_id.toString());
+      }
+      if (typeof ingredientData.cost_price === 'number') {
+        formData.append('cost_price', ingredientData.cost_price.toString());
+      }
+      if (ingredientData.category) formData.append('category', ingredientData.category);
+      if (typeof ingredientData.branch_id === 'number') {
+        formData.append('branch_id', ingredientData.branch_id.toString());
+      }
+
+      const image = (ingredientData as any).image;
+      if (image instanceof File) {
+        formData.append('image', image);
+      } else if (image === null) {
+        formData.append('image', '');
+      }
+
+      const response = await api(`${API_ENDPOINTS.INGREDIENTS.BASE}/${id}`, {
+        method: 'POST',
+        body: formData,
+      });
+      return {
+        data: response.data,
+        message: response.message || 'Ingredient updated successfully.',
+      };
+    }
+
     const response = await api(`${API_ENDPOINTS.INGREDIENTS.BASE}/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(ingredientData),

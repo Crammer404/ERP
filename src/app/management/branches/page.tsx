@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Store, MoreVertical, Plus, Trash2, Edit, Users, Search, RefreshCw, Loader2 } from 'lucide-react';
+import { Store, MoreVertical, Plus, Trash2, Edit, Users, Search, Loader2 } from 'lucide-react';
+import { RefreshButton } from '@/components/ui/refresh-button';
 import { branchService, Branch } from '@/services';
 import { addressService } from '@/services/address/addressService';
 import { useToast } from '@/hooks/use-toast';
@@ -577,14 +578,12 @@ export default function BranchPage() {
             
             {/* Buttons - Full width on mobile, auto width on desktop */}
             <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
-              <Button
+              <RefreshButton
                 onClick={forceRefresh}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none"
-                disabled={loading}
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
+                loading={loading}
+                variant="green"
+                className="flex-1 sm:flex-none"
+              />
 
               <PermissionGuard module="branches" action="create">
                 <Button onClick={() => openModal('add')} className="flex items-center gap-2 flex-1 sm:flex-none" >

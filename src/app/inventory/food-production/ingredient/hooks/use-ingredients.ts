@@ -7,7 +7,7 @@ import {
   updateIngredient,
   deleteIngredient,
   Ingredient,
-} from '../services/ingredientService';
+} from '../services/ingredient-service';
 import { useToast } from '@/hooks/use-toast';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 
@@ -69,8 +69,9 @@ export function useIngredients() {
       console.log('Fetch ingredients response:', response);
 
       // Cache the data
-      const data = response.data;
-      const freshData = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      const freshData = Array.isArray(response.data)
+        ? response.data
+        : (Array.isArray((response.data as any)?.data) ? (response.data as any).data : []);
       console.log('Fresh data:', freshData);
       ingredientsCache = freshData;
       ingredientsCacheTimestamp = now;

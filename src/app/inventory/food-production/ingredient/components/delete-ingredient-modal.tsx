@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Ingredient } from '../services/ingredientService';
+import { Ingredient } from '../services/ingredient-service';
 
 interface DeleteIngredientModalProps {
   isOpen: boolean;
