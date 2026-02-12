@@ -606,6 +606,7 @@ export default function BranchPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Code</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Address</TableHead>
@@ -621,6 +622,11 @@ export default function BranchPage() {
                     return (
                       <TableRow key={branch.id}>
                         <TableCell className="font-medium">{branch.name}</TableCell>
+                        <TableCell>
+                          <span className="font-mono text-sm bg-muted px-2 py-1 rounded">
+                            {branch.branch_code || "—"}
+                          </span>
+                        </TableCell>
                         <TableCell>{branch.email || "—"}</TableCell>
                         <TableCell>{branch.contact_no || "—"}</TableCell>
                         <TableCell>

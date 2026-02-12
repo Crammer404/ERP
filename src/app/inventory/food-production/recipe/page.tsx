@@ -1,157 +1,239 @@
 'use client';
 
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { PlusCircle } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Search, PlusCircle } from 'lucide-react';
+import { Loader } from '@/components/ui/loader';
+import { EmptyStates } from '@/components/ui/empty-state';
+import { RecipeTable } from './components/recipe-table';
+import { RecipeFormModal } from './components/recipe-form-modal';
+import { DeleteRecipeModal } from './components/delete-recipe-modal';
+import { useRecipes } from './hooks';
+import { Recipe, fetchMaxProducibleQuantity } from './services/recipe-service';
 import { RefreshButton } from '@/components/ui/refresh-button';
 
-type RecipeRow = {
-  id: number;
-  productName: string;
-  ingredientName: string;
-  quantity: number;
-  unit: string;
-};
-
 export function RecipesPage() {
-  const [recipes, setRecipes] = useState<RecipeRow[]>([]);
-  const [recipeForm, setRecipeForm] = useState({
-    productName: '',
-    ingredientName: '',
-    quantity: '',
-    unit: '',
-  });
-  const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [recipesWithMaxProducible, setRecipesWithMaxProducible] = useState<Recipe[]>([]);
 
-  const handleRefresh = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-    }, 500);
-  };
+  const {
+    recipes,
+    loading,
+    error,
+    handleCreate,
+    handleUpdate,
+    handleDelete,
+    refreshRecipes,
+  } = useRecipes();
 
-  const handleRecipeInputChange = (field: keyof typeof recipeForm, value: string) => {
-    setRecipeForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleAddRecipe = () => {
-    const trimmedProduct = recipeForm.productName.trim();
-    const trimmedIngredient = recipeForm.ingredientName.trim();
-
-    if (!trimmedProduct || !trimmedIngredient) {
-      return;
-    }
-
-    const quantityValue = Number(recipeForm.quantity) || 0;
-
-    const newRecipe: RecipeRow = {
-      id: Date.now(),
-      productName: trimmedProduct,
-      ingredientName: trimmedIngredient,
-      quantity: quantityValue,
-      unit: recipeForm.unit.trim(),
+  useEffect(() => {
+    const loadMaxProducibleQuantities = async () => {
+      const recipesWithQuantities = await Promise.all(
+        recipes.map(async (recipe) => {
+          try {
+            const response = await fetchMaxProducibleQuantity(recipe.id);
+            return {
+              ...recipe,
+              max_producible_quantity: response.data.max_producible_quantity,
+            };
+          } catch (error) {
+            return {
+              ...recipe,
+              max_producible_quantity: 0,
+            };
+          }
+        })
+      );
+      setRecipesWithMaxProducible(recipesWithQuantities);
     };
 
-    setRecipes((prev) => [...prev, newRecipe]);
-    setRecipeForm({
-      productName: '',
-      ingredientName: '',
-      quantity: '',
-      unit: '',
-    });
+    if (recipes.length > 0) {
+      loadMaxProducibleQuantities();
+    } else {
+      setRecipesWithMaxProducible([]);
+    }
+  }, [recipes]);
+
+  const filteredRecipes = recipesWithMaxProducible.filter((recipe) => {
+    const matchesSearch =
+      recipe.product?.name.toLowerCase().includes(localSearchTerm.toLowerCase()) ||
+      false;
+    return matchesSearch;
+  });
+
+  const handleRefresh = () => {
+    setLocalSearchTerm('');
+    refreshRecipes();
   };
 
-  const handleDeleteRecipe = (id: number) => {
-    setRecipes((prev) => prev.filter((recipe) => recipe.id !== id));
+  const handleOpenAddModal = () => {
+    setSelectedRecipe(null);
+    setFormErrors({});
+    setAddModalOpen(true);
+  };
+
+  const openEditModal = (recipe: Recipe) => {
+    setSelectedRecipe(recipe);
+    setFormErrors({});
+    setEditModalOpen(true);
+  };
+
+  const openDeleteModal = (recipe: Recipe) => {
+    setSelectedRecipe(recipe);
+    setDeleteModalOpen(true);
+  };
+
+  const onCreate = async (formData: any) => {
+    setFormLoading(true);
+    setFormErrors({});
+
+    try {
+      await handleCreate(formData);
+      setAddModalOpen(false);
+      setSelectedRecipe(null);
+    } catch (apiErrors: any) {
+      setFormErrors(apiErrors);
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const onUpdate = async (formData: any) => {
+    if (!selectedRecipe) return;
+
+    setFormLoading(true);
+    setFormErrors({});
+
+    try {
+      await handleUpdate(selectedRecipe.id, formData);
+      setEditModalOpen(false);
+      setSelectedRecipe(null);
+    } catch (apiErrors: any) {
+      setFormErrors(apiErrors);
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const onDelete = async () => {
+    if (!selectedRecipe) return;
+    setFormLoading(true);
+    setFormErrors({});
+
+    try {
+      await handleDelete(selectedRecipe.id);
+      setDeleteModalOpen(false);
+      setSelectedRecipe(null);
+    } catch (errorMessage: any) {
+      setFormErrors({ general: errorMessage });
+    } finally {
+      setFormLoading(false);
+    }
   };
 
   return (
-    <Card className="bg-transparent border-none shadow-none">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Recipes</CardTitle>
-            <CardDescription>Map products to ingredients with basic quantities.</CardDescription>
-          </div>
-          <RefreshButton onClick={handleRefresh} loading={loading} />
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Input
-            placeholder="Product name"
-            value={recipeForm.productName}
-            onChange={(e) => handleRecipeInputChange('productName', e.target.value)}
-          />
-          <Input
-            placeholder="Ingredient name"
-            value={recipeForm.ingredientName}
-            onChange={(e) => handleRecipeInputChange('ingredientName', e.target.value)}
-          />
-          <Input
-            type="number"
-            placeholder="Quantity"
-            value={recipeForm.quantity}
-            onChange={(e) => handleRecipeInputChange('quantity', e.target.value)}
-          />
-          <div className="flex gap-2">
-            <Input
-              placeholder="Unit"
-              value={recipeForm.unit}
-              onChange={(e) => handleRecipeInputChange('unit', e.target.value)}
-            />
-            <Button onClick={handleAddRecipe} className="whitespace-nowrap">
-              <PlusCircle className="w-4 h-4 mr-2" />
-              Add
+    <div className="space-y-6">
+      <Card>
+        <CardContent>
+          <div className="flex items-center gap-4 mt-6 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Search recipes by product name..."
+                value={localSearchTerm}
+                onChange={(e) => setLocalSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <RefreshButton onClick={handleRefresh} loading={loading} />
+            <Button onClick={handleOpenAddModal} className="flex items-center gap-2">
+              <PlusCircle className="h-4 w-4" />
+              Add Recipe
             </Button>
           </div>
-        </div>
-
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Ingredient</TableHead>
-              <TableHead>Quantity</TableHead>
-              <TableHead>Unit</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {recipes.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No recipes defined yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              recipes.map((recipe) => (
-                <TableRow key={recipe.id}>
-                  <TableCell>{recipe.productName}</TableCell>
-                  <TableCell>{recipe.ingredientName}</TableCell>
-                  <TableCell>{recipe.quantity}</TableCell>
-                  <TableCell>{recipe.unit || '—'}</TableCell>
-                  <TableCell className="text-right">
+          {error ? (
+            <div className="py-8 text-center">
+              <p className="text-red-500">Error: {error}</p>
+            </div>
+          ) : loading ? (
+            <div className="py-12 flex items-center justify-center">
+              <Loader size="md" />
+            </div>
+          ) : filteredRecipes.length === 0 ? (
+            <>
+              {recipes.length === 0 ? (
+                <EmptyStates.Ingredients
+                  title="No recipes found"
+                  description="Create your first recipe to get started."
+                />
+              ) : (
+                <EmptyStates.Ingredients
+                  title="No recipes match your search"
+                  description="Try adjusting your search criteria to find recipes."
+                  action={
                     <Button
+                      onClick={() => setLocalSearchTerm('')}
                       variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteRecipe(recipe.id)}
                     >
-                      Remove
+                      Clear Search
                     </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                  }
+                />
+              )}
+            </>
+          ) : (
+            <RecipeTable
+              recipes={filteredRecipes}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              onEdit={openEditModal}
+              onDelete={openDeleteModal}
+              onRefresh={handleRefresh}
+              loading={loading}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      <RecipeFormModal
+        isOpen={addModalOpen}
+        onOpenChange={setAddModalOpen}
+        isEdit={false}
+        recipe={null}
+        isLoading={formLoading}
+        onSubmit={onCreate}
+        errors={formErrors}
+      />
+
+      <RecipeFormModal
+        isOpen={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        isEdit={true}
+        recipe={selectedRecipe}
+        isLoading={formLoading}
+        onSubmit={onUpdate}
+        errors={formErrors}
+      />
+
+      <DeleteRecipeModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setSelectedRecipe(null);
+        }}
+        recipe={selectedRecipe}
+        onConfirm={onDelete}
+        isLoading={formLoading}
+      />
+    </div>
   );
 }

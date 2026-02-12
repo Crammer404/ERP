@@ -1322,6 +1322,22 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
                   />
                 </div>
 
+                {/* Max Producible Quantity - ReadOnly */}
+                {product?.max_producible_quantity !== undefined && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Max Producible Quantity</label>
+                    <Input
+                      value={product.max_producible_quantity > 0 ? product.max_producible_quantity.toString() : '0'}
+                      readOnly
+                      className="bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                      placeholder="Calculated from recipe"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Based on current ingredient inventory and recipe requirements
+                    </p>
+                  </div>
+                )}
+
                 {/* Category */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Category <span className="text-red-500">*</span></label>

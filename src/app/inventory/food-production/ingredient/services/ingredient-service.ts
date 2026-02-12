@@ -9,6 +9,8 @@ export interface Ingredient {
   quantity: number;
   measurement_id?: number | null;
   cost_price?: number | null;
+  bulk_cost?: number | null;
+  unit_cost?: number | null;
   category?: string | null;
   image_path?: string | null;
   measurement?: {

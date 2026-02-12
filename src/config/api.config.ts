@@ -278,6 +278,20 @@ export const API_ENDPOINTS = {
     DELETE: '/inventory/ingredients/{id}',
   },
 
+  // ingredient stock logs endpoints
+  INGREDIENT_STOCK_LOGS: {
+    BASE: '/inventory/ingredients/stock-logs',
+    CREATE: '/inventory/ingredients/stock-logs',
+  },
+
+  // recipes endpoints
+  RECIPES: {
+    BASE: '/inventory/recipes',
+    CREATE: '/inventory/recipes',
+    UPDATE: '/inventory/recipes/{id}',
+    DELETE: '/inventory/recipes/{id}',
+  },
+
   // stocks endpoints
   STOCKS: {
     BASE: '/inventory/stocks',

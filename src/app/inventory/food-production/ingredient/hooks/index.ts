@@ -1,2 +1,2 @@
 export { useIngredients, invalidateIngredientsCache } from './use-ingredients';
-export { useIngredientForm } from './use-ingredient-form';
+export { useIngredientForm, type IngredientFormMode } from './use-ingredient-form';

@@ -10,6 +10,7 @@ import { EmptyStates } from '@/components/ui/empty-state';
 import { IngredientTable } from './components/ingredient-table';
 import { IngredientFormModal } from './components/ingredient-form-modal';
 import { DeleteIngredientModal } from './components/delete-ingredient-modal';
+import { IngredientLogsModal } from './components/ingredient-logs-modal';
 import { useIngredients } from './hooks';
 import { Ingredient } from './services/ingredient-service';
 import { RefreshButton } from '@/components/ui/refresh-button';
@@ -19,7 +20,9 @@ export function IngredientsPage() {
   const [localSearchTerm, setLocalSearchTerm] = useState('');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [restockModalOpen, setRestockModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -30,16 +33,22 @@ export function IngredientsPage() {
     error,
     handleCreate,
     handleUpdate,
+    handleRestock,
     handleDelete,
     refreshIngredients,
   } = useIngredients();
 
   const filteredIngredients = ingredients.filter((ingredient) => {
-    const matchesSearch =
-      ingredient.name.toLowerCase().includes(localSearchTerm.toLowerCase()) ||
-      ingredient.stock?.product?.name.toLowerCase().includes(localSearchTerm.toLowerCase()) ||
-      false;
-    return matchesSearch;
+    const term = localSearchTerm.toLowerCase();
+    const nameMatch = ingredient.name.toLowerCase().includes(term);
+    const stockNameMatch = ingredient.stock?.product?.name
+      ? ingredient.stock.product.name.toLowerCase().includes(term)
+      : false;
+    const categoryMatch = ingredient.category
+      ? ingredient.category.toLowerCase().includes(term)
+      : false;
+
+    return nameMatch || stockNameMatch || categoryMatch;
   });
 
   const handleRefresh = () => {
@@ -54,14 +63,27 @@ export function IngredientsPage() {
   };
 
   const openEditModal = (ingredient: Ingredient) => {
-    setSelectedIngredient(ingredient);
+    // Use a shallow copy so changes in selection always trigger form re-initialization
+    setSelectedIngredient({ ...ingredient });
     setFormErrors({});
     setEditModalOpen(true);
+  };
+
+  const openRestockModal = (ingredient: Ingredient) => {
+    // Use a shallow copy so restock modal re-initializes correctly each time
+    setSelectedIngredient({ ...ingredient });
+    setFormErrors({});
+    setRestockModalOpen(true);
   };
 
   const openDeleteModal = (ingredient: Ingredient) => {
     setSelectedIngredient(ingredient);
     setDeleteModalOpen(true);
+  };
+
+  const openLogsModal = (ingredient: Ingredient) => {
+    setSelectedIngredient({ ...ingredient });
+    setLogsModalOpen(true);
   };
 
   const onCreate = async (formData: any) => {
@@ -96,6 +118,23 @@ export function IngredientsPage() {
     }
   };
 
+  const onRestock = async (formData: any) => {
+    if (!selectedIngredient) return;
+
+    setFormLoading(true);
+    setFormErrors({});
+
+    try {
+      await handleRestock(selectedIngredient.id, formData);
+      setRestockModalOpen(false);
+      setSelectedIngredient(null);
+    } catch (apiErrors: any) {
+      setFormErrors(apiErrors);
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   const onDelete = async () => {
     if (!selectedIngredient) return;
     setFormLoading(true);
@@ -120,7 +159,7 @@ export function IngredientsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Search ingredients by name or stock..."
+                placeholder="Search ingredients by name, category, or stock..."
                 value={localSearchTerm}
                 onChange={(e) => setLocalSearchTerm(e.target.value)}
                 className="pl-10"
@@ -168,6 +207,8 @@ export function IngredientsPage() {
               onDelete={openDeleteModal}
               onRefresh={handleRefresh}
               loading={loading}
+              onRestock={openRestockModal}
+              onViewLogs={openLogsModal}
             />
           )}
         </CardContent>
@@ -177,6 +218,7 @@ export function IngredientsPage() {
         isOpen={addModalOpen}
         onOpenChange={setAddModalOpen}
         isEdit={false}
+        mode="create"
         ingredient={null}
         isLoading={formLoading}
         onSubmit={onCreate}
@@ -187,9 +229,21 @@ export function IngredientsPage() {
         isOpen={editModalOpen}
         onOpenChange={setEditModalOpen}
         isEdit={true}
+        mode="edit"
         ingredient={selectedIngredient}
         isLoading={formLoading}
         onSubmit={onUpdate}
+        errors={formErrors}
+      />
+
+      <IngredientFormModal
+        isOpen={restockModalOpen}
+        onOpenChange={setRestockModalOpen}
+        isEdit={false}
+        mode="restock"
+        ingredient={selectedIngredient}
+        isLoading={formLoading}
+        onSubmit={onRestock}
         errors={formErrors}
       />
 
@@ -202,6 +256,15 @@ export function IngredientsPage() {
         ingredient={selectedIngredient}
         onConfirm={onDelete}
         isLoading={formLoading}
+      />
+
+      <IngredientLogsModal
+        isOpen={logsModalOpen}
+        onClose={() => {
+          setLogsModalOpen(false);
+          setSelectedIngredient(null);
+        }}
+        ingredient={selectedIngredient}
       />
     </div>
   );

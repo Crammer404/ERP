@@ -10,6 +10,7 @@ import {
 } from '../services/ingredient-service';
 import { useToast } from '@/hooks/use-toast';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
+import { createStockAdjustment } from '@/app/inventory/food-production/recipe/services/ingredient-stock-log-service';
 
 // Global cache for ingredients data
 let ingredientsCache: Ingredient[] | null = null;
@@ -144,6 +145,39 @@ export function useIngredients() {
     }
   };
 
+  const handleRestock = async (id: number, formData: any) => {
+    try {
+      const quantity = Number(formData.quantity ?? 0);
+      const bulkCost = Number(formData.cost_price ?? 0);
+      const unitCost = quantity > 0 ? bulkCost / quantity : 0;
+
+      await createStockAdjustment({
+        ingredient_id: id,
+        quantity,
+        movement_direction: 'IN',
+        reference_type: 'PURCHASE',
+        bulk_cost: bulkCost,
+        unit_cost: unitCost,
+        purchase_date: formData.purchase_date,
+        expiry_date: formData.expiry_date,
+      });
+
+      await refreshIngredients();
+      showToast('success', 'Ingredient Restocked', 'The ingredient stock was successfully updated.');
+    } catch (err: any) {
+      if (err.response?.data?.errors) {
+        const apiErrors: Record<string, string> = {};
+        for (const key in err.response.data.errors) {
+          apiErrors[key] = err.response.data.errors[key][0];
+        }
+        throw apiErrors;
+      } else {
+        const message = err.response?.data?.message || 'Failed to restock ingredient.';
+        throw { general: message };
+      }
+    }
+  };
+
   useEffect(() => {
     loadIngredients();
   }, []);
@@ -174,6 +208,7 @@ export function useIngredients() {
     handleCreate,
     handleUpdate,
     handleDelete,
+    handleRestock,
   };
 }
 

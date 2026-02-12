@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Button } from '@/components/ui/button';
-import { MoreVertical, Edit, Trash2 } from 'lucide-react';
+import { MoreVertical, Edit, Trash2, PackagePlus, Clock } from 'lucide-react';
 import { Ingredient } from '../services/ingredient-service';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { RefreshButton } from '@/components/ui/refresh-button';
@@ -17,6 +17,8 @@ interface IngredientTableProps {
   onDelete: (ingredient: Ingredient) => void;
   onRefresh?: () => void;
   loading?: boolean;
+  onRestock?: (ingredient: Ingredient) => void;
+  onViewLogs?: (ingredient: Ingredient) => void;
 }
 
 export function IngredientTable({
@@ -27,6 +29,8 @@ export function IngredientTable({
   onDelete,
   onRefresh,
   loading = false,
+  onRestock,
+  onViewLogs,
 }: IngredientTableProps) {
   const { defaultCurrency } = useCurrency();
   const itemsPerPage = 15;
@@ -49,6 +53,7 @@ export function IngredientTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Name</TableHead>
+            <TableHead>Category</TableHead>
             <TableHead>Quantity</TableHead>
             <TableHead>Cost Bulk Price</TableHead>
             <TableHead>Cost per Unit</TableHead>
@@ -58,7 +63,7 @@ export function IngredientTable({
         <TableBody>
           {paginatedIngredients.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                 No ingredients found.
               </TableCell>
             </TableRow>
@@ -67,11 +72,15 @@ export function IngredientTable({
               const unit =
                 (ingredient.measurement && ingredient.measurement.symbol) ? ingredient.measurement.symbol : 
                 (ingredient.measurement && ingredient.measurement.name) ? ingredient.measurement.name : 'unit';
-              const quantityWithUnit = `${ingredient.quantity} ${unit}`;
-              const costPrice = typeof ingredient.cost_price === 'number'
-                ? ingredient.cost_price
-                : ingredient.cost;
-              const costPerUnit = ingredient.quantity > 0 ? costPrice / ingredient.quantity : 0;
+              const quantityNumber = Number(ingredient.quantity);
+              const safeQuantity = Number.isFinite(quantityNumber) ? quantityNumber : 0;
+              const quantityWithUnit = `${safeQuantity} ${unit}`;
+              const bulkCostRaw = ingredient.bulk_cost ?? 0;
+              const bulkCostNumber = typeof bulkCostRaw === 'number' ? bulkCostRaw : Number(bulkCostRaw);
+              const safeBulkCost = Number.isFinite(bulkCostNumber) ? bulkCostNumber : 0;
+              const unitCostRaw = ingredient.unit_cost ?? 0;
+              const unitCostNumber = typeof unitCostRaw === 'number' ? unitCostRaw : Number(unitCostRaw);
+              const safeUnitCost = Number.isFinite(unitCostNumber) ? unitCostNumber : 0;
 
               return (
                 <TableRow key={ingredient.id} className="hover:bg-transparent">
@@ -91,12 +100,13 @@ export function IngredientTable({
                       <span>{ingredient.name}</span>
                     </div>
                   </TableCell>
+                  <TableCell>{ingredient.category || '—'}</TableCell>
                   <TableCell>{quantityWithUnit}</TableCell>
                   <TableCell>
-                    {(defaultCurrency?.symbol || '₱') + costPrice.toFixed(2)}
+                    {(defaultCurrency?.symbol || '₱') + safeBulkCost.toFixed(2)}
                   </TableCell>
                   <TableCell>
-                    {(defaultCurrency?.symbol || '₱') + costPerUnit.toFixed(2)} / {unit}
+                    {(defaultCurrency?.symbol || '₱') + safeUnitCost.toFixed(2)} / {unit}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -110,6 +120,18 @@ export function IngredientTable({
                           <Edit className="h-4 w-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
+                        {onRestock && (
+                          <DropdownMenuItem onClick={() => onRestock(ingredient)}>
+                            <PackagePlus className="h-4 w-4 mr-2" />
+                            Restock
+                          </DropdownMenuItem>
+                        )}
+                        {onViewLogs && (
+                          <DropdownMenuItem onClick={() => onViewLogs(ingredient)}>
+                            <Clock className="h-4 w-4 mr-2" />
+                            Logs
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => onDelete(ingredient)}
                           className="text-red-600 focus:text-red-600"

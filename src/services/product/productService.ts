@@ -23,6 +23,7 @@ export interface Product {
   } | null;
   images?: ProductImage[];
   stocks?: Stock[];
+  max_producible_quantity?: number;
   created_at: string;
   updated_at: string;
 }

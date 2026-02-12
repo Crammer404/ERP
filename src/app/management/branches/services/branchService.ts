@@ -6,6 +6,7 @@ export interface Branch {
   id: number;
   tenant_id: number;
   name: string;
+  branch_code?: string;
   email: string;
   contact_no: string;
   address: Address | null;

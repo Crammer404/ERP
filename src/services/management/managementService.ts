@@ -10,6 +10,7 @@ export interface Tenant {
 export interface Branch {
   id: number;
   name: string;
+  branch_code?: string;
   email?: string;
   contact_no?: string;
   tenant_id: number;
