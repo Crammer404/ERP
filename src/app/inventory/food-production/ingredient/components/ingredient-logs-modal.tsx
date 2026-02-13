@@ -134,7 +134,7 @@ export function IngredientLogsModal({ isOpen, onClose, ingredient }: IngredientL
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="[&_th]:font-mono [&_th]:text-sm [&_td]:font-mono [&_td]:text-sm">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>

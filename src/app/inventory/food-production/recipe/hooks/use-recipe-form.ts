@@ -15,7 +15,7 @@ interface RecipeFormData {
   items: RecipeItemFormData[];
 }
 
-export function useRecipeForm(recipe?: Recipe | null) {
+export function useRecipeForm(recipe?: Recipe | null, isOpen?: boolean) {
   const [formData, setFormData] = useState<RecipeFormData>({
     product_id: '',
     items: [{ ingredient_id: '', quantity: '' }],
@@ -57,6 +57,9 @@ export function useRecipeForm(recipe?: Recipe | null) {
   }, []);
 
   useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
     if (recipe) {
       setFormData({
         product_id: recipe.product_id?.toString() || '',
@@ -72,7 +75,7 @@ export function useRecipeForm(recipe?: Recipe | null) {
       });
     }
     setErrors({});
-  }, [recipe]);
+  }, [recipe, isOpen]);
 
   const handleInputChange = (field: keyof RecipeFormData, value: string | RecipeItemFormData[]) => {
     setFormData((prev) => ({

@@ -27,6 +27,7 @@ export interface Recipe {
   product?: {
     id: number;
     name: string;
+    display_image?: string | null;
   } | null;
   items?: RecipeItem[];
   max_producible_quantity?: number;

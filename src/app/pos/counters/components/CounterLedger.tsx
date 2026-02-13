@@ -421,7 +421,7 @@ export function CounterLedger({
                             </div>
                           </div>
                         </AccordionTrigger>
-                        <AccordionContent className="px-4 py-4 border-t border-border/40 bg-muted/20">
+                        <AccordionContent className="px-4 py-4 border-t border-border/40 bg-muted/20 font-mono">
                           <SessionBreakdown
                             sessionId={session.sessionId}
                             opening={session.opening}

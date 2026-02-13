@@ -44,7 +44,7 @@ export function RecipeFormModal({
     getFormDataForSubmit,
     resetForm,
     setErrors,
-  } = useRecipeForm(recipe);
+  } = useRecipeForm(recipe, isOpen);
 
   const allErrors = { ...formErrors, ...externalErrors };
 
@@ -67,8 +67,12 @@ export function RecipeFormModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <DialogContent
+        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+        onInteractOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit Recipe' : 'Add New Recipe'}</DialogTitle>
           <DialogDescription>

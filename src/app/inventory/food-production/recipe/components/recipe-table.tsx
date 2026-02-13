@@ -58,7 +58,20 @@ export function RecipeTable({
               return (
                 <TableRow key={recipe.id} className="hover:bg-transparent">
                   <TableCell className="font-medium">
-                    {recipe.product?.name || 'N/A'}
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-md overflow-hidden bg-muted flex items-center justify-center">
+                        {recipe.product?.display_image ? (
+                          <img
+                            src={recipe.product.display_image}
+                            alt={recipe.product?.name || 'Product'}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">No Image</span>
+                        )}
+                      </div>
+                      <span>{recipe.product?.name || 'N/A'}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     {ingredientCount} {ingredientCount === 1 ? 'ingredient' : 'ingredients'}
