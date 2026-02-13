@@ -79,8 +79,12 @@ export default function RootLayout({
                     return normalizedPath === prefix || normalizedPath.startsWith(prefix + '/');
                   });
                 
-                // Check for auth token
-                const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+                // Check for auth token (support both current and legacy keys)
+                const token =
+                  localStorage.getItem('token') ||
+                  sessionStorage.getItem('token') ||
+                  localStorage.getItem('auth_token') ||
+                  sessionStorage.getItem('auth_token');
                 const hasAuth = !!token;
                 
                 // If user is authenticated and on root path '/', redirect to dashboard

@@ -28,6 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastAuthCheck = useRef<number>(0);
   const authCheckTimeout = useRef<NodeJS.Timeout | null>(null);
   const loadingTimeout = useRef<NodeJS.Timeout | null>(null);
+  const loadingRef = useRef(true);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
 
   // Debounced auth check to prevent multiple simultaneous calls
   const debouncedAuthCheck = useCallback(async () => {
@@ -61,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(loadingTimeout.current);
     }
     loadingTimeout.current = setTimeout(() => {
-      if (loading) {
+      if (loadingRef.current) {
         console.warn('Auth check timeout - setting loading to false');
         setLoading(false);
       }
@@ -131,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loadingTimeout.current = null;
       }
     }
-  }, [loading]);
+  }, []);
 
   useEffect(() => {
     debouncedAuthCheck();

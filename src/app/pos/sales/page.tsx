@@ -443,15 +443,6 @@ export default function PosPage() {
   };
 
   const handleLoadFloatingOrderToCart = async (order: any, skipCancel: boolean = false) => {
-    if (!order.order_items || order.order_items.length === 0) {
-      toast({
-        title: "Empty Order",
-        description: "This floating order has no items.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       setIsLoadingFloatingOrder(true);
       setLoadingOrderId(order.id);
@@ -463,6 +454,36 @@ export default function PosPage() {
         setPreselectedCustomerId(order.customer.id);
       } else {
         setPreselectedCustomerId(null);
+      }
+      
+      // If order has no items, just link it and allow user to add items
+      if (!order.order_items || order.order_items.length === 0) {
+        // Update status to 'active' to link the order
+        statusUpdateInProgressRef.current = order.id;
+        try {
+          await updateFloatingOrder(order.id, { status: 'active' });
+          setLinkedOrderInfo(prev => prev ? { ...prev, status: 'active' as const } : null);
+        } catch (error) {
+          console.error('Failed to update floating order status to active:', error);
+        } finally {
+          setTimeout(() => {
+            if (statusUpdateInProgressRef.current === order.id) {
+              statusUpdateInProgressRef.current = null;
+            }
+          }, 500);
+        }
+
+        await refreshFloatingOrders();
+        setIsFloatingOrdersPanelOpen(false);
+        setIsLoadingFloatingOrder(false);
+        setLoadingOrderId(null);
+
+        toast({
+          title: "Order Linked",
+          description: `Floating order ${order.reference_no} is now linked. You can add items to it.`,
+          variant: "default",
+        });
+        return;
       }
       
       const itemsToAdd: Array<{
@@ -601,25 +622,42 @@ export default function PosPage() {
   };
 
   const handleBillOutFloatingOrder = async (orderId: number) => {
+    const order = floatingOrders.find(o => o.id === orderId);
+    if (!order) {
+      toast({
+        title: "Error",
+        description: "Order not found.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if order has items before billing out
+    if (!order.order_items || order.order_items.length === 0) {
+      toast({
+        title: "Empty Order",
+        description: "Cannot bill out an empty order. Please add items first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setBillingOutFloatingOrderId(orderId);
     
     if (currentFloatingOrderId === orderId) {
       setCurrentFloatingOrderId(null);
     }
     
-    const order = floatingOrders.find(o => o.id === orderId);
-    if (order) {
-      if (order.customer?.id) {
-        setPreselectedCustomerId(order.customer.id);
-      } else {
-        setPreselectedCustomerId(null);
-      }
-      
-      await handleLoadFloatingOrderToCart(order, true);
-      setTimeout(() => {
-        setIsPaymentModalOpen(true);
-      }, 100);
+    if (order.customer?.id) {
+      setPreselectedCustomerId(order.customer.id);
+    } else {
+      setPreselectedCustomerId(null);
     }
+    
+    await handleLoadFloatingOrderToCart(order, true);
+    setTimeout(() => {
+      setIsPaymentModalOpen(true);
+    }, 100);
   };
 
   const handleCancelFloatingOrder = async (orderId: number) => {

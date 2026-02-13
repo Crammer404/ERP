@@ -269,3 +269,7 @@ export function IngredientsPage() {
     </div>
   );
 }
+
+export default function IngredientPage() {
+  return <IngredientsPage />;
+}

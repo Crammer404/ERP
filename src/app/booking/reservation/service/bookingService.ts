@@ -28,12 +28,15 @@ export const getFilteredBookings = async () => {
   
   try {
     const allowedBookingStatuses = ['success', 'confirmed'];
+    // Get current date and time in ISO format for filtering
+    const currentDateTime = new Date().toISOString();
 
     const { data: hallBookings, error: hallError } = await supabase
       .from('event_hall_bookings')
       .select('*')
       .eq('payment_status', 'success')
-      .in('booking_status', allowedBookingStatuses);
+      .in('booking_status', allowedBookingStatuses)
+      .gte('arrival_datetime', currentDateTime);
     
     if (hallError) {
       console.error('Error fetching event hall bookings:', hallError);
@@ -44,7 +47,8 @@ export const getFilteredBookings = async () => {
       .from('table_bookings')
       .select('*')
       .eq('payment_status', 'success')
-      .in('booking_status', allowedBookingStatuses);
+      .in('booking_status', allowedBookingStatuses)
+      .gte('arrival_datetime', currentDateTime);
     
     if (tableError) {
       console.error('Error fetching table bookings:', tableError);
@@ -71,7 +75,7 @@ export const getFilteredBookings = async () => {
     if (hallIds.length > 0) {
       const { data } = await supabase
         .from('event_halls')
-        .select('id, title')
+        .select('id, title, number')
         .in('id', hallIds);
       eventHalls = data || [];
     }
@@ -79,47 +83,55 @@ export const getFilteredBookings = async () => {
     if (tableIds.length > 0) {
       const { data } = await supabase
         .from('tables')
-        .select('id, title')
+        .select('id, title, number')
         .in('id', tableIds);
       tables = data || [];
     }
     
-    const eventHallMap = new Map(eventHalls.map((h: any) => [h.id, h.title]));
-    const tableMap = new Map(tables.map((t: any) => [t.id, t.title]));
+    const eventHallMap = new Map(eventHalls.map((h: any) => [h.id, { title: h.title, number: h.number }]));
+    const tableMap = new Map(tables.map((t: any) => [t.id, { title: t.title, number: t.number }]));
     
-    const transformedHallBookings = (hallBookings || []).map((booking: any) => ({
-      id: booking.id,
-      uuid: booking.uuid,
-      guest_name: booking.guest_name,
-      guest_email: booking.guest_email,
-      guest_phone: booking.guest_phone,
-      total_price: booking.total_price,
-      payment_status: booking.payment_status,
-      booking_status: booking.booking_status,
-      booking_type: 'Hall',
-      event_hall_id: booking.event_hall_id,
-      arrival_datetime: booking.arrival_datetime,
-      reservation_title: eventHallMap.get(booking.event_hall_id) || 'N/A',
-      created_at: booking.created_at,
-      updated_at: booking.updated_at,
-    }));
+    const transformedHallBookings = (hallBookings || []).map((booking: any) => {
+      const hallData = eventHallMap.get(booking.event_hall_id);
+      return {
+        id: booking.id,
+        uuid: booking.uuid,
+        guest_name: booking.guest_name,
+        guest_email: booking.guest_email,
+        guest_phone: booking.guest_phone,
+        total_price: booking.total_price,
+        payment_status: booking.payment_status,
+        booking_status: booking.booking_status,
+        booking_type: 'Hall',
+        event_hall_id: booking.event_hall_id,
+        arrival_datetime: booking.arrival_datetime,
+        reservation_title: hallData?.title || 'N/A',
+        table_number: hallData?.number || null,
+        created_at: booking.created_at,
+        updated_at: booking.updated_at,
+      };
+    });
     
-    const transformedTableBookings = (tableBookings || []).map((booking: any) => ({
-      id: booking.id,
-      uuid: booking.uuid,
-      guest_name: booking.guest_name,
-      guest_email: booking.guest_email,
-      guest_phone: booking.guest_phone,
-      total_price: booking.total_price,
-      payment_status: booking.payment_status,
-      booking_status: booking.booking_status,
-      booking_type: 'Table',
-      table_id: booking.table_id,
-      arrival_datetime: booking.arrival_datetime,
-      reservation_title: tableMap.get(booking.table_id) || 'N/A',
-      created_at: booking.created_at,
-      updated_at: booking.updated_at,
-    }));
+    const transformedTableBookings = (tableBookings || []).map((booking: any) => {
+      const tableData = tableMap.get(booking.table_id);
+      return {
+        id: booking.id,
+        uuid: booking.uuid,
+        guest_name: booking.guest_name,
+        guest_email: booking.guest_email,
+        guest_phone: booking.guest_phone,
+        total_price: booking.total_price,
+        payment_status: booking.payment_status,
+        booking_status: booking.booking_status,
+        booking_type: 'Table',
+        table_id: booking.table_id,
+        arrival_datetime: booking.arrival_datetime,
+        reservation_title: tableData?.title || 'N/A',
+        table_number: tableData?.number || null,
+        created_at: booking.created_at,
+        updated_at: booking.updated_at,
+      };
+    });
 
     const combined = [...transformedHallBookings, ...transformedTableBookings];
     console.log('getFilteredBookings returning combined count:', combined.length, 'sample:', combined[0] || null);

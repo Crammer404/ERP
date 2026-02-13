@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -33,12 +33,14 @@ type CreateFloatingOrderDialogProps = {
     customer_id?: number;
     notes?: string;
   }) => Promise<void>;
+  initialTableNumber?: string;
 };
 
 export default function CreateFloatingOrderDialog({
   isOpen,
   onOpenChange,
   onCreate,
+  initialTableNumber,
 }: CreateFloatingOrderDialogProps) {
   const { customers, loading: customersLoading, refetch } = usePosCustomers();
   const { handleCreate: createCustomer } = useCustomersFull();
@@ -50,6 +52,20 @@ export default function CreateFloatingOrderDialog({
   const [addCustomerModalOpen, setAddCustomerModalOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [tableNumberError, setTableNumberError] = useState('');
+
+  // Update table number when dialog opens or initialTableNumber changes
+  useEffect(() => {
+    if (isOpen && initialTableNumber) {
+      // Ensure initialTableNumber is converted to string (handles number types from database)
+      setTableNumber(String(initialTableNumber));
+    } else if (!isOpen) {
+      // Reset when dialog closes
+      setTableNumber('');
+      setCustomerId(undefined);
+      setNotes('');
+      setTableNumberError('');
+    }
+  }, [isOpen, initialTableNumber]);
 
   const onCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,7 +101,10 @@ export default function CreateFloatingOrderDialog({
   const handleCreateFloatingOrder = async () => {
     let hasError = false;
 
-    if (!tableNumber.trim()) {
+    // Ensure tableNumber is a string before calling trim()
+    const tableNumberStr = String(tableNumber || '').trim();
+
+    if (!tableNumberStr) {
       setTableNumberError('Table number is required.');
       hasError = true;
     } else {
@@ -99,7 +118,7 @@ export default function CreateFloatingOrderDialog({
     setIsCreating(true);
     try {
       await onCreate({
-        table_number: tableNumber.trim(),
+        table_number: tableNumberStr,
         customer_id: customerId,
         notes: notes || undefined,
       });

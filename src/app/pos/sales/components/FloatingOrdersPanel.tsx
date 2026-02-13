@@ -238,7 +238,10 @@ export default function FloatingOrdersPanel({
                             {Number(order.grand_total ?? 0).toFixed(2)}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                            {order.total_quantity ?? order.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) ?? 0} items
+                            {(() => {
+                              const totalQty = order.total_quantity ?? order.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) ?? 0;
+                              return `${totalQty} ${totalQty === 1 ? 'item' : 'items'}`;
+                            })()}
                         </div>
                       </div>
                     </div>
@@ -247,7 +250,7 @@ export default function FloatingOrdersPanel({
                     {expandedOrderId === order.id && (
                       <div className="mt-3 pt-3 border-t space-y-3">
                         {/* Items Breakdown */}
-                        {order.order_items && order.order_items.length > 0 && (
+                        {order.order_items && order.order_items.length > 0 ? (
                           <div className="space-y-2">
                             <div className="text-xs font-semibold text-foreground mb-2">Items:</div>
                             <div className="space-y-1 max-h-[200px] overflow-y-auto">
@@ -318,6 +321,10 @@ export default function FloatingOrdersPanel({
                                 );
                               })}
                             </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground text-center py-2">
+                            No items yet. Load this order to add items.
                           </div>
                         )}
                         

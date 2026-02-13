@@ -237,3 +237,7 @@ export function RecipesPage() {
     </div>
   );
 }
+
+export default function RecipePage() {
+  return <RecipesPage />;
+}

@@ -22,6 +22,11 @@ import {
   DataTableCell,
   DataTableFooter,
 } from '@/components/ui/data-table';
+import CreateFloatingOrderDialog from '@/app/pos/sales/components/CreateFloatingOrderDialog';
+import { createFloatingOrder } from '@/app/pos/sales/services/floatingOrderService';
+import { useAuth } from '@/components/providers/auth-provider';
+import { tenantContextService } from '@/services/tenant/tenantContextService';
+import { useToast } from '@/hooks/use-toast';
 
 type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 
@@ -35,6 +40,10 @@ function BookingContent() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'hall' | 'table'>('all');
+  const [isCreateFloatingOrderModalOpen, setIsCreateFloatingOrderModalOpen] = useState(false);
+  const [initialTableNumber, setInitialTableNumber] = useState<string | undefined>(undefined);
+  const { user } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchBookings();
@@ -66,6 +75,89 @@ function BookingContent() {
     } catch (error: any) {
       setTestStatus('error');
       setTestMessage(error?.message || 'Connection test failed. Check the console for details.');
+    }
+  };
+
+  const handleBookAction = (booking: any) => {
+    // Extract table number from booking and convert to string
+    const tableNumber = booking.table_number;
+    
+    if (tableNumber === null || tableNumber === undefined || tableNumber === '') {
+      console.error('No table number found for booking:', booking);
+      toast({
+        title: "Error",
+        description: "No table number found for this booking. Cannot create floating order.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert to string to ensure it's always a string type
+    const tableNumberString = String(tableNumber);
+
+    // Set the initial table number and open the dialog
+    setInitialTableNumber(tableNumberString);
+    setIsCreateFloatingOrderModalOpen(true);
+  };
+
+  const handleCreateFloatingOrder = async (data: {
+    table_number: string;
+    customer_id?: number;
+    notes?: string;
+  }) => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "User not authenticated. Please log in.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const branchContext = tenantContextService.getStoredBranchContext();
+    if (!branchContext?.id) {
+      toast({
+        title: "Error",
+        description: "No branch selected. Please select a branch first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await createFloatingOrder({
+        branch_id: branchContext.id,
+        created_by: Number(user.id),
+        table_number: data.table_number,
+        customer_id: data.customer_id,
+        notes: data.notes,
+      });
+
+      if (!response || !response.data || !response.data.id) {
+        throw new Error('Failed to create floating order: Invalid response');
+      }
+
+      const floatingOrder = response.data;
+      const isExistingOrder = response.existing === true;
+
+      toast({
+        title: isExistingOrder ? "Order Consolidated" : "Order Created",
+        description: isExistingOrder
+          ? `Items will be added to existing order ${floatingOrder.reference_no} for Table ${data.table_number}.`
+          : `Floating order ${floatingOrder.reference_no} created successfully for Table ${data.table_number}.`,
+        variant: "default",
+      });
+
+      // Close the dialog
+      setIsCreateFloatingOrderModalOpen(false);
+      setInitialTableNumber(undefined);
+    } catch (error: any) {
+      console.error('Failed to create floating order:', error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to create floating order. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -141,7 +233,7 @@ function BookingContent() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => console.log('Book', booking.id)} className="flex items-center">
+              <DropdownMenuItem onClick={() => handleBookAction(booking)} className="flex items-center">
                 <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
                 <span>Book</span>
               </DropdownMenuItem>
@@ -283,6 +375,13 @@ function BookingContent() {
           </CardContent>
         </Card>
       </div>
+
+      <CreateFloatingOrderDialog
+        isOpen={isCreateFloatingOrderModalOpen}
+        onOpenChange={setIsCreateFloatingOrderModalOpen}
+        onCreate={handleCreateFloatingOrder}
+        initialTableNumber={initialTableNumber}
+      />
     </div>
   );
 }
