@@ -188,18 +188,7 @@ export function ReceiptTemplate({ data, className = '' }: ReceiptTemplateProps) 
                     </div>
                   ))}
                 </>
-              ) : (
-                <>
-                  <div className="flex justify-between text-xs mb-1 text-gray-800">
-                    <span>Price w/o VAT</span>
-                    <span className="text-right">{formatCurrency(data.subtotal / 1.12)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs mb-1 text-gray-800">
-                    <span>VAT (12%):</span>
-                    <span>{formatCurrency(data.subtotal - (data.subtotal / 1.12))}</span>
-                  </div>
-                </>
-              )}
+              ) : null}
             </>
           )}
           

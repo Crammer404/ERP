@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { fetchTaxes, createTax, updateTax, deleteTax, Tax } from '../services/taxService';
+import { fetchTaxes, createTax, updateTax, deleteTax, Tax } from '../services/tax-service';
 import { toast } from "@/hooks/use-toast";
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 

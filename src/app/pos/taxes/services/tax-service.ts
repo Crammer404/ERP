@@ -4,25 +4,32 @@ import { API_ENDPOINTS } from "../../../../config/api.config";
 
 export interface Tax {
   id: number;
-  branch_id: number;
+  is_global: boolean;
+  branch_id?: number;
   branch?: {
     id: number;
     name: string;
   };
   name: string;
+  is_percent: boolean;
   percentage: number;
   is_active: boolean;
 }
 
 export interface CreateTaxRequest {
-  branch_id: number;
+  is_global?: boolean;
+  branch_id?: number;
   name: string;
+  is_percent?: boolean;
   percentage: number;
-  is_active: boolean;
+  is_active?: boolean;
 }
 
 export interface UpdateTaxRequest {
+  is_global?: boolean;
+  branch_id?: number;
   name?: string;
+  is_percent?: boolean;
   percentage?: number;
   is_active?: boolean;
 }

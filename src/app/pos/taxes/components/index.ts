@@ -1,3 +1,3 @@
-export { TaxTable } from './TaxTable';
-export { TaxFormModal } from './TaxFormModal';
-export { DeleteTaxModal } from './DeleteTaxModal';
+export { TaxTable } from './tax-table';
+export { TaxFormModal } from './tax-form-modal';
+export { DeleteTaxModal } from './delete-tax-modal';

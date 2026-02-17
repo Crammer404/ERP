@@ -7,9 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { tenantContextService } from '@/services/tenant/tenantContextService';
+import { useAuth } from '@/components/providers/auth-provider';
 
 interface TaxFormData {
   name: string;
+  is_global: boolean;
+  is_percent: boolean;
   percentage: string;
   is_active: boolean;
 }
@@ -35,7 +38,8 @@ export function TaxFormModal({
   isLoading,
   onSubmit,
 }: TaxFormModalProps) {
-  // Get selected branch from header context
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role_name === 'Super Admin';
   const selectedBranch = tenantContextService.getStoredBranchContext();
 
   return (
@@ -51,7 +55,21 @@ export function TaxFormModal({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4">
+          {/* Global Tax - Only visible to Super Admin */}
+          {isSuperAdmin && (
+            <div className="flex items-center space-x-2">
+              <Switch
+                id={isEdit ? "edit-is_global" : "is_global"}
+                checked={formData.is_global}
+                onCheckedChange={(checked) => onInputChange("is_global", checked)}
+                disabled={isLoading}
+              />
+              <Label htmlFor={isEdit ? "edit-is_global" : "is_global"}>Global Tax (Available for all branches)</Label>
+            </div>
+          )}
+
           {/* Branch Display */}
+          {!formData.is_global && (
           <div className="space-y-2">
             <Label htmlFor="branch">Branch</Label>
             <Input
@@ -62,6 +80,8 @@ export function TaxFormModal({
               className="bg-muted"
             />
           </div>
+          )}
+
           {/* Name */}
           <div className="space-y-2">
             <Label htmlFor={isEdit ? "edit-name" : "name"}>Tax Name <span className="text-red-500">*</span></Label>
@@ -75,15 +95,28 @@ export function TaxFormModal({
             {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
           </div>
 
-          {/* Percentage */}
+          {/* Tax Type */}
+          <div className="flex items-center space-x-2">
+            <Switch
+              id={isEdit ? "edit-is_percent" : "is_percent"}
+              checked={formData.is_percent}
+              onCheckedChange={(checked) => onInputChange("is_percent", checked)}
+              disabled={isLoading}
+            />
+            <Label htmlFor={isEdit ? "edit-is_percent" : "is_percent"}>Percentage Tax</Label>
+          </div>
+
+          {/* Percentage/Amount */}
           <div className="space-y-2">
-            <Label htmlFor={isEdit ? "edit-percentage" : "percentage"}>Percentage (%) <span className="text-red-500">*</span></Label>
+            <Label htmlFor={isEdit ? "edit-percentage" : "percentage"}>
+              {formData.is_percent ? "Percentage (%)" : "Fixed Amount"} <span className="text-red-500">*</span>
+            </Label>
             <Input
               id={isEdit ? "edit-percentage" : "percentage"}
               type="number"
               step="0.01"
               min="0"
-              max="100"
+              max={formData.is_percent ? "100" : undefined}
               disabled={isLoading}
               value={formData.percentage}
               onChange={(e) => {
@@ -91,8 +124,13 @@ export function TaxFormModal({
                 if (value === "") return onInputChange("percentage", "");
                 const num = parseFloat(value);
                 if (!isNaN(num)) {
+                  if (formData.is_percent) {
                   const clamped = Math.min(Math.max(num, 0), 100);
                   onInputChange("percentage", clamped.toString());
+                  } else {
+                    const clamped = Math.max(num, 0);
+                    onInputChange("percentage", clamped.toString());
+                  }
                 }
               }}
             />

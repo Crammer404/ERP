@@ -75,11 +75,13 @@ export function useReceiptData() {
       };
     });
 
-    const taxes: ReceiptTax[] = (transaction.taxes || []).map(tax => ({
-      name: tax.tax?.name || 'Deleted Tax',
-      percentage: tax.tax?.percentage || 0,
-      amount: (transaction.sub_total - transaction.total_discount) * ((tax.tax?.percentage || 0) / 100),
-    }));
+    const taxes: ReceiptTax[] = (transaction.taxes || [])
+      .filter(tax => Boolean(tax.tax?.is_active))
+      .map(tax => ({
+        name: tax.tax?.name || 'Deleted Tax',
+        percentage: tax.tax?.percentage || 0,
+        amount: (transaction.sub_total - transaction.total_discount) * ((tax.tax?.percentage || 0) / 100),
+      }));
 
     const subtotal = transaction.sub_total;
     const total = transaction.grand_total;
