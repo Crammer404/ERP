@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { WithAuthProtection } from '@/components/auth/with-auth-protection';
 import { bookingService } from '@/app/booking/reservation/service/bookingService';
 import { Loader2, CheckCircle2, AlertCircle, Database, Calendar, RefreshCw, Search, MoreVertical } from 'lucide-react';
 import { FetchError } from '@/components/ui/fetch-error';
@@ -387,9 +386,5 @@ function BookingContent() {
 }
 
 export default function BookingPage() {
-  return (
-    <WithAuthProtection>
-      <BookingContent />
-    </WithAuthProtection>
-  );
+  return <BookingContent />;
 }

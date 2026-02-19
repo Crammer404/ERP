@@ -97,6 +97,15 @@ export function useRecipeForm(recipe?: Recipe | null, isOpen?: boolean) {
       newItems[index] = { ...newItems[index], [field]: value };
       return { ...prev, items: newItems };
     });
+    const errorKey = `items.${index}.${field}`;
+    if (errors[errorKey] || errors.items) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[errorKey];
+        delete newErrors.items;
+        return newErrors;
+      });
+    }
   };
 
   const addItem = () => {
@@ -115,6 +124,7 @@ export function useRecipeForm(recipe?: Recipe | null, isOpen?: boolean) {
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
+    const requestedByIngredient: Record<string, number> = {};
 
     if (!formData.product_id) {
       newErrors.product_id = 'Product is required';
@@ -130,6 +140,29 @@ export function useRecipeForm(recipe?: Recipe | null, isOpen?: boolean) {
       }
       if (!item.quantity || parseFloat(item.quantity) <= 0) {
         newErrors[`items.${index}.quantity`] = 'Quantity must be greater than 0';
+      }
+      const parsedQuantity = parseFloat(item.quantity);
+      if (item.ingredient_id && Number.isFinite(parsedQuantity) && parsedQuantity > 0) {
+        requestedByIngredient[item.ingredient_id] = (requestedByIngredient[item.ingredient_id] || 0) + parsedQuantity;
+      }
+    });
+
+    formData.items.forEach((item, index) => {
+      if (!item.ingredient_id) {
+        return;
+      }
+      const ingredient = ingredients.find((ing) => ing.id.toString() === item.ingredient_id);
+      if (!ingredient) {
+        return;
+      }
+      const availableQuantity = Number(ingredient.quantity ?? 0);
+      const requestedQuantity = requestedByIngredient[item.ingredient_id] || 0;
+      if (requestedQuantity > availableQuantity) {
+        const unit = ingredient.measurement?.symbol || ingredient.measurement?.name || 'unit';
+        const formattedAvailable = Number.isInteger(availableQuantity)
+          ? availableQuantity.toString()
+          : availableQuantity.toFixed(3).replace(/\.?0+$/, '');
+        newErrors[`items.${index}.quantity`] = `Not enough stock. Available: ${formattedAvailable} ${unit}`;
       }
     });
 

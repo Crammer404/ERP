@@ -55,6 +55,8 @@ export interface CreateIngredientRequest {
   measurement_id?: number;
   cost_price?: number;
   category?: string;
+  purchase_date?: string;
+  expiry_date?: string;
   image_path?: string;
   branch_id?: number;
 }
@@ -66,6 +68,8 @@ export interface UpdateIngredientRequest {
   measurement_id?: number;
   cost_price?: number;
   category?: string;
+  purchase_date?: string;
+  expiry_date?: string;
   image_path?: string;
   branch_id?: number;
 }
@@ -162,6 +166,8 @@ export async function createIngredient(ingredientData: CreateIngredientRequest &
         formData.append('cost_price', ingredientData.cost_price.toString());
       }
       if (ingredientData.category) formData.append('category', ingredientData.category);
+      if (ingredientData.purchase_date) formData.append('purchase_date', ingredientData.purchase_date);
+      if (ingredientData.expiry_date) formData.append('expiry_date', ingredientData.expiry_date);
       if (typeof ingredientData.branch_id === 'number') {
         formData.append('branch_id', ingredientData.branch_id.toString());
       }
@@ -221,6 +227,8 @@ export async function updateIngredient(
         formData.append('cost_price', ingredientData.cost_price.toString());
       }
       if (ingredientData.category) formData.append('category', ingredientData.category);
+      if (ingredientData.purchase_date) formData.append('purchase_date', ingredientData.purchase_date);
+      if (ingredientData.expiry_date) formData.append('expiry_date', ingredientData.expiry_date);
       if (typeof ingredientData.branch_id === 'number') {
         formData.append('branch_id', ingredientData.branch_id.toString());
       }

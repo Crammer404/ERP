@@ -72,8 +72,10 @@ interface ReceiptTemplateProps {
 }
 
 export function ReceiptTemplate({ data, className = '' }: ReceiptTemplateProps) {
-  // Get currency symbol from data or default to ₱
   const currencySymbol = data.currencySymbol || '₱'
+  const activeTaxes = (data.taxes || []).filter((tax) => tax.percentage > 0)
+  const vatTaxes = activeTaxes.filter((tax) => tax.name.toLowerCase().includes('vat'))
+  const hasVatTax = vatTaxes.length > 0
   const formatCurrency = (amount: number) => {
     return `${currencySymbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
@@ -106,19 +108,19 @@ export function ReceiptTemplate({ data, className = '' }: ReceiptTemplateProps) 
         
         <div className="text-xs space-y-1 text-gray-800 pb-2">
           <p>{data.address}</p>
-          <p>VAT Registered TIN: {data.vatTin}</p>
+          {hasVatTax && <p>VAT Registered TIN: {data.vatTin}</p>}
         </div>
       </div>
 
       {/* Transaction & Customer Details */}
       <div className="px-4 pb-2">
-        <p>
+        <div>
           {data.cashier && (
-            <div className="text-xs text-gray-800 mt-1">
+            <p className="text-xs text-gray-800 mt-1">
               Cashier: {data.cashier}
-            </div>
+            </p>
           )}
-        </p>
+        </div>
         <div className="flex justify-between items-center text-xs text-gray-800">
           <p>
             {data.transactionType}
@@ -167,21 +169,21 @@ export function ReceiptTemplate({ data, className = '' }: ReceiptTemplateProps) 
           
           {data.transactionType !== 'PURCHASE' && (
             <>
-              {data.taxes && data.taxes.length > 0 ? (
+              {activeTaxes.length > 0 ? (
                 <>
-                  {(() => {
-                    const totalTaxRate = data.taxes.reduce((sum, tax) => sum + tax.percentage, 0);
-                    const priceWithoutVat = totalTaxRate > 0 
-                      ? data.subtotal / (1 + totalTaxRate / 100)
-                      : data.subtotal;
+                  {hasVatTax && (() => {
+                    const totalVatRate = vatTaxes.reduce((sum, tax) => sum + tax.percentage, 0)
+                    const priceWithoutVat = totalVatRate > 0
+                      ? data.subtotal / (1 + totalVatRate / 100)
+                      : data.subtotal
                     return (
                       <div className="flex justify-between text-xs mb-1 text-gray-800">
                         <span>Price w/o VAT</span>
                         <span className="text-right">{formatCurrency(priceWithoutVat)}</span>
                       </div>
-                    );
+                    )
                   })()}
-                  {data.taxes.map((tax, index) => (
+                  {activeTaxes.map((tax, index) => (
                     <div key={index} className="flex justify-between text-xs mb-1 text-gray-800">
                       <span>{tax.name} ({tax.percentage}%):</span>
                       <span>{formatCurrency(tax.amount)}</span>

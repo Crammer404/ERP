@@ -144,13 +144,18 @@ export function useIngredientForm(ingredient?: Ingredient | null, mode: Ingredie
       if (!formData.cost_price || parseFloat(formData.cost_price) < 0) {
         newErrors.cost_price = 'Cost price must be 0 or greater';
       }
+      if (!formData.measurement_id) {
+        newErrors.measurement_id = 'Measurement unit is required';
+      }
     } else if (mode === 'restock') {
-      // For restock we require strictly positive quantity, and non-negative cost_price
-      if (!formData.quantity || parseFloat(formData.quantity) <= 0) {
-        newErrors.quantity = 'Quantity must be greater than 0';
+      if (!formData.quantity || parseFloat(formData.quantity) < 0) {
+        newErrors.quantity = 'Quantity must be 0 or greater';
       }
       if (!formData.cost_price || parseFloat(formData.cost_price) < 0) {
         newErrors.cost_price = 'Cost price must be 0 or greater';
+      }
+      if (!formData.measurement_id) {
+        newErrors.measurement_id = 'Measurement unit is required';
       }
     } else {
       // edit mode: metadata-only, no quantity/cost requirements

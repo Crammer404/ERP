@@ -1,7 +1,6 @@
 
 'use client';
 
-import { WithAuthProtection } from '@/components/auth/with-auth-protection';
 // import { useAccessControl } from '@/components/providers/access-control-provider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, Users, ChevronDown, LayoutDashboard } from 'lucide-react';
@@ -145,9 +144,5 @@ function DashboardContent() {
 }
 
 export default function DashboardPage() {
-  return (
-    <WithAuthProtection>
-      <DashboardContent />
-    </WithAuthProtection>
-  );
+  return <DashboardContent />;
 }

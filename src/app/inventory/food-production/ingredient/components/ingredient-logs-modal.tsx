@@ -76,6 +76,14 @@ export function IngredientLogsModal({ isOpen, onClose, ingredient }: IngredientL
     return (defaultCurrency?.symbol || '₱') + numericAmount.toFixed(2);
   };
 
+  const formatQuantity = (amount: number | string | null | undefined) => {
+    const numericAmount = toNumber(amount);
+    if (numericAmount === null) return '—';
+    const formattedAmount = numericAmount.toLocaleString(undefined, { maximumFractionDigits: 3 });
+    const measurementUnit = ingredient?.measurement?.symbol || ingredient?.measurement?.name || '';
+    return measurementUnit ? `${formattedAmount} ${measurementUnit}` : formattedAmount;
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto">
@@ -178,8 +186,7 @@ export function IngredientLogsModal({ isOpen, onClose, ingredient }: IngredientL
                               log.movement_direction === 'OUT' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
                             }
                           >
-                            {log.movement_direction === 'OUT' ? '-' : '+'}
-                            {toNumber(log.quantity) ?? 0}
+                            {formatQuantity(log.quantity)}
                           </span>
                         </TableCell>
                         <TableCell>{formatCurrency(log.bulk_cost)}</TableCell>

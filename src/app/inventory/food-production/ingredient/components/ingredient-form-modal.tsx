@@ -8,9 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useIngredientForm, IngredientFormMode } from '../hooks/use-ingredient-form';
 import { Ingredient } from '../services/ingredient-service';
 
@@ -24,6 +23,39 @@ interface IngredientFormModalProps {
   onSubmit: (formData: any) => void;
   errors: Record<string, string>;
 }
+
+type DateField = 'purchase_date' | 'expiry_date';
+
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+const formatDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDate = (value: string): Date | undefined => {
+  if (!datePattern.test(value)) {
+    return undefined;
+  }
+
+  const [yearPart, monthPart, dayPart] = value.split('-');
+  const year = Number(yearPart);
+  const month = Number(monthPart);
+  const day = Number(dayPart);
+  const parsedDate = new Date(year, month - 1, day);
+
+  if (
+    parsedDate.getFullYear() !== year ||
+    parsedDate.getMonth() !== month - 1 ||
+    parsedDate.getDate() !== day
+  ) {
+    return undefined;
+  }
+
+  return parsedDate;
+};
 
 export function IngredientFormModal({
   isOpen,
@@ -65,7 +97,55 @@ export function IngredientFormModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [purchaseDateInput, setPurchaseDateInput] = useState('');
+  const [expiryDateInput, setExpiryDateInput] = useState('');
+  const [isPurchaseCalendarOpen, setIsPurchaseCalendarOpen] = useState(false);
+  const [isExpiryCalendarOpen, setIsExpiryCalendarOpen] = useState(false);
   const wasOpenRef = useRef(isOpen);
+
+  const clearDateError = (field: DateField) => {
+    setErrors((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+
+      const nextErrors = { ...prev };
+      delete nextErrors[field];
+      return nextErrors;
+    });
+  };
+
+  const setDateError = (field: DateField) => {
+    setErrors((prev) => ({
+      ...prev,
+      [field]: 'Date must be in YYYY-MM-DD format',
+    }));
+  };
+
+  const validateAndSyncDate = (field: DateField, rawValue: string): boolean => {
+    const value = rawValue.trim();
+    if (!value) {
+      handleInputChange(field, '');
+      clearDateError(field);
+      return true;
+    }
+
+    const parsedDate = parseDate(value);
+    if (!parsedDate) {
+      setDateError(field);
+      return false;
+    }
+
+    const normalizedValue = formatDate(parsedDate);
+    if (field === 'purchase_date') {
+      setPurchaseDateInput(normalizedValue);
+    } else {
+      setExpiryDateInput(normalizedValue);
+    }
+    handleInputChange(field, normalizedValue);
+    clearDateError(field);
+    return true;
+  };
 
   useEffect(() => {
     if (ingredient?.image_path) {
@@ -94,9 +174,27 @@ export function IngredientFormModal({
     wasOpenRef.current = isOpen;
   }, [isOpen, isEdit, ingredient]);
 
+  useEffect(() => {
+    setPurchaseDateInput(formData.purchase_date || '');
+  }, [formData.purchase_date]);
+
+  useEffect(() => {
+    setExpiryDateInput(formData.expiry_date || '');
+  }, [formData.expiry_date]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsPurchaseCalendarOpen(false);
+      setIsExpiryCalendarOpen(false);
+    }
+  }, [isOpen]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateForm()) {
+    const hasValidPurchaseDate = validateAndSyncDate('purchase_date', purchaseDateInput);
+    const hasValidExpiryDate = validateAndSyncDate('expiry_date', expiryDateInput);
+
+    if (hasValidPurchaseDate && hasValidExpiryDate && validateForm()) {
       const submitData = getFormDataForSubmit();
       if (effectiveMode === 'create' || effectiveMode === 'edit') {
         onSubmit({ ...submitData, image: imageFile ?? undefined });
@@ -233,82 +331,151 @@ export function IngredientFormModal({
                   />
                   {allErrors.category && <p className="text-red-500 text-sm">{allErrors.category}</p>}
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Purchase Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !formData.purchase_date && "text-muted-foreground"
-                          )}
-                          disabled={isLoading}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.purchase_date
-                            ? new Date(formData.purchase_date).toLocaleDateString()
-                            : "Select purchase date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={formData.purchase_date ? new Date(formData.purchase_date) : undefined}
-                          onSelect={(date) =>
-                            handleInputChange(
-                              "purchase_date",
-                              date ? date.toISOString().slice(0, 10) : ""
-                            )
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Expiry Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !formData.expiry_date && "text-muted-foreground"
-                          )}
-                          disabled={isLoading}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.expiry_date
-                            ? new Date(formData.expiry_date).toLocaleDateString()
-                            : "Select expiry date (optional)"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={formData.expiry_date ? new Date(formData.expiry_date) : undefined}
-                          onSelect={(date) =>
-                            handleInputChange(
-                              "expiry_date",
-                              date ? date.toISOString().slice(0, 10) : ""
-                            )
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
               </>
             )}
 
             {/* Stock section: shown in create & restock, hidden in pure edit */}
             {effectiveMode !== 'edit' && (
               <>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="purchase_date">Purchase Date</Label>
+                    <Popover open={isPurchaseCalendarOpen} onOpenChange={setIsPurchaseCalendarOpen}>
+                      <div className="relative">
+                        <PopoverAnchor asChild>
+                          <Input
+                            id="purchase_date"
+                            type="text"
+                            inputMode="numeric"
+                            disabled={isLoading}
+                            value={purchaseDateInput}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setPurchaseDateInput(value);
+                              if (!value.trim()) {
+                                handleInputChange('purchase_date', '');
+                                clearDateError('purchase_date');
+                                return;
+                              }
+                              const parsedDate = parseDate(value);
+                              if (parsedDate) {
+                                handleInputChange('purchase_date', formatDate(parsedDate));
+                                clearDateError('purchase_date');
+                              }
+                            }}
+                            onBlur={() => {
+                              validateAndSyncDate('purchase_date', purchaseDateInput);
+                            }}
+                            placeholder="YYYY-MM-DD"
+                            className="pr-10"
+                          />
+                        </PopoverAnchor>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={isLoading}
+                            className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                          >
+                            <CalendarIcon className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                      </div>
+                      <PopoverContent
+                        className="z-[70] w-auto p-0"
+                        align="start"
+                        side="bottom"
+                        sideOffset={8}
+                        avoidCollisions={false}
+                      >
+                        <Calendar
+                          mode="single"
+                          selected={parseDate(formData.purchase_date)}
+                          onSelect={(date) => {
+                            const value = date ? formatDate(date) : '';
+                            setPurchaseDateInput(value);
+                            handleInputChange('purchase_date', value);
+                            clearDateError('purchase_date');
+                            setIsPurchaseCalendarOpen(false);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {allErrors.purchase_date && <p className="text-red-500 text-sm">{allErrors.purchase_date}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="expiry_date">Expiry Date</Label>
+                    <Popover open={isExpiryCalendarOpen} onOpenChange={setIsExpiryCalendarOpen}>
+                      <div className="relative">
+                        <PopoverAnchor asChild>
+                          <Input
+                            id="expiry_date"
+                            type="text"
+                            inputMode="numeric"
+                            disabled={isLoading}
+                            value={expiryDateInput}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setExpiryDateInput(value);
+                              if (!value.trim()) {
+                                handleInputChange('expiry_date', '');
+                                clearDateError('expiry_date');
+                                return;
+                              }
+                              const parsedDate = parseDate(value);
+                              if (parsedDate) {
+                                handleInputChange('expiry_date', formatDate(parsedDate));
+                                clearDateError('expiry_date');
+                              }
+                            }}
+                            onBlur={() => {
+                              validateAndSyncDate('expiry_date', expiryDateInput);
+                            }}
+                            placeholder="YYYY-MM-DD"
+                            className="pr-10"
+                          />
+                        </PopoverAnchor>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={isLoading}
+                            className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                          >
+                            <CalendarIcon className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                      </div>
+                      <PopoverContent
+                        className="z-[70] w-auto p-0"
+                        align="start"
+                        side="bottom"
+                        sideOffset={8}
+                        avoidCollisions={false}
+                      >
+                        <Calendar
+                          mode="single"
+                          selected={parseDate(formData.expiry_date)}
+                          onSelect={(date) => {
+                            const value = date ? formatDate(date) : '';
+                            setExpiryDateInput(value);
+                            handleInputChange('expiry_date', value);
+                            clearDateError('expiry_date');
+                            setIsExpiryCalendarOpen(false);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {allErrors.expiry_date && <p className="text-red-500 text-sm">{allErrors.expiry_date}</p>}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="quantity">
@@ -328,7 +495,9 @@ export function IngredientFormModal({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="measurement_id">Measurement Unit</Label>
+                    <Label htmlFor="measurement_id">
+                      Measurement Unit <span className="text-red-500">*</span>
+                    </Label>
                     <Select
                       value={formData.measurement_id}
                       onValueChange={(value) => handleInputChange('measurement_id', value)}
