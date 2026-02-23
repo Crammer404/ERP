@@ -38,29 +38,25 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const resolvedPath = normalizePath(pathname);
+  const isPublic = isPublicRoute(resolvedPath);
+  const shouldRedirect = shouldRedirectAuthUser(resolvedPath);
 
   useEffect(() => {
     if (loading) return;
 
-    const isPublic = isPublicRoute(resolvedPath);
-    const shouldRedirect = shouldRedirectAuthUser(resolvedPath);
-
-    // Not authenticated & trying to access private route
-    if (!user && !isPublic) {
+    if (!user && !isPublic && resolvedPath !== '/login') {
       router.replace('/login');
       return;
     }
 
-    // Authenticated & trying to access login/onboarding
-    if (user && shouldRedirect) {
+    if (user && shouldRedirect && resolvedPath !== '/dashboard') {
       router.replace('/dashboard');
       return;
     }
 
-  }, [user, loading, resolvedPath, router]);
+  }, [user, loading, resolvedPath, isPublic, shouldRedirect, router]);
 
-  // 🔹 Show loader ONLY while auth is resolving
-  if (loading) {
+  if (loading && !isPublic) {
     return <Loader overlay size="lg" />;
   }
 

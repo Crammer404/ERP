@@ -13,7 +13,7 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { Info } from 'lucide-react';
-import { payrollService, type ComputationData, type PayrollComponent } from '@/services/payroll/payrollService';
+import { configService, type ComputationData } from './services/config-service';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
 
@@ -72,7 +72,7 @@ export default function ComputationPage() {
   const fetchComputationData = async () => {
     try {
       setLoading(true);
-      const data = await payrollService.getComputationData();
+      const data = await configService.getComputationData();
       setComputationData(data);
       
       // Set rates from components
@@ -227,7 +227,7 @@ export default function ComputationPage() {
 
     try {
       setSaving(true);
-      await payrollService.updatePay({
+      await configService.updatePay({
         role_id: designationId,
         branch_id: branchId,
         monthly: parseFloat(monthly),
@@ -257,7 +257,7 @@ export default function ComputationPage() {
   const handleEditDeductions = async () => {
     try {
       setSaving(true);
-      await payrollService.updateRate({
+      await configService.updateRate({
         nightpay: parseFloat(nightDiffPay),
         restpay: parseFloat(restDayPay),
         holiday: parseFloat(holidayPay),

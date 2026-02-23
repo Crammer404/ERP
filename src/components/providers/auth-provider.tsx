@@ -21,30 +21,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
+    let isMounted = true;
+    const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T | null> => {
+      const timeoutPromise = new Promise<null>(resolve => {
+        setTimeout(() => resolve(null), timeoutMs);
+      });
+      return Promise.race([promise, timeoutPromise]);
+    };
+
     const checkAuth = async () => {
       try {
         if (!isAuthenticated()) {
+          if (!isMounted) return;
           setUser(null);
+          setLoading(false);
           return;
         }
 
-        const userData = await authService.refreshUserData();
+        const cachedUser = authService.getCachedUserData();
+        if (cachedUser) {
+          if (!isMounted) return;
+          setUser(cachedUser);
+          setLoading(false);
+          authService.refreshUserData().then(freshUser => {
+            if (!isMounted) return;
+            if (freshUser) {
+              setUser(freshUser);
+            }
+          }).catch(() => {});
+          return;
+        }
+
+        const userData = await withTimeout(authService.refreshUserData(), 8000);
+        if (!isMounted) return;
 
         if (userData) {
           setUser(userData);
         } else {
-          await authService.logout();
+          authService.logout().catch(() => {});
           setUser(null);
         }
       } catch (error) {
         console.error('Auth check failed:', error);
+        if (!isMounted) return;
         setUser(null);
       } finally {
+        if (!isMounted) return;
         setLoading(false);
       }
     };
 
     checkAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = (userData: User) => {

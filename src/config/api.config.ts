@@ -128,13 +128,13 @@ export const API_ENDPOINTS = {
     CALCULATE: '/hrms/payroll/calculate',
     UPDATE: '/hrms/payroll/{id}',
     DELETE: '/hrms/payroll/{id}',
-    COMPUTATION: {
-      DATA: '/hrms/payroll/computation/data',
-      DYNAMIC_DATA: '/hrms/payroll/computation/dynamicData',
-      UPDATE_PAY: '/hrms/payroll/computation/updatePay',
-      UPDATE_RATE: '/hrms/payroll/computation/updateRate',
-      UPDATE_COMPEN_OR_DEDUC: '/hrms/payroll/computation/updateCompenOrDeduc',
-      DELETE_COMPONENT: '/hrms/payroll/computation/deleteComponent',
+    CONFIG: {
+      DATA: '/hrms/payroll/config/data',
+      DYNAMIC_DATA: '/hrms/payroll/config/dynamicData',
+      UPDATE_PAY: '/hrms/payroll/config/updatePay',
+      UPDATE_RATE: '/hrms/payroll/config/updateRate',
+      UPDATE_COMPEN_OR_DEDUC: '/hrms/payroll/config/updateCompenOrDeduc',
+      DELETE_COMPONENT: '/hrms/payroll/config/deleteComponent',
     },
     REPORTS: {
       DATA: '/hrms/payroll/reports/data',
