@@ -58,9 +58,21 @@ export interface DeleteComponentRequest {
   group: 'earnings' | 'deductions';
 }
 
+const normalizeComputationData = (payload: any): ComputationData => {
+  const source = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+  return {
+    components: Array.isArray(source?.components) ? source.components : [],
+    salaries: Array.isArray(source?.salaries) ? source.salaries : [],
+    roles: Array.isArray(source?.roles) ? source.roles : [],
+    branches: Array.isArray(source?.branches) ? source.branches : [],
+    currency_symbol: typeof source?.currency_symbol === 'string' ? source.currency_symbol : 'P',
+  };
+};
+
 export const configService = {
   async getComputationData(): Promise<ComputationData> {
-    return await api(API_ENDPOINTS.PAYROLL.CONFIG.DATA);
+    const response = await api(API_ENDPOINTS.PAYROLL.CONFIG.DATA);
+    return normalizeComputationData(response);
   },
 
   async getDynamicData(): Promise<{ earnings: PayrollComponent[]; deductions: PayrollComponent[] }> {

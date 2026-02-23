@@ -1,11 +1,14 @@
-import { api } from '../api';
-import { API_ENDPOINTS } from '../../config/api.config';
+import { api } from '../../../../../services/api';
+import { API_ENDPOINTS } from '../../../../../config/api.config';
 
 export interface Employee {
   id: number;
   email: string;
   name: string | null;
-  role: string | null;
+  role: {
+    id: number;
+    name: string;
+  } | string | null;
   branches?: Array<{
     id: number;
     name: string;
@@ -146,7 +149,9 @@ class EmployeeService {
                    ? `${employee.user_info.first_name} ${employee.user_info.last_name}`.trim() 
                    : 'N/A');
     
-    const role = employee.role || 'N/A';
+    const role = typeof employee.role === 'string'
+      ? employee.role
+      : employee.role?.name || 'N/A';
     
     const branch = employee.branches && employee.branches.length > 0 
                    ? employee.branches[0].name 

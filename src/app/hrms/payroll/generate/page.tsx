@@ -286,12 +286,7 @@ export default function GeneratePayrollPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Reports</h1>
-      </div>
-
-       <Card>
+    <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             {/* Item count */}
@@ -467,7 +462,6 @@ export default function GeneratePayrollPage() {
             </div>
           )}
         </CardContent>
-      </Card>
-    </div>
+    </Card>
   );
 }

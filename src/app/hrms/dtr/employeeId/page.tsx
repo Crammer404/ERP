@@ -11,7 +11,6 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { Loader } from '@/components/ui/loader';
 import html2canvas from 'html2canvas';
 
-// Employee display data type
 interface EmployeeDisplay {
   id: number;
   name: string;
@@ -29,14 +28,12 @@ export default function EmployeeCardPage() {
   const frontCardRef = useRef<HTMLDivElement>(null);
   const backCardRef = useRef<HTMLDivElement>(null);
 
-  // Fetch current user's employee data and generate QR code
   useEffect(() => {
     if (user) {
       fetchCurrentUserEmployee();
     }
   }, [user]);
-
-  // Fetch current user's employee data from backend
+  
   const fetchCurrentUserEmployee = async () => {
     try {
       setLoading(true);
@@ -97,8 +94,7 @@ export default function EmployeeCardPage() {
 
       // Capture front side
       const frontCanvas = await html2canvas(frontCardRef.current, {
-        backgroundColor: null,
-        scale: 2, // Higher quality
+        background: 'rgba(0,0,0,0)',
         useCORS: true,
         logging: false,
       });
@@ -122,7 +118,8 @@ export default function EmployeeCardPage() {
 
       // Capture back side
       const backCanvas = await html2canvas(backCardRef.current, {
-        backgroundColor: null,
+        background: 'rgba(0,0,0,0)',
+        // @ts-ignore: `scale` is not in Html2CanvasOptions typings but is supported by html2canvas
         scale: 2, // Higher quality
         useCORS: true,
         logging: false,

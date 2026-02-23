@@ -2,15 +2,6 @@
 // NOTE: NEXT_PUBLIC_ prefix is REQUIRED for client-side access in Next.js
 // Variables without NEXT_PUBLIC_ are only available server-side
 
-export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_LARAVEL_URL,
-  TIMEOUT: 50000,
-  DEFAULT_HEADERS: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  },
-} as const;
-
 // Supabase Configuration *booking system
 export const SUPABASE_CONFIG = {
   BASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -22,9 +13,17 @@ export const SUPABASE_CONFIG = {
   },
 } as const;
 
-// API Endpoints (matching Laravel routes)
+export const API_CONFIG = {
+  BASE_URL: process.env.NEXT_PUBLIC_LARAVEL_URL,
+  TIMEOUT: 50000,
+  DEFAULT_HEADERS: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
+} as const;
+
+// Laravel API Endpoints
 export const API_ENDPOINTS = {
-  // Auth endpoints
   AUTH: {
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
@@ -33,7 +32,6 @@ export const API_ENDPOINTS = {
     VERIFY_OTP: '/auth/verify-otp',
   },
 
-  // Onboarding endpoints
   ONBOARDING: {
     COMPLETE: '/onboarding/complete',
     CHECK_EMAIL: '/onboarding/check-email',
@@ -41,8 +39,7 @@ export const API_ENDPOINTS = {
     SEND_OTP: '/onboarding/send-otp',
     VERIFY_OTP: '/onboarding/verify-otp',
   },
-  
-  // User endpoints (moved to management with tenant.context)
+
   USERS: {
     BASE: '/management/users',
     CREATE: '/management/users',
@@ -50,7 +47,6 @@ export const API_ENDPOINTS = {
     DELETE: '/management/users/{id}',
   },
 
-  // Address endpoints
   ADDRESSES: {
     BASE: '/management/user-info/addresses',
     CREATE: '/management/user-info/addresses',
@@ -58,7 +54,6 @@ export const API_ENDPOINTS = {
     DELETE: '/management/user-info/addresses/{id}',
   },
 
-  // Tenant endpoints (moved to management)
   TENANTS: {
     BASE: '/management/tenants',
     CREATE: '/management/tenants',
@@ -69,7 +64,6 @@ export const API_ENDPOINTS = {
     USERS: '/management/tenants/{id}/users',
   },
   
-  // Branch endpoints (moved to management)
   BRANCHES: {
     BASE: '/management/branches',
     CREATE: '/management/branches',
@@ -82,7 +76,6 @@ export const API_ENDPOINTS = {
     PAYROLL: '/management/branches/{id}/payroll',
   },
   
-  // Role endpoints (moved to management)
   ROLES: {
     BASE: '/management/roles',
     CREATE: '/management/roles',
@@ -91,7 +84,6 @@ export const API_ENDPOINTS = {
     PERMISSIONS: '/management/roles/{id}/permissions',
   },
   
-  // User Info endpoints (moved to management)
   USER_INFO: {
     BASE: '/management/user-info',
     CREATE: '/management/user-info',
@@ -99,7 +91,6 @@ export const API_ENDPOINTS = {
     DELETE: '/management/user-info/{id}',
   },
   
-  // DTR endpoints
   DTR: {
     BASE: '/hrms/dtr',
     CHECK_IN: '/hrms/dtr/check-in',
@@ -121,7 +112,6 @@ export const API_ENDPOINTS = {
     },
   },
   
-  // Payroll endpoints
   PAYROLL: {
     BASE: '/hrms/payroll',
     CREATE: '/hrms/payroll',
@@ -148,7 +138,6 @@ export const API_ENDPOINTS = {
     },
   },
   
-  // Inventory endpoints
   INVENTORY: {
     BASE: '/inventory',
     CREATE: '/inventory',
@@ -158,7 +147,6 @@ export const API_ENDPOINTS = {
     STOCK: '/inventory/{id}/stock',
   },
   
-  // Sales endpoints
   SALES: {
     BASE: '/pos/sales',
     CREATE: '/pos/sales',
@@ -167,7 +155,6 @@ export const API_ENDPOINTS = {
     RECEIPTS: '/pos/sales/{id}/receipts',
   },
   
-  // Reports endpoints
   REPORTS: {
     SALES: '/reports/sales',
     PAYROLL: '/reports/payroll',
@@ -176,7 +163,6 @@ export const API_ENDPOINTS = {
     DASHBOARD: '/reports/dashboard',
   },
   
-  // Products endpoints (moved to pos)
   PRODUCTS: {
     BASE: '/inventory/products',
     CREATE: '/inventory/products',
@@ -185,12 +171,10 @@ export const API_ENDPOINTS = {
     GET: '/inventory/products/{id}',
   },
 
-  // Categories endpoints
   CATEGORIES: {
     BASE: '/inventory/categories',
   },
   
-  // Transactions endpoints (moved to pos)
   TRANSACTIONS: {
     BASE: '/pos/transactions',
     CREATE: '/pos/transactions',
@@ -243,7 +227,6 @@ export const API_ENDPOINTS = {
     CASH_OUT: '/pos/cash-register/sessions/{id}/cash-out',
   },
   
-  // Settings endpoints
   SETTINGS: {
     SYSTEM: '/settings/system',
     BRANCH: '/settings/branch/{id}',
@@ -252,7 +235,6 @@ export const API_ENDPOINTS = {
     MODULE_GROUPS: '/settings/modules/module-groups',
     MODULE_SUBMENUS: '/settings/modules/module-submenus',
   },
-  // discounts endpoints
   DISCOUNTS: {
     BASE: '/inventory/discounts',
     CREATE: '/inventory/discounts',
@@ -261,7 +243,6 @@ export const API_ENDPOINTS = {
     BULK_ASSIGN: '/inventory/discounts/bulk-assign',
   },
 
-  // stock discounts endpoints
   STOCK_DISCOUNTS: {
     BASE: '/inventory/stocks/{stockId}/discounts',
     ASSIGN: '/inventory/stocks/{stockId}/discounts',
@@ -270,7 +251,6 @@ export const API_ENDPOINTS = {
     DELETE: '/inventory/stocks/{stockId}/discounts/{discountId}',
   },
 
-  // ingredients endpoints
   INGREDIENTS: {
     BASE: '/inventory/ingredients',
     CREATE: '/inventory/ingredients',
@@ -278,13 +258,11 @@ export const API_ENDPOINTS = {
     DELETE: '/inventory/ingredients/{id}',
   },
 
-  // ingredient stock logs endpoints
   INGREDIENT_STOCK_LOGS: {
     BASE: '/inventory/ingredients/stock-logs',
     CREATE: '/inventory/ingredients/stock-logs',
   },
 
-  // recipes endpoints
   RECIPES: {
     BASE: '/inventory/recipes',
     CREATE: '/inventory/recipes',
@@ -292,7 +270,6 @@ export const API_ENDPOINTS = {
     DELETE: '/inventory/recipes/{id}',
   },
 
-  // stocks endpoints
   STOCKS: {
     BASE: '/inventory/stocks',
     GET: '/inventory/stocks/{id}',
@@ -300,7 +277,6 @@ export const API_ENDPOINTS = {
     DELETE: '/inventory/stocks/{id}',
   },
 
-  // measurements endpoints
   MEASUREMENTS: {
     BASE: '/inventory/measurements',
     CREATE: '/inventory/measurements',
@@ -308,7 +284,6 @@ export const API_ENDPOINTS = {
     DELETE: '/inventory/measurements/{id}',
   },
 
-  // Currencies endpoints
   CURRENCIES: {
     BASE: '/settings/currencies',
     CREATE: '/settings/currencies',
@@ -316,14 +291,13 @@ export const API_ENDPOINTS = {
     DELETE: '/settings/currencies/{id}',
   },
 
-  // Expenses endpoints
   EXPENSES: {
     BASE: '/expenses',
     CREATE: '/expenses',
     UPDATE: '/expenses/{id}',
     DELETE: '/expenses/{id}',
   },
-  // Suppliers endpoints
+
   SUPPLIERS: {
     BASE: '/suppliers',
     CREATE: '/suppliers',
@@ -332,7 +306,6 @@ export const API_ENDPOINTS = {
     CATEGORIES: '/suppliers/supplier-categories',
   },
 
-  // Customers endpoints
   CUSTOMERS: {
     BASE: '/customers',
     CREATE: '/customers',
@@ -340,25 +313,30 @@ export const API_ENDPOINTS = {
     DELETE: '/customers/{id}',
   },
 
-  // Activity Logs endpoints
   ACTIVITY_LOGS: {
     DISCOUNT_LOGS: '/activity-logs/discount-logs',
     CUSTOMER_LOGS: '/activity-logs/customer-logs',
     ALL: '/activity-logs',
   },
 
-  // Purchases endpoints
   PURCHASES: {
     BASE: '/purchases',
   },
 } as const;
 
 
-
 // Frontend page routes (client navigation)
 export const ROUTES = {
   POS: {
     SALES: '/pos/sales',
+  },
+  HRMS: {
+    PAYROLL: {
+      GENERATE: '/hrms/payroll/generate',
+      CONFIG: '/hrms/payroll/config',
+      REPORTS: '/hrms/payroll/reports',
+      PAYSLIP: '/hrms/payroll/payslip',
+    },
   },
   SETTINGS: {
     ACCOUNT: '/settings/account',

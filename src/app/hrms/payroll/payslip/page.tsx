@@ -171,10 +171,7 @@ export default function PayslipPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <h1 className="text-3xl font-bold mb-6">Payslip</h1>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Left Section: Employee Profile */}
         <div className="lg:col-span-1">
           <Card className="h-fit max-w-xs">
@@ -359,7 +356,6 @@ export default function PayslipPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
     </div>
   );
 }

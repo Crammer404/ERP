@@ -294,19 +294,14 @@ export default function ComputationPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto py-6 px-4">
-        <div className="flex items-center justify-center h-64">
-          <Loader size="lg" />
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <Loader size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <h1 className="text-3xl font-bold mb-6">Computation</h1>
-
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Basic Pay Section */}
         <Card>
           <CardHeader>
@@ -328,7 +323,7 @@ export default function ComputationPage() {
                       <SelectValue placeholder="Select designation" />
                     </SelectTrigger>
                     <SelectContent>
-                      {computationData?.roles.map((role) => (
+                      {computationData?.roles?.map((role) => (
                         <SelectItem key={role.id} value={role.id.toString()}>
                           {role.name}
                         </SelectItem>
@@ -362,7 +357,7 @@ export default function ComputationPage() {
                       <SelectValue placeholder="Select branch" />
                     </SelectTrigger>
                     <SelectContent>
-                      {computationData?.branches.map((branch) => (
+                      {computationData?.branches?.map((branch) => (
                         <SelectItem key={branch.id} value={branch.id.toString()}>
                           {branch.name}
                         </SelectItem>
@@ -527,7 +522,6 @@ export default function ComputationPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
     </div>
   );
 }
