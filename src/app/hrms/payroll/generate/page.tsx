@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -14,6 +15,7 @@ import {
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -25,12 +27,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Eye, Download, Trash2 } from 'lucide-react';
+import { MoreVertical, Printer, Trash2, Search, RefreshCw } from 'lucide-react';
 import GeneratePayrollDialog from './component/generate-payroll';
 import { payrollService, PayrollReport as ServicePayrollReport } from '@/services/payroll/payrollService';
 import { useToast } from '@/hooks/use-toast';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { Loader } from '@/components/ui/loader';
+import { PaginationInfos } from '@/components/ui/pagination-info';
+import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
+import { PayslipTemplate, type PayslipData as PayslipTemplateData } from '@/components/forms/payslip/payslip-template';
 
 // Frontend interface matching the table display
 interface PayrollReport {
@@ -82,8 +87,15 @@ export default function GeneratePayrollPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<PayrollReport | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
+  const [payslipsToPrint, setPayslipsToPrint] = useState<PayslipTemplateData[]>([]);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const printRef = useRef<HTMLDivElement | null>(null);
   
   // Ensure we never use dummy data - always start empty
   if (reports.length > 0 && !loading && reports.some(r => r.dateRange.includes('2025-02-31'))) {
@@ -146,9 +158,23 @@ export default function GeneratePayrollPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pagination
-  const totalPages = Math.ceil(reports.length / itemsPerPage);
-  const paginatedReports = reports.slice(
+  // Search + Pagination
+  const filteredReports = useMemo(() => {
+    if (!searchTerm.trim()) return reports;
+    const q = searchTerm.toLowerCase();
+    return reports.filter((r) =>
+      r.dateRange.toLowerCase().includes(q) ||
+      r.payrollType.toLowerCase().includes(q) ||
+      r.generatedBy.toLowerCase().includes(q)
+    );
+  }, [reports, searchTerm]);
+
+  const totalItems = filteredReports.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const from = totalItems ? (currentPage - 1) * itemsPerPage + 1 : null;
+  const to = totalItems ? Math.min(currentPage * itemsPerPage, totalItems) : null;
+
+  const paginatedReports = filteredReports.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -157,64 +183,146 @@ export default function GeneratePayrollPage() {
     return `₱ ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const handleView = async (report: PayrollReport) => {
-    try {
-      const payslipsData = await payrollService.viewPayslips(report.id);
-      // TODO: Open a modal or navigate to a view page with payslipsData
-      console.log('View report payslips:', payslipsData);
-      toast({
-        title: 'View Report',
-        description: `Loaded ${payslipsData.payslips.length} payslips for this report`,
-      });
-    } catch (err: any) {
-      console.error('Failed to view report:', err);
-      toast({
-        title: 'Error',
-        description: err?.response?.data?.message || 'Failed to load report details',
-        variant: 'destructive',
-      });
-    }
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
   };
 
-  const handleDownload = async (report: PayrollReport) => {
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (value: string) => {
+    const per = parseInt(value, 10);
+    const safe = Number.isFinite(per) && per > 0 ? per : 10;
+    setItemsPerPage(safe);
+    setCurrentPage(1);
+  };
+
+  const handleRefresh = () => {
+    fetchReports();
+  };
+
+  const handlePrint = async (report: PayrollReport) => {
     try {
-      const payslipsData = await payrollService.viewPayslips(report.id);
-      // TODO: Generate and download PDF/Excel file
-      console.log('Download report:', report, payslipsData);
-      toast({
-        title: 'Download',
-        description: 'Download functionality will be implemented soon',
+      setIsPrinting(false);
+      setPayslipsToPrint([]);
+
+      const response = await payrollService.viewPayslips(report.id);
+      const companyName = response.company?.name || '';
+      const logoUrl = response.company?.logo || undefined;
+
+      const mapped: PayslipTemplateData[] = response.payslips.map((p) => {
+        const otherEarnings = [
+          ...(p.total_allowance
+            ? [{ label: 'Allowance', amount: p.total_allowance }]
+            : []),
+          ...(p.earnings || []).map((e) => ({
+            label: e.description,
+            amount: e.total || 0,
+          })),
+        ];
+
+        const otherDeductions = (p.deductions || []).map((d) => ({
+          label: d.description,
+          amount: d.total || 0,
+        }));
+
+        const totalEarnings = p.gross ?? 0;
+        const totalDeductions =
+          (p.income_tax || 0) +
+          (p.sss || 0) +
+          (p.pagibig || 0) +
+          (p.philhealth || 0) +
+          otherDeductions.reduce((sum, d) => sum + d.amount, 0);
+
+        return {
+          companyName,
+          companyAddress: '',
+          logoUrl,
+          employeeName: p.employee_name,
+          designation: p.role,
+          branch: p.branch,
+          payrollType: p.payroll_type,
+          payPeriod: p.date_range,
+          generatedDate: p.pay_date || p.date_end,
+          basicPay: p.basic_pay || 0,
+          overtimePay: p.overtime_pay || 0,
+          nightDifferential: p.night_diff || 0,
+          otherEarnings,
+          incomeTax: p.income_tax || 0,
+          sss: p.sss || 0,
+          pagibig: p.pagibig || 0,
+          philhealth: p.philhealth || 0,
+          otherDeductions,
+          totalEarnings,
+          totalDeductions,
+          netPay: p.net || totalEarnings - totalDeductions,
+          currencySymbol: '₱',
+          primaryColor: '#111827',
+          showLogo: !!logoUrl,
+        };
       });
+
+      if (!mapped.length) {
+        toast({
+          title: 'No Payslips',
+          description: 'No payslips were found for this payroll report.',
+        });
+        return;
+      }
+
+      setPayslipsToPrint(mapped);
+      setIsPrinting(true);
     } catch (err: any) {
-      console.error('Failed to download report:', err);
+      console.error('Failed to load payslips for printing:', err);
       toast({
         title: 'Error',
-        description: err?.response?.data?.message || 'Failed to download report',
+        description:
+          err?.response?.data?.message || 'Failed to load payslips for printing',
         variant: 'destructive',
       });
     }
   };
 
   const handleDelete = async (report: PayrollReport) => {
-    if (!confirm(`Are you sure you want to delete this payroll report? This action cannot be undone.`)) {
-      return;
-    }
+    setDeleteErrors({});
+    setDeleteTarget(report);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setDeleteTarget(null);
+    setDeleteErrors({});
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    setDeleteLoading(true);
+    setDeleteErrors({});
 
     try {
-      await payrollService.deleteReport(report.id);
+      await payrollService.deleteReport(deleteTarget.id);
       toast({
         title: 'Success',
         description: 'Payroll report deleted successfully',
       });
-      // Refresh the reports list
+      handleCloseDeleteModal();
       fetchReports();
     } catch (err: any) {
       console.error('Failed to delete report:', err);
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to delete report';
+      setDeleteErrors({ general: message });
       toast({
         title: 'Error',
-        description: err?.response?.data?.message || 'Failed to delete report',
+        description: message,
         variant: 'destructive',
       });
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -285,31 +393,77 @@ export default function GeneratePayrollPage() {
     }
   };
 
+  // Trigger browser print when payslipsToPrint is ready and ref is rendered
+  useEffect(() => {
+    if (!isPrinting || payslipsToPrint.length === 0 || !printRef.current) {
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setIsPrinting(false);
+      return;
+    }
+
+    const html = printRef.current.innerHTML;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Payslips</title>
+          <style>
+            body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 24px; background: #f3f4f6; }
+            .payslip-page { page-break-after: always; }
+            @page { margin: 16px; }
+          </style>
+        </head>
+        <body>
+          ${html}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+
+    setIsPrinting(false);
+    setPayslipsToPrint([]);
+  }, [isPrinting, payslipsToPrint]);
+
   return (
-    <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            {/* Item count */}
-            {!loading && reports.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, reports.length)} of {reports.length} items
-              </p>
-            )}
-            {loading && (
-              <Loader size="sm" />
-            )}
+    <div>
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search payroll reports..."
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-10 w-full"
+              />
+            </div>
 
-            {/* Generate Payroll Button */}
-            <GeneratePayrollDialog
-              onGenerate={handleGenerate}
-            />
+            <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+              <Button
+                onClick={handleRefresh}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none"
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+
+              <GeneratePayrollDialog
+                onGenerate={handleGenerate}
+              />
+            </div>
           </div>
-        </CardHeader>
 
-        <CardContent>
           {/* Loading State */}
           {loading && (
-            <div className="text-center py-8">
+            <div className="flex justify-center py-8">
               <Loader size="md" />
             </div>
           )}
@@ -377,15 +531,11 @@ export default function GeneratePayrollPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleView(report)}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                View
+                              <DropdownMenuItem onClick={() => handlePrint(report)}>
+                                <Printer className="mr-2 h-4 w-4" />
+                                Print
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDownload(report)}>
-                                <Download className="mr-2 h-4 w-4" />
-                                Download
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => handleDelete(report)}
                                 className="text-destructive"
                               >
@@ -400,13 +550,7 @@ export default function GeneratePayrollPage() {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={17} className="p-0">
-                        <EmptyStates.PayrollReports 
-                          action={
-                            <GeneratePayrollDialog
-                              onGenerate={handleGenerate}
-                            />
-                          }
-                        />
+                        <EmptyStates.PayrollReports/>
                       </TableCell>
                     </TableRow>
                   )}
@@ -416,45 +560,58 @@ export default function GeneratePayrollPage() {
           )}
 
           {/* Pagination */}
-          {!loading && !error && reports.length > 0 && (
-            <div className="flex justify-end mt-6">
+          {!loading && !error && totalItems > 0 && (
+            <div className="flex justify-between items-center mt-6">
+              <PaginationInfos.Standard
+                from={from}
+                to={to}
+                total={totalItems}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={handleItemsPerPageChange}
+              />
+
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>
                     <PaginationPrevious
-                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                      className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      onClick={() => handlePageChange(Math.max(currentPage - 1, 1))}
+                      className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
                     />
                   </PaginationItem>
 
-                  {Array.from({ length: Math.min(totalPages, 3) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage === 1) {
-                      pageNum = i + 1;
-                    } else if (currentPage === totalPages) {
-                      pageNum = totalPages - 2 + i;
-                    } else {
-                      pageNum = currentPage - 1 + i;
-                    }
-                    return (
-                      <PaginationItem key={pageNum}>
-                        <PaginationLink
-                          onClick={() => setCurrentPage(pageNum)}
-                          isActive={currentPage === pageNum}
-                          className="cursor-pointer"
-                        >
-                          {pageNum}
-                        </PaginationLink>
-                      </PaginationItem>
-                    );
-                  })}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((page) =>
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    )
+                    .map((page, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      const showEllipsis = prev && page - prev > 1;
+                      return (
+                        <div key={page} className="flex items-center">
+                          {showEllipsis && (
+                            <PaginationItem>
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          )}
+                          <PaginationItem>
+                            <PaginationLink
+                              onClick={() => handlePageChange(page)}
+                              isActive={currentPage === page}
+                              className="cursor-pointer"
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        </div>
+                      );
+                    })}
 
                   <PaginationItem>
                     <PaginationNext
-                      onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                      className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      onClick={() => handlePageChange(Math.min(currentPage + 1, totalPages))}
+                      className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
                     />
                   </PaginationItem>
                 </PaginationContent>
@@ -462,6 +619,30 @@ export default function GeneratePayrollPage() {
             </div>
           )}
         </CardContent>
-    </Card>
+      </Card>
+
+      {/* Hidden container used for printing payslips */}
+      {payslipsToPrint.length > 0 && (
+        <div ref={printRef} className="hidden">
+          {payslipsToPrint.map((payslip, idx) => (
+            <div key={idx} className="payslip-page mb-4">
+              <PayslipTemplate data={payslip} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteConfirmModal
+          isOpen={!!deleteTarget}
+          onClose={handleCloseDeleteModal}
+          onConfirm={handleConfirmDelete}
+          loading={deleteLoading}
+          title="Delete Payroll Report"
+          itemName={deleteTarget.dateRange}
+          errors={deleteErrors}
+        />
+      )}
+    </div>
   );
 }

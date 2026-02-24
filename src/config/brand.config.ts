@@ -3,7 +3,7 @@
 
 export const BRAND_CONFIG = {
   // Brand name - used in sidebar, loader, login page, etc.
-  name: 'SalesStox',
+  name: 'ActiveWear',
   
   // Brand tagline - used in login page and other marketing areas
   tagline: 'Your All-in-One Business Solution',
@@ -20,12 +20,13 @@ export const BRAND_CONFIG = {
   
   // Brand logo - SVG component or path
   logo: {
-    // Default logo SVG (warehouse with lock)
+    // Default logo SVG (minimal apparel-inspired mark)
     default: {
       viewBox: "0 0 256 256",
       paths: [
         {
-          d: "M48,216a23.9,23.9,0,0,1-24-24V88A23.9,23.9,0,0,1,48,64H208a23.9,23.9,0,0,1,24,24v16",
+          // Outer shirt / hanger silhouette
+          d: "M88,64a24,24,0,0,1,48,0v8h-8V64a16,16,0,0,0-32,0v4a8,8,0,0,1-4.3,7.1L67,89.4A16,16,0,0,0,58,103.3L48,200a12,12,0,0,0,12,12H196a12,12,0,0,0,12-12l-10-96.7A16,16,0,0,0,189,89.4L164.3,75.1A8,8,0,0,1,160,68V64",
           fill: "none",
           stroke: "currentColor",
           strokeLinecap: "round",
@@ -33,23 +34,8 @@ export const BRAND_CONFIG = {
           strokeWidth: "16"
         },
         {
-          d: "M24,144H224a8,8,0,0,1,8,8v40a8,8,0,0,1-8,8H24a8,8,0,0,1,0-16Z",
-          fill: "none",
-          stroke: "currentColor",
-          strokeLinecap: "round",
-          strokeLinejoin: "round",
-          strokeWidth: "16"
-        },
-        {
-          d: "M168,104V64",
-          fill: "none",
-          stroke: "currentColor",
-          strokeLinecap: "round",
-          strokeLinejoin: "round",
-          strokeWidth: "16"
-        },
-        {
-          d: "M128,104V64a40,40,0,0,1,80,0v40",
+          // Bottom hem line
+          d: "M64,184H192",
           fill: "none",
           stroke: "currentColor",
           strokeLinecap: "round",
