@@ -136,6 +136,13 @@ export const API_ENDPOINTS = {
     PAYSLIP: {
       EMPLOYEE_PAYSLIPS: '/hrms/payroll/payslip/employeePayslips',
     },
+    POSITIONS: {
+      BASE: '/hrms/payroll/positions',
+      CREATE: '/hrms/payroll/positions',
+      UPDATE: '/hrms/payroll/positions/{id}',
+      DELETE: '/hrms/payroll/positions/{id}',
+      GET: '/hrms/payroll/positions/{id}',
+    },
   },
   
   INVENTORY: {
@@ -336,6 +343,7 @@ export const ROUTES = {
       CONFIG: '/hrms/payroll/config',
       REPORTS: '/hrms/payroll/reports',
       PAYSLIP: '/hrms/payroll/payslip',
+      POSITIONS: '/hrms/payroll/positions',
     },
   },
   SETTINGS: {

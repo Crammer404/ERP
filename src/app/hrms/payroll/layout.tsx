@@ -21,6 +21,10 @@ const pageMeta = {
     title: 'Payslip',
     description: 'Review employee payslips and payroll breakdown details.',
   },
+  [ROUTES.HRMS.PAYROLL.POSITIONS]: {
+    title: 'Payroll Positions',
+    description: 'Manage employee positions, base salaries, and allowances.',
+  },
 } as const;
 
 export default function PayrollLayout({ children }: { children: ReactNode }) {
