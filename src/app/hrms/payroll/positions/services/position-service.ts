@@ -4,7 +4,6 @@ import { API_ENDPOINTS } from '@/config/api.config';
 export interface PayrollPosition {
   id: number;
   branch_id: number;
-  user_id: number;
   code: string;
   name: string;
   base_salary: number;
@@ -17,14 +16,20 @@ export interface PayrollPosition {
     name: string;
     branch_code: string;
   };
-  user?: {
+  user_infos?: Array<{
     id: number;
-    email: string;
-    user_info?: {
-      first_name: string;
-      last_name: string;
+    user_id: number;
+    first_name?: string;
+    last_name?: string;
+    user?: {
+      id: number;
+      email: string;
+      user_info?: {
+        first_name?: string;
+        last_name?: string;
+      };
     };
-  };
+  }>;
   allowance?: {
     id: number;
     label: string;
@@ -34,20 +39,20 @@ export interface PayrollPosition {
 
 export interface CreatePositionRequest {
   branch_id: number;
-  user_id: number;
   name: string;
   base_salary: number;
   allowance_id?: number | null;
   is_active?: boolean;
+  user_info_ids?: number[];
 }
 
 export interface UpdatePositionRequest {
   branch_id?: number;
-  user_id?: number;
   name?: string;
   base_salary?: number;
   allowance_id?: number | null;
   is_active?: boolean;
+  user_info_ids?: number[];
 }
 
 export const positionService = {

@@ -7,17 +7,19 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Briefcase, MoreVertical, Plus, Trash2, Edit, Search, RefreshCw, Loader2 } from 'lucide-react';
+import { Briefcase, MoreVertical, Plus, Trash2, Edit, Search, RefreshCw, Loader2, UserPlus } from 'lucide-react';
+import { AddEmployeesModal } from './components/add-employees-modal';
 import { positionService, type PayrollPosition, type CreatePositionRequest, type UpdatePositionRequest } from './services/position-service';
 import { useToast } from "@/hooks/use-toast";
 import { Loader } from '@/components/ui/loader';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
-import { PositionFormModal } from './components/PositionFormModal';
+import { PositionFormModal } from './components/position-form-modal';
 import { managementService } from '@/services/management/managementService';
 import { userService } from '@/services';
 import { configService } from '../config/services/config-service';
+import { UserAvatarStack, UserData } from '@/components/ui/user-avatar-stack';
 
 interface PaginationResponse {
   current_page: number;
@@ -29,18 +31,27 @@ interface PaginationResponse {
   has_more_pages: boolean;
 }
 
-const getUserDisplayName = (user: PayrollPosition['user']): string => {
-  if (!user) return 'N/A';
-  if (user.user_info?.first_name || user.user_info?.last_name) {
-    return [user.user_info.first_name, user.user_info.last_name].filter(Boolean).join(' ');
-  }
-  return user.email;
+const convertUserInfosToUserData = (userInfos?: PayrollPosition['user_infos']): UserData[] => {
+  if (!userInfos || userInfos.length === 0) return [];
+  return userInfos.map(ui => {
+    let name = '';
+    if (ui.first_name || ui.last_name) {
+      name = [ui.first_name, ui.last_name].filter(Boolean).join(' ');
+    } else {
+      name = ui.user?.email || 'Unknown';
+    }
+    return {
+      id: ui.id,
+      name: name,
+      email: ui.user?.email,
+    };
+  });
 };
 
 export default function PositionsPage() {
   const [positions, setPositions] = useState<PayrollPosition[]>([]);
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
-  const [users, setUsers] = useState<{ id: number; email: string; user_info?: { first_name?: string; last_name?: string } }[]>([]);
+  const [userInfos, setUserInfos] = useState<Array<{ id: number; user_id: number; first_name?: string; last_name?: string; user?: { id: number; email: string } }>>([]);
   const [allowances, setAllowances] = useState<{ id: number; label: string; value: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState<PaginationResponse>({
@@ -59,7 +70,7 @@ export default function PositionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   
   const [modalState, setModalState] = useState<{
-    type: 'add' | 'edit' | 'delete' | null;
+    type: 'add' | 'edit' | 'delete' | 'add-employees' | null;
     isOpen: boolean;
     position?: PayrollPosition | null;
   }>({ type: null, isOpen: false, position: null });
@@ -133,7 +144,10 @@ export default function PositionsPage() {
               p.code.toLowerCase().includes(searchLower) ||
               p.name.toLowerCase().includes(searchLower) ||
               p.branch?.name.toLowerCase().includes(searchLower) ||
-              getUserDisplayName(p.user).toLowerCase().includes(searchLower)
+              convertUserInfosToUserData(p.user_infos).some(u => 
+                u.name.toLowerCase().includes(searchLower) || 
+                u.email?.toLowerCase().includes(searchLower)
+              )
             );
           })
         : allPositions;
@@ -186,7 +200,22 @@ export default function PositionsPage() {
         configService.getComputationData(),
       ]);
       setBranches(branchesData.map(b => ({ id: b.id, name: b.name })));
-      setUsers(usersResponse.users || []);
+      
+      // Extract user_infos from users - user_info.id should exist from the API
+      const infos = (usersResponse.users || []).flatMap(u => {
+        if (u.user_info && (u.user_info as any).id) {
+          return [{
+            id: (u.user_info as any).id,
+            user_id: u.id,
+            first_name: u.user_info.first_name,
+            last_name: u.user_info.last_name,
+            user: { id: u.id, email: u.email }
+          }];
+        }
+        return [];
+      });
+      setUserInfos(infos);
+      
       const earnings = configData.components.filter(c => c.group === 'earnings');
       setAllowances(earnings.map(c => ({ id: c.id!, label: c.label, value: String(c.value) })));
     } catch (error) {
@@ -250,7 +279,7 @@ export default function PositionsPage() {
     setErrors({});
   };
 
-  const openModal = (type: 'add' | 'edit' | 'delete', position?: PayrollPosition) => {
+  const openModal = (type: 'add' | 'edit' | 'delete' | 'add-employees', position?: PayrollPosition) => {
     setErrors({});
 
     if (type === 'add') {
@@ -260,6 +289,8 @@ export default function PositionsPage() {
       setModalState({ type: 'delete', isOpen: true, position });
     } else if (type === 'edit' && position) {
       setModalState({ type: 'edit', isOpen: true, position });
+    } else if (type === 'add-employees' && position) {
+      setModalState({ type: 'add-employees', isOpen: true, position });
     }
   };
 
@@ -304,6 +335,25 @@ export default function PositionsPage() {
     }
   };
 
+  const handleAddEmployees = async (userInfoIds: number[]) => {
+    if (!modalState.position) return;
+
+    setFormLoading(true);
+    setErrors({});
+
+    try {
+      await positionService.update(modalState.position.id, { user_info_ids: userInfoIds });
+      closeModal();
+      resetForm();
+      forceRefresh();
+      showToast("success", "Employees Added", "Employees have been successfully added to the position.");
+    } catch (err: any) {
+      handleApiError(err, "Failed to add employees");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!modalState.position) return;
     
@@ -331,17 +381,7 @@ export default function PositionsPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-          <Briefcase className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold font-headline">Payroll Positions</h1>
-          <p className="text-sm text-muted-foreground">View, add, edit, and manage employee positions and salaries.</p>
-        </div>
-      </div>
-
+    <div>
       <Card>
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
@@ -387,12 +427,10 @@ export default function PositionsPage() {
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Base Salary</TableHead>
-                    <TableHead>Allowance</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Position</TableHead>
+                    <TableHead>Monthly</TableHead>
+                    <TableHead>Employees</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -400,15 +438,19 @@ export default function PositionsPage() {
                   {positions.map(position => (
                     <TableRow key={position.id} className="hover:bg-transparent">
                       <TableCell className="font-mono">{position.code}</TableCell>
-                      <TableCell>{position.name}</TableCell>
-                      <TableCell>{position.branch?.name || '—'}</TableCell>
-                      <TableCell>{getUserDisplayName(position.user)}</TableCell>
-                      <TableCell>₱{position.base_salary.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                      <TableCell>{position.allowance?.label || '—'}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 rounded text-xs ${position.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                           {position.is_active ? 'Active' : 'Inactive'}
                         </span>
+                      </TableCell>
+                      <TableCell>{position.name}</TableCell>
+                      <TableCell>₱{position.base_salary.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      <TableCell>
+                        <UserAvatarStack 
+                          users={convertUserInfosToUserData(position.user_infos)}
+                          maxVisible={4}
+                          size="sm"
+                        />
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -422,6 +464,10 @@ export default function PositionsPage() {
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
+                            {/* <DropdownMenuItem onClick={() => openModal('add-employees', position)}>
+                              <UserPlus className="h-4 w-4 mr-2" />
+                              Add
+                            </DropdownMenuItem> */}
                             <DropdownMenuItem
                               onClick={() => openModal('delete', position)}
                               className="text-red-600 focus:text-red-600"
@@ -502,7 +548,7 @@ export default function PositionsPage() {
           onClose={closeModal}
           mode="create"
           branches={branches}
-          users={users}
+          userInfos={userInfos}
           allowances={allowances}
           onSubmit={handleCreate}
           loading={formLoading}
@@ -517,10 +563,23 @@ export default function PositionsPage() {
           onClose={closeModal}
           mode="edit"
           branches={branches}
-          users={users}
+          userInfos={userInfos}
           allowances={allowances}
           initialData={modalState.position}
           onSubmit={handleUpdate}
+          loading={formLoading}
+          errors={errors}
+          onClearError={clearError}
+        />
+      )}
+
+      {modalState.type === 'add-employees' && modalState.position && (
+        <AddEmployeesModal
+          isOpen={modalState.isOpen}
+          onClose={closeModal}
+          position={modalState.position}
+          userInfos={userInfos}
+          onSubmit={handleAddEmployees}
           loading={formLoading}
           errors={errors}
           onClearError={clearError}

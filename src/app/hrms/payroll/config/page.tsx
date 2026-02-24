@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Info } from 'lucide-react';
 import { configService, type ComputationData } from './services/config-service';
+import { positionService } from '../positions/services/position-service';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
 
@@ -24,8 +25,7 @@ export default function ComputationPage() {
   const [computationData, setComputationData] = useState<ComputationData | null>(null);
   
   // Basic Pay State
-  const [designation, setDesignation] = useState('');
-  const [designationId, setDesignationId] = useState<number | null>(null);
+  const [positionId, setPositionId] = useState<number | null>(null);
   const [branch, setBranch] = useState('');
   const [branchId, setBranchId] = useState<number | null>(null);
   const [monthly, setMonthly] = useState('0.00');
@@ -68,6 +68,19 @@ export default function ComputationPage() {
   useEffect(() => {
     fetchComputationData();
   }, []);
+
+  const getActiveBranchIdFromContext = (): number | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('branch_context');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const id = Number(parsed?.id);
+      return Number.isFinite(id) ? id : null;
+    } catch {
+      return null;
+    }
+  };
 
   const fetchComputationData = async () => {
     try {
@@ -119,19 +132,27 @@ export default function ComputationPage() {
         }
       });
 
-      // Set default role and branch if available
-      if (data.roles.length > 0) {
-        setDesignation(data.roles[0].name);
-        setDesignationId(data.roles[0].id);
-      }
-      if (data.branches.length > 0) {
-        setBranch(data.branches[0].name);
-        setBranchId(data.branches[0].id);
-      }
+      // Set default branch from active branch context (localStorage) if available, else first branch
+      const activeBranchId = getActiveBranchIdFromContext();
+      const defaultBranch =
+        (activeBranchId ? data.branches.find(b => b.id === activeBranchId) : undefined) ??
+        data.branches[0];
 
-      // Load salary if role and branch are set
-      if (data.roles.length > 0 && data.branches.length > 0) {
-        loadSalary(data.roles[0].id, data.branches[0].id, data);
+      if (defaultBranch) {
+        setBranch(defaultBranch.name);
+        setBranchId(defaultBranch.id);
+
+        const defaultPosition =
+          data.positions.find(p => p.is_active && p.branch_id === defaultBranch.id) ??
+          data.positions.find(p => p.branch_id === defaultBranch.id);
+
+        if (typeof defaultPosition?.id === 'number') {
+          setPositionId(defaultPosition.id);
+          loadSalary(defaultPosition.id, data);
+        } else {
+          setPositionId(null);
+          calculateFromMonthly(0);
+        }
       }
     } catch (error: any) {
       console.error('Error fetching computation data:', error);
@@ -145,35 +166,135 @@ export default function ComputationPage() {
     }
   };
 
+  const calculateIncomeTax = (monthlySalary: number): number => {
+    const annualSalary = monthlySalary * 12;
+    let annualTax = 0;
+
+    if (annualSalary <= 250000) {
+      annualTax = 0;
+    } else if (annualSalary <= 400000) {
+      annualTax = (annualSalary - 250000) * 0.15;
+    } else if (annualSalary <= 800000) {
+      annualTax = 22500 + (annualSalary - 400000) * 0.20;
+    } else if (annualSalary <= 2000000) {
+      annualTax = 102500 + (annualSalary - 800000) * 0.25;
+    } else if (annualSalary <= 8000000) {
+      annualTax = 402500 + (annualSalary - 2000000) * 0.30;
+    } else {
+      annualTax = 2202500 + (annualSalary - 8000000) * 0.35;
+    }
+
+    return Math.round((annualTax / 12) * 100) / 100;
+  };
+
+  const calculateSSS = (monthlySalary: number): number => {
+    if (monthlySalary <= 0) {
+      return 0;
+    }
+
+    const sssRate = parseFloat(sssPercent) || 0.045;
+    const f_sss = parseFloat(sssFixed) || 0;
+
+    if (monthlySalary < 1000) {
+      return 0;
+    }
+
+    if (monthlySalary <= 3250 && f_sss > 0) {
+      return Math.round(f_sss * 100) / 100;
+    }
+
+    const maxMSC = 30000;
+    const msc = Math.min(monthlySalary, maxMSC);
+    const contribution = msc * sssRate;
+
+    return Math.round(contribution * 100) / 100;
+  };
+
+  const calculatePhilHealth = (monthlySalary: number): number => {
+    if (monthlySalary <= 0) {
+      return 0;
+    }
+
+    const philhealthRate = parseFloat(philHealthPercent) || 0.025;
+    const f_philhealth = parseFloat(philHealthFixed) || 0;
+
+    if (monthlySalary < 10000 && f_philhealth > 0) {
+      return Math.round(f_philhealth * 100) / 100;
+    }
+
+    const maxPremiumBase = 100000;
+    const premiumBase = Math.min(monthlySalary, maxPremiumBase);
+    const contribution = premiumBase * philhealthRate;
+
+    return Math.round(contribution * 100) / 100;
+  };
+
+  const calculatePagibig = (monthlySalary: number): number => {
+    if (monthlySalary <= 0) {
+      return 0;
+    }
+
+    const pagibigRate = parseFloat(pagibigPercent) || 0;
+    const f_pagibig = parseFloat(pagibigFixed) || 0;
+
+    if (monthlySalary < 1500 && f_pagibig > 0) {
+      return Math.round(f_pagibig * 100) / 100;
+    }
+
+    const maxCompensation = 5000;
+    const compensation = Math.min(monthlySalary, maxCompensation);
+
+    let rate = 0.01;
+    if (compensation > 1500) {
+      rate = 0.02;
+    }
+
+    const finalRate = pagibigRate > 0 ? pagibigRate : rate;
+    const contribution = compensation * finalRate;
+
+    return Math.round(contribution * 100) / 100;
+  };
+
   const calculateFromMonthly = (monthlyValue: number) => {
-    setMonthly(monthlyValue.toFixed(2));
-    setSemiMonthly((monthlyValue / 2).toFixed(2));
-    setDaily((monthlyValue / 22).toFixed(2)); // Assuming 22 working days
-    setHourly((monthlyValue / 22 / 8).toFixed(2)); // Assuming 8 hours per day
-    setGrossPay(monthlyValue.toFixed(2));
+    const value = typeof monthlyValue === 'number' && !isNaN(monthlyValue) ? monthlyValue : 0;
+    setMonthly(value.toFixed(2));
+    setSemiMonthly((value / 2).toFixed(2));
+    setDaily((value / 22).toFixed(2)); // Assuming 22 working days
+    setHourly((value / 22 / 8).toFixed(2)); // Assuming 8 hours per day
+    setGrossPay(value.toFixed(2));
     
-    // Calculate deductions
-    const sssDed = (monthlyValue * parseFloat(sssPercent) / 100) + parseFloat(sssFixed);
-    const philHealthDed = (monthlyValue * parseFloat(philHealthPercent) / 100) + parseFloat(philHealthFixed);
-    const pagibigDed = (monthlyValue * parseFloat(pagibigPercent) / 100) + parseFloat(pagibigFixed);
-    const totalDed = sssDed + philHealthDed + pagibigDed;
+    // Calculate 13th Month Pay (typically 1/12 of annual salary, or monthly salary)
+    const thirteenthMonthPay = value;
+    setThirteenthMonth(thirteenthMonthPay.toFixed(2));
+    
+    // Calculate Income Tax
+    const incomeTaxAmount = calculateIncomeTax(value);
+    setIncomeTax(incomeTaxAmount.toFixed(2));
+    
+    // Calculate statutory deductions using proper functions
+    const sssDed = calculateSSS(value);
+    const philHealthDed = calculatePhilHealth(value);
+    const pagibigDed = calculatePagibig(value);
+    
+    // Total deductions include Income Tax
+    const totalDed = incomeTaxAmount + sssDed + philHealthDed + pagibigDed;
     
     setSssDeduction(sssDed.toFixed(2));
     setPhilHealthDeduction(philHealthDed.toFixed(2));
     setPagibigDeduction(pagibigDed.toFixed(2));
     setTotalDeduction(totalDed.toFixed(2));
-    setNetPay((monthlyValue - totalDed).toFixed(2));
+    setNetPay((value - totalDed).toFixed(2));
   };
 
-  const loadSalary = (roleId: number, branchId: number, data?: ComputationData) => {
-    const salary = (data || computationData)?.salaries.find(
-      s => s.role_id === roleId && s.branch_id === branchId
-    );
+  const loadSalary = (payrollPositionId: number, data?: ComputationData) => {
+    const position = (data || computationData)?.positions?.find(p => p.id === payrollPositionId);
     
-    if (salary) {
-      calculateFromMonthly(salary.monthly_salary);
+    if (position && position.base_salary != null) {
+      const salary = typeof position.base_salary === 'number' 
+        ? position.base_salary 
+        : parseFloat(String(position.base_salary)) || 0;
+      calculateFromMonthly(salary);
     } else {
-      // Reset to defaults if no salary found
       calculateFromMonthly(0);
     }
   };
@@ -188,27 +309,18 @@ export default function ComputationPage() {
     return `${symbol} ${parseFloat(value || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const handleDesignationChange = (value: string) => {
-    const role = computationData?.roles.find(r => r.id.toString() === value);
-    if (role) {
-      setDesignation(role.name);
-      setDesignationId(role.id);
-      if (branchId) {
-        loadSalary(role.id, branchId);
-      }
+  const handlePositionChange = (value: string) => {
+    const pos = computationData?.positions.find(p => typeof p.id === 'number' && p.id.toString() === value);
+    if (typeof pos?.id === 'number') {
+      setPositionId(pos.id);
+      // Automatically load salary from position's base_salary
+      loadSalary(pos.id, computationData ?? undefined);
+    } else {
+      setPositionId(null);
+      calculateFromMonthly(0);
     }
   };
 
-  const handleBranchChange = (value: string) => {
-    const branch = computationData?.branches.find(b => b.id.toString() === value);
-    if (branch) {
-      setBranch(branch.name);
-      setBranchId(branch.id);
-      if (designationId) {
-        loadSalary(designationId, branch.id);
-      }
-    }
-  };
 
   const handleEditBasicPay = async () => {
     if (!isEditingBasicPay) {
@@ -216,10 +328,10 @@ export default function ComputationPage() {
       return;
     }
 
-    if (!designationId || !branchId) {
+    if (!positionId || !branchId) {
       toast({
         title: 'Error',
-        description: 'Please select designation and branch',
+        description: 'Please select position and branch',
         variant: 'destructive',
       });
       return;
@@ -227,10 +339,9 @@ export default function ComputationPage() {
 
     try {
       setSaving(true);
-      await configService.updatePay({
-        role_id: designationId,
+      await positionService.update(positionId, {
+        base_salary: parseFloat(monthly),
         branch_id: branchId,
-        monthly: parseFloat(monthly),
       });
       
       toast({
@@ -307,9 +418,9 @@ export default function ComputationPage() {
           <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle className="italic font-bold">Basic Pay</CardTitle>
-                <Button size="sm" onClick={handleEditBasicPay} disabled={saving || !designationId || !branchId}>
+                {/* <Button size="sm" onClick={handleEditBasicPay} disabled={saving || !positionId || !branchId}>
                   {isEditingBasicPay ? 'Save' : 'Edit'}
-                </Button>
+                </Button> */}
               </div>
           </CardHeader>
           <CardContent>
@@ -317,15 +428,22 @@ export default function ComputationPage() {
               {/* Row 1 */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Designation</Label>
-                  <Select value={designationId?.toString() || ''} onValueChange={handleDesignationChange}>
+                  <Label>Position</Label>
+                  <Select value={positionId?.toString() || ''} onValueChange={handlePositionChange}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select designation" />
+                      <SelectValue placeholder="Select position" />
                     </SelectTrigger>
                     <SelectContent>
-                      {computationData?.roles?.map((role) => (
-                        <SelectItem key={role.id} value={role.id.toString()}>
-                          {role.name}
+                      {branchId && computationData?.positions
+                        ?.filter(p => typeof p.id === 'number' && p.branch_id === branchId)
+                        ?.sort((a, b) => {
+                          const activeDiff = Number(b.is_active) - Number(a.is_active);
+                          if (activeDiff !== 0) return activeDiff;
+                          return (a.name || '').localeCompare(b.name || '');
+                        })
+                        ?.map((pos) => (
+                        <SelectItem key={pos.id} value={String(pos.id)}>
+                          {pos.name}{pos.is_active ? '' : ' (Inactive)'}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -333,14 +451,18 @@ export default function ComputationPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Monthly</Label>
-                  <Input 
-                    type="number" 
-                    value={monthly} 
-                    onChange={(e) => handleMonthlyChange(e.target.value)}
-                    readOnly={!isEditingBasicPay}
-                    step="0.01"
-                    min="0"
-                  />
+                  {isEditingBasicPay ? (
+                    <Input 
+                      type="number" 
+                      value={monthly} 
+                      onChange={(e) => handleMonthlyChange(e.target.value)}
+                      step="0.01"
+                      min="0"
+                      placeholder="Enter monthly salary"
+                    />
+                  ) : (
+                    <Input type="text" value={formatCurrency(monthly)} readOnly />
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Daily</Label>
@@ -352,18 +474,7 @@ export default function ComputationPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Branch</Label>
-                  <Select value={branchId?.toString() || ''} onValueChange={handleBranchChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select branch" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {computationData?.branches?.map((branch) => (
-                        <SelectItem key={branch.id} value={branch.id.toString()}>
-                          {branch.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Input type="text" value={branch || ''} readOnly />
                 </div>
                 <div className="space-y-2">
                   <Label>Semi-Monthly</Label>
@@ -423,24 +534,21 @@ export default function ComputationPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="font-semibold">Deductions</h3>
-                  <Button size="sm" onClick={handleEditDeductions} disabled={saving}>
+                  {/* <Button size="sm" onClick={handleEditDeductions} disabled={saving}>
                     Edit
-                  </Button>
+                  </Button> */}
                 </div>
                 <div className="space-y-2">
                   <Label>Social Security System</Label>
-                  <Input type="text" value={`${sssPercent}%`} readOnly />
-                  <p className="text-xs text-muted-foreground">Fixed Value {formatCurrency(sssFixed)}</p>
+                  <Input type="text" value={`${((parseFloat(sssPercent) || 0) * 100).toFixed(2)}%`} readOnly />
                 </div>
                 <div className="space-y-2">
                   <Label>PhilHealth</Label>
-                  <Input type="text" value={`${philHealthPercent}%`} readOnly />
-                  <p className="text-xs text-muted-foreground">Fixed Value {formatCurrency(philHealthFixed)}</p>
+                  <Input type="text" value={`${((parseFloat(philHealthPercent) || 0) * 100).toFixed(2)}%`} readOnly />
                 </div>
                 <div className="space-y-2">
                   <Label>Pagibig</Label>
-                  <Input type="text" value={`${pagibigPercent}%`} readOnly />
-                  <p className="text-xs text-muted-foreground">Fixed Value {formatCurrency(pagibigFixed)}</p>
+                  <Input type="text" value={`${((parseFloat(pagibigPercent) || 0) * 100).toFixed(2)}%`} readOnly />
                 </div>
               </div>
             </div>

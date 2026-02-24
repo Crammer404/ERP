@@ -10,27 +10,39 @@ export interface PayrollComponent {
   is_rate?: boolean;
 }
 
-export interface PayrollSalary {
+export interface PayrollPosition {
   id?: number;
-  role_id: number;
   branch_id: number;
-  monthly_salary: number;
-  role?: { id: number; name: string };
+  code: string;
+  name: string;
+  base_salary: number;
+  allowance_id?: number | null;
+  is_active: boolean;
+  user_infos?: Array<{
+    id: number;
+    user_id: number;
+    first_name?: string;
+    last_name?: string;
+    user?: { id: number; email: string; user_info?: { first_name?: string; last_name?: string } };
+  }>;
   branch?: { id: number; name: string };
+  allowance?: { id: number; label: string; value: string };
 }
 
 export interface ComputationData {
   components: PayrollComponent[];
-  salaries: PayrollSalary[];
+  positions: PayrollPosition[];
   roles: { id: number; name: string }[];
   branches: { id: number; name: string }[];
   currency_symbol: string;
 }
 
 export interface UpdatePayRequest {
-  role_id: number;
+  user_info_id: number;
   branch_id: number;
-  monthly: number;
+  name?: string;
+  base_salary: number;
+  code?: string;
 }
 
 export interface UpdateRateRequest {
@@ -62,7 +74,7 @@ const normalizeComputationData = (payload: any): ComputationData => {
   const source = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
   return {
     components: Array.isArray(source?.components) ? source.components : [],
-    salaries: Array.isArray(source?.salaries) ? source.salaries : [],
+    positions: Array.isArray(source?.positions) ? source.positions : [],
     roles: Array.isArray(source?.roles) ? source.roles : [],
     branches: Array.isArray(source?.branches) ? source.branches : [],
     currency_symbol: typeof source?.currency_symbol === 'string' ? source.currency_symbol : 'P',
@@ -79,7 +91,7 @@ export const configService = {
     return await api(API_ENDPOINTS.PAYROLL.CONFIG.DYNAMIC_DATA);
   },
 
-  async updatePay(data: UpdatePayRequest): Promise<PayrollSalary[]> {
+  async updatePay(data: UpdatePayRequest): Promise<PayrollPosition[]> {
     return await api(API_ENDPOINTS.PAYROLL.CONFIG.UPDATE_PAY, {
       method: 'POST',
       body: JSON.stringify(data),
