@@ -37,7 +37,10 @@ import {
   User,
   Activity,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  Calculator,
+  Receipt,
+  Briefcase
 } from 'lucide-react';
 
 // Dynamic icon resolver - maps database icon_path to Lucide components
@@ -71,6 +74,9 @@ const getIconComponent = (iconPath: string) => {
     'truck': Truck,
     'user': User,
     'activity': Activity,
+    'calculator': Calculator,
+    'receipt': Receipt,
+    'briefcase': Briefcase,
   };
   
   return iconMap[iconPath] || Settings; // Default fallback
