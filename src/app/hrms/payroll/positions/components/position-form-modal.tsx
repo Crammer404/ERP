@@ -71,7 +71,6 @@ export function PositionFormModal({
   useEffect(() => {
     if (isOpen) {
       getCurrentBranch();
-      fetchEmployees();
       setLocalErrors({}); // Clear local errors when modal opens
       
       if (mode === 'edit' && initialData) {
@@ -122,6 +121,13 @@ export function PositionFormModal({
     }
   }, [mode, initialData, isOpen]);
 
+  // Fetch employees when branch_id is available
+  useEffect(() => {
+    if (isOpen && formData.branch_id) {
+      fetchEmployees();
+    }
+  }, [isOpen, formData.branch_id, mode, initialData?.branch_id]);
+
   const getCurrentBranch = () => {
     try {
       const branchContext = tenantContextService.getStoredBranchContext();
@@ -141,9 +147,27 @@ export function PositionFormModal({
     try {
       let employeeList: Employee[] = [];
       
-      // In add-employees mode, fetch employees from the position's branch
+      // Determine which branch to fetch employees from
+      let targetBranchId: number | null = null;
+      
       if (mode === 'add-employees' && initialData?.branch_id) {
-        const response = await branchService.getEmployees(initialData.branch_id);
+        // In add-employees mode, use the position's branch
+        targetBranchId = initialData.branch_id;
+      } else if (mode === 'edit' && initialData?.branch_id) {
+        // In edit mode, use the position's branch (not current context)
+        targetBranchId = initialData.branch_id;
+      } else if (mode === 'create' && formData.branch_id) {
+        // In create mode, use the form's branch_id (from context)
+        targetBranchId = formData.branch_id;
+      } else {
+        // Fallback: try to get from current branch context
+        const branchContext = tenantContextService.getStoredBranchContext();
+        targetBranchId = branchContext?.id || null;
+      }
+      
+      if (targetBranchId) {
+        // Fetch employees from the specific branch
+        const response = await branchService.getEmployees(targetBranchId);
         if (response?.users && Array.isArray(response.users)) {
           // Convert branch employees to Employee format
           // BranchUserResource returns: { id, branch_id, user_id, user: { id, email, role, user_info } }
@@ -169,7 +193,7 @@ export function PositionFormModal({
           });
         }
       } else {
-        // For create/edit mode, use current branch context
+        // Fallback: use current branch context (legacy behavior)
         employeeList = await managementService.fetchBranchEmployees();
       }
       
@@ -339,7 +363,6 @@ export function PositionFormModal({
                   onChange={(e) => {
                     const value = e.target.value;
                     setSalaryInputValue(value);
-                    // Only update formData if it's a valid number
                     const numValue = parseFloat(value);
                     if (value === '' || isNaN(numValue)) {
                       handleChange('base_salary', 0);
@@ -403,26 +426,34 @@ export function PositionFormModal({
                 <MultiSelect
                   options={employees
                     .filter((employee) => {
-                      // In add-employees mode, filter out already assigned employees
                       if (mode === 'add-employees' && initialData) {
                         const userInfo = userInfos.find(ui => ui.user_id === employee.id);
                         const userInfoId = userInfo && 'id' in userInfo ? userInfo.id : null;
                         const existingIds = initialData.user_infos?.map(ui => ui.id) || [];
-                        // Only show employees not already in the position
                         return userInfoId && !existingIds.includes(userInfoId);
                       }
                       return true;
                     })
                     .map((employee) => {
-                      // Find matching userInfo by user_id
-                      const userInfo = userInfos.find(ui => ui.user_id === employee.id);
-                      const userInfoId = userInfo && 'id' in userInfo ? userInfo.id : null;
+                      let userInfoId: number | null = null;
+                      if (
+                        employee.user_info && 
+                        typeof (employee.user_info as any).id === 'number'
+                      ) {
+                        userInfoId = (employee.user_info as any).id;
+                      } else {
+                        const userInfo = userInfos.find(ui => ui.user_id === employee.id);
+                        userInfoId = userInfo?.id || null;
+                      }
+                      if (!userInfoId) {
+                        return null;
+                      }
                       return {
-                        value: userInfoId?.toString() || employee.id.toString(),
+                        value: userInfoId.toString(),
                         label: getEmployeeDisplayName(employee),
                       };
                     })
-                    .filter(opt => opt.value) as Array<{ value: string; label: string }>}
+                    .filter((opt): opt is { value: string; label: string } => opt !== null)}
                   value={formData.user_info_ids?.map(id => id.toString()) || []}
                   onChange={handleEmployeeChange}
                   searchPlaceholder="Search employees..."

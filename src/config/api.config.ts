@@ -145,6 +145,23 @@ export const API_ENDPOINTS = {
     },
   },
   
+  DEDUCTIONS: {
+    CASH_ADVANCE: {
+      BASE: '/hrms/deductions/cash-advance',
+      CREATE: '/hrms/deductions/cash-advance',
+      UPDATE: '/hrms/deductions/cash-advance/{id}',
+      DELETE: '/hrms/deductions/cash-advance/{id}',
+      GET: '/hrms/deductions/cash-advance/{id}',
+    },
+    LOAN: {
+      BASE: '/hrms/deductions/loan',
+      CREATE: '/hrms/deductions/loan',
+      UPDATE: '/hrms/deductions/loan/{id}',
+      DELETE: '/hrms/deductions/loan/{id}',
+      GET: '/hrms/deductions/loan/{id}',
+    },
+  },
+  
   INVENTORY: {
     BASE: '/inventory',
     CREATE: '/inventory',
@@ -344,6 +361,10 @@ export const ROUTES = {
       REPORTS: '/hrms/payroll/reports',
       PAYSLIP: '/hrms/payroll/payslip',
       POSITIONS: '/hrms/payroll/positions',
+    },
+    DEDUCTIONS: {
+      CASH_ADVANCE: '/hrms/deductions/cash-advance',
+      LOAN: '/hrms/deductions/loan',
     },
   },
   SETTINGS: {

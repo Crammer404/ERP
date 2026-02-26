@@ -19,7 +19,7 @@ import { FullPageAccessDenied } from '@/components/error/error-page';
 import { Loader } from '@/components/ui/loader';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { BranchFormModal } from './components/BranchFormModal';
+import { BranchFormModal } from './components/branch-form-modal';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { BranchEmployeesModal } from './components/branch-employees';

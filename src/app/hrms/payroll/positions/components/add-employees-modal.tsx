@@ -226,8 +226,17 @@ export function AddEmployeesModal({
                 <MultiSelect
                   options={availableEmployees
                     .map((employee) => {
-                      const userInfo = combinedUserInfos.find(ui => ui.user_id === employee.id);
-                      const userInfoId = userInfo && 'id' in userInfo ? userInfo.id : null;
+                      // Get user_info.id - prefer from employee.user_info, fallback to combinedUserInfos array
+                      let userInfoId: number | null = null;
+                      
+                      if (employee.user_info?.id) {
+                        // Employee already has user_info with id
+                        userInfoId = employee.user_info.id;
+                      } else {
+                        // Try to find in combinedUserInfos array by matching user_id
+                        const userInfo = combinedUserInfos.find(ui => ui.user_id === employee.id);
+                        userInfoId = userInfo?.id || null;
+                      }
                       
                       if (!userInfoId) {
                         console.error('Employee in availableEmployees without userInfoId:', employee);
