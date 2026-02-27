@@ -58,8 +58,11 @@ class EmployeeService {
    */
   async fetchAllEmployees(): Promise<Employee[]> {
     try {
-      const response = await api('/management/users/all-details');
-      return response.users || [];
+      const response = await api(API_ENDPOINTS.DTR.EMPLOYEE_CURRENT_USER);
+      if (response && response.user) {
+        return [response.user];
+      }
+      return [];
     } catch (error) {
       console.error('Error fetching employees:', error);
       return [];

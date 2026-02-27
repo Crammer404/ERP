@@ -26,7 +26,7 @@ import { format } from "date-fns";
 import type { Loan, CreateLoanRequest, UpdateLoanRequest } from '../services/loan-service';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { managementService, Employee } from '@/services/management/managementService';
-import { branchService } from '@/app/management/branches/services/branchService';
+import { branchService } from '@/app/management/branches/services/branch-service';
 
 interface LoanFormModalProps {
   isOpen: boolean;

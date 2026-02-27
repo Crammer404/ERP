@@ -14,8 +14,8 @@ export { tenantService } from '../app/management/tenants/services/tenantService'
 export type { Tenant, CreateTenantRequest, UpdateTenantRequest, TenantSettings, TenantAddress } from '../app/management/tenants/services/tenantService';
 
 // Branch service
-export { branchService } from '../app/management/branches/services/branchService';
-export type { Branch, CreateBranchRequest, UpdateBranchRequest } from '../app/management/branches/services/branchService';
+export { branchService } from '../app/management/branches/services/branch-service';
+export type { Branch, CreateBranchRequest, UpdateBranchRequest } from '../app/management/branches/services/branch-service';
 
 // Role service
 export { roleService } from '../app/management/roles/services/roleService';

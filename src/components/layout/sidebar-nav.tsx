@@ -40,7 +40,9 @@ import {
   ChevronDown,
   Calculator,
   Receipt,
-  Briefcase
+  Briefcase,
+  DollarSign,
+  CreditCard
 } from 'lucide-react';
 
 // Dynamic icon resolver - maps database icon_path to Lucide components
@@ -77,6 +79,8 @@ const getIconComponent = (iconPath: string) => {
     'calculator': Calculator,
     'receipt': Receipt,
     'briefcase': Briefcase,
+    'dollar-sign': DollarSign,
+    'card': CreditCard,
   };
   
   return iconMap[iconPath] || Settings; // Default fallback

@@ -1,7 +1,7 @@
 import { api } from '../../../../services/api';
 import { API_ENDPOINTS } from '../../../../config/api.config';
 import { CACHE_CONFIG } from '../../../../config/cache.config';
-import type { Branch } from "../../../../app/management/branches/services/branchService";
+import type { Branch } from "../../branches/services/branch-service";
 
 export interface TenantAddress {
   street: string;

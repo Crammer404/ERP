@@ -99,6 +99,7 @@ export const API_ENDPOINTS = {
     DELETE: '/hrms/dtr/{id}',
     EMPLOYEE_ID: '/hrms/dtr/employee_id',
     GENERATE_QR: '/hrms/dtr/employee_id/generateUserQrFromData',
+    EMPLOYEE_CURRENT_USER: '/hrms/dtr/employee_id/user',
     EXPORT_TIMESHEET: '/hrms/dtr/export-timesheet',
     CONFIGURATION: {
       GET: '/hrms/dtr/configuration/data',

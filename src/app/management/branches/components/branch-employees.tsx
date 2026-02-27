@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Users, Loader2, ChevronDown, LogOut } from 'lucide-react';
-import { branchService, Branch } from '../services/branchService';
+import { branchService, Branch } from '../services/branch-service';
 import { managementService } from '@/services/management/managementService';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';

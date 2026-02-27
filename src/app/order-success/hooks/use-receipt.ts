@@ -6,7 +6,7 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { fetchTransaction } from '@/app/pos/transactions/services/transactionsService';
 import { type ReceiptData, type ReceiptItem, type ReceiptTax } from '@/components/forms/receipt/receipt-template';
 import { settingsService } from '@/services/settings/settingsService';
-import { branchService } from '@/app/management/branches/services/branchService';
+import { branchService } from '@/app/management/branches/services/branch-service';
 
 export function useReceiptData() {
   const [transactions] = useLocalStorage<Transaction[]>('transactions', []);

@@ -1,8 +1,8 @@
 'use client';
 
 import { productService } from "@/services/product/productService";
-import { branchService } from '@/app/management/branches/services/branchService';
-import type { Branch } from '@/app/management/branches/services/branchService';
+import { branchService } from '@/app/management/branches/services/branch-service';
+import type { Branch } from '@/app/management/branches/services/branch-service';
 import Image from 'next/image';
 import { useState, Fragment, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';

@@ -16,7 +16,7 @@ import { Loader2 } from "lucide-react";
 import type { PayrollPosition, CreatePositionRequest, UpdatePositionRequest } from '../services/position-service';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { managementService, Employee } from '@/services/management/managementService';
-import { branchService } from '@/app/management/branches/services/branchService';
+import { branchService } from '@/app/management/branches/services/branch-service';
 
 interface PositionFormModalProps {
   isOpen: boolean;

@@ -13,7 +13,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Loader2 } from "lucide-react";
 import type { PayrollPosition } from '../services/position-service';
 import { managementService, Employee } from '@/services/management/managementService';
-import { branchService } from '@/app/management/branches/services/branchService';
+import { branchService } from '@/app/management/branches/services/branch-service';
 import { userService } from '@/services';
 
 interface AddEmployeesModalProps {
