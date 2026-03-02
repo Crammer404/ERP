@@ -68,6 +68,16 @@ const getDefaultFormData = (): ScheduleFormData => ({
   selectedEmployees: [],
 });
 
+// Get schedule name based on selected shift
+const getScheduleName = (shift: string): string => {
+  const shiftMap: Record<string, string> = {
+    'shift1': 'Shift 1',
+    'shift2': 'Shift 2',
+    'shift3': 'Shift 3',
+  };
+  return shiftMap[shift] || '';
+};
+
 export function AddScheduleModal({
   isOpen,
   onClose,
@@ -83,14 +93,35 @@ export function AddScheduleModal({
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [currentBranchName, setCurrentBranchName] = useState<string>('Loading...');
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const [selectedShift, setSelectedShift] = useState<string>('');
+  const [showOverlapModal, setShowOverlapModal] = useState(false);
+  const [overlapErrorMessage, setOverlapErrorMessage] = useState<string>('');
   const { toast } = useToast();
 
   useEffect(() => {
     if (isOpen) {
       if (mode === 'edit' && initialData) {
         setFormData({ ...initialData });
+        // Determine shift based on existing data
+        const hasMorning = !!(initialData.morningStart && initialData.morningEnd);
+        const hasAfternoon = !!(initialData.afternoonStart && initialData.afternoonEnd);
+        const hasNight = !!(initialData.nightStart && initialData.nightEnd);
+        
+        // Shift 3: Mix (has all three shifts)
+        if (hasMorning && hasAfternoon && hasNight) {
+          setSelectedShift('shift3');
+        } else if (hasNight) {
+          // Shift 2: Night Shift (only night)
+          setSelectedShift('shift2');
+        } else if (hasMorning) {
+          // Shift 1: Day Shift (only morning)
+          setSelectedShift('shift1');
+        } else {
+          setSelectedShift('');
+        }
       } else if (mode === 'create') {
         setFormData(getDefaultFormData());
+        setSelectedShift('');
       }
       // Clear local errors when modal opens
       setLocalErrors({});
@@ -101,8 +132,10 @@ export function AddScheduleModal({
     } else {
       setFormData(getDefaultFormData());
       setLocalErrors({});
+      setSelectedShift('');
     }
   }, [isOpen, mode, initialData]);
+
 
   const getCurrentBranch = () => {
     try {
@@ -167,26 +200,161 @@ export function AddScheduleModal({
       if (field === 'morningStart' || field === 'morningEnd') {
         delete newErrors.morningShift;
         delete newErrors.shifts;
+        delete newErrors.shiftOverlap;
       }
       if (field === 'afternoonStart' || field === 'afternoonEnd') {
         delete newErrors.afternoonShift;
         delete newErrors.shifts;
+        delete newErrors.shiftOverlap;
       }
       if (field === 'nightStart' || field === 'nightEnd') {
         delete newErrors.nightShift;
         delete newErrors.shifts;
+        delete newErrors.shiftOverlap;
       }
       return newErrors;
     });
 
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [field]: value
+      };
+      
+      // Check for overlaps after update (only for shift 3 - Mix)
+      if (selectedShift === 'shift3') {
+        // Use setTimeout to check after state update
+        setTimeout(() => {
+          const overlapError = validateShiftOverlaps(updated);
+          if (overlapError) {
+            setLocalErrors(prevErrors => ({
+              ...prevErrors,
+              shiftOverlap: overlapError
+            }));
+          } else {
+            setLocalErrors(prevErrors => {
+              const newErrors = { ...prevErrors };
+              delete newErrors.shiftOverlap;
+              return newErrors;
+            });
+          }
+        }, 0);
+      }
+      
+      return updated;
+    });
+  };
+
+  // Convert time string (HH:MM or HH:MM:SS) to minutes for comparison
+  const timeToMinutes = (timeStr: string): number => {
+    if (!timeStr) return 0;
+    const parts = timeStr.split(':');
+    const hours = parseInt(parts[0] || '0', 10);
+    const minutes = parseInt(parts[1] || '0', 10);
+    return hours * 60 + minutes;
+  };
+
+  // Check if two time ranges overlap
+  const checkTimeOverlap = (
+    start1: string,
+    end1: string,
+    start2: string,
+    end2: string
+  ): boolean => {
+    if (!start1 || !end1 || !start2 || !end2) return false;
+    
+    const start1Min = timeToMinutes(start1);
+    const end1Min = timeToMinutes(end1);
+    const start2Min = timeToMinutes(start2);
+    const end2Min = timeToMinutes(end2);
+
+    // Handle overnight shifts (end time is next day)
+    const end1Final = end1Min < start1Min ? end1Min + 24 * 60 : end1Min;
+    const end2Final = end2Min < start2Min ? end2Min + 24 * 60 : end2Min;
+
+    // Check for overlap
+    return !(end1Final <= start2Min || end2Final <= start1Min);
+  };
+
+  // Validate shift overlaps for Shift 3 (Mix)
+  const validateShiftOverlaps = (data: ScheduleFormData = formData): string | null => {
+    if (selectedShift === 'shift3') {
+      // Shift 3: Mix - Check all combinations
+      // Check morning vs afternoon
+      if (checkTimeOverlap(
+        data.morningStart,
+        data.morningEnd,
+        data.afternoonStart,
+        data.afternoonEnd
+      )) {
+        return 'Morning and Afternoon shifts overlap. Please use Shift 1 (Day Shift) or Shift 2 (Night Shift) instead.';
+      }
+      // Check morning vs night
+      if (checkTimeOverlap(
+        data.morningStart,
+        data.morningEnd,
+        data.nightStart,
+        data.nightEnd
+      )) {
+        return 'Morning and Night shifts overlap. Please use Shift 1 (Day Shift) or Shift 2 (Night Shift) instead.';
+      }
+      // Check afternoon vs night
+      if (checkTimeOverlap(
+        data.afternoonStart,
+        data.afternoonEnd,
+        data.nightStart,
+        data.nightEnd
+      )) {
+        return 'Afternoon and Night shifts overlap. Please use Shift 1 (Day Shift) or Shift 2 (Night Shift) instead.';
+      }
+    }
+    return null;
+  };
+
+  const handleShiftChange = (shift: string) => {
+    setSelectedShift(shift);
+    setLocalErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors.shiftOverlap;
+      return newErrors;
+    });
+    // Close overlap modal if open
+    setShowOverlapModal(false);
+    setOverlapErrorMessage('');
+
+    // Clear shift times based on selected shift
+    if (shift === 'shift1') {
+      // Shift 1: Day Shift - Only morning, clear afternoon and night
+      handleInputChange('afternoonStart', '');
+      handleInputChange('afternoonEnd', '');
+      handleInputChange('nightStart', '');
+      handleInputChange('nightEnd', '');
+    } else if (shift === 'shift2') {
+      // Shift 2: Night Shift - Only night, clear morning and afternoon
+      handleInputChange('morningStart', '');
+      handleInputChange('morningEnd', '');
+      handleInputChange('afternoonStart', '');
+      handleInputChange('afternoonEnd', '');
+    }
+    // Shift 3: Mix - keeps all shifts (morning, afternoon, night)
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check for shift overlaps first (only for Shift 3 - Mix)
+    if (selectedShift === 'shift3') {
+      const overlapError = validateShiftOverlaps();
+      if (overlapError) {
+        setLocalErrors(prev => ({
+          ...prev,
+          shiftOverlap: overlapError
+        }));
+        setOverlapErrorMessage(overlapError);
+        setShowOverlapModal(true);
+        return;
+      }
+    }
     
     // Validate form using centralized validation
     const validation = validateScheduleForm(formData);
@@ -230,21 +398,6 @@ export function AddScheduleModal({
 
         <div className="max-h-[60vh] overflow-y-auto">
           <form onSubmit={handleSubmit} className="space-y-4 my-2 mx-2">
-            {/* Schedule Name */}
-            <div className="space-y-2">
-              <Label htmlFor="schedule-name">Schedule Name</Label>
-              <Input
-                id="schedule-name"
-                type="text"
-                disabled={loading}
-                value={formData.scheduleName}
-                onChange={(e) => handleInputChange('scheduleName', e.target.value)}
-                placeholder="e.g., Regular Day Shift, Night Shift, etc."
-              />
-              {allErrors.scheduleName && (
-                <p className="text-red-500 text-xs">{allErrors.scheduleName}</p>
-              )}
-            </div>
 
             {/* Branch (Read-only) */}
             <div className="space-y-2">
@@ -265,140 +418,205 @@ export function AddScheduleModal({
               )}
             </div>
 
-            {/* Shift Schedule Section */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Shift Schedule</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  At least one shift (Morning, Afternoon, or Night) is required
-                </p>
-                {allErrors.shifts && (
-                  <p className="text-red-500 text-xs mt-1">{allErrors.shifts}</p>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {/* Morning Shift */}
-                <div className="space-y-2">
-                  <Label htmlFor="morning-start">Morning Shift Start</Label>
-                  <TimePicker
-                    id="morning-start"
-                    disabled={loading}
-                    value={formData.morningStart}
-                    onChange={(value) => handleInputChange('morningStart', value)}
-                  />
-                  {allErrors.morningStart && (
-                    <p className="text-red-500 text-xs">{allErrors.morningStart}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="morning-end">Morning Shift End</Label>
-                  <TimePicker
-                    id="morning-end"
-                    disabled={loading}
-                    value={formData.morningEnd}
-                    onChange={(value) => handleInputChange('morningEnd', value)}
-                  />
-                  {allErrors.morningEnd && (
-                    <p className="text-red-500 text-xs">{allErrors.morningEnd}</p>
-                  )}
-                  {allErrors.morningShift && (
-                    <p className="text-red-500 text-xs">{allErrors.morningShift}</p>
-                  )}
-                </div>
-
-                {/* Afternoon Shift */}
-                <div className="space-y-2">
-                  <Label htmlFor="afternoon-start">Afternoon Shift Start</Label>
-                  <TimePicker
-                    id="afternoon-start"
-                    disabled={loading}
-                    value={formData.afternoonStart}
-                    onChange={(value) => handleInputChange('afternoonStart', value)}
-                  />
-                  {allErrors.afternoonStart && (
-                    <p className="text-red-500 text-xs">{allErrors.afternoonStart}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="afternoon-end">Afternoon Shift End</Label>
-                  <TimePicker
-                    id="afternoon-end"
-                    disabled={loading}
-                    value={formData.afternoonEnd}
-                    onChange={(value) => handleInputChange('afternoonEnd', value)}
-                  />
-                  {allErrors.afternoonEnd && (
-                    <p className="text-red-500 text-xs">{allErrors.afternoonEnd}</p>
-                  )}
-                  {allErrors.afternoonShift && (
-                    <p className="text-red-500 text-xs">{allErrors.afternoonShift}</p>
-                  )}
-                </div>
-
-                {/* Night Shift */}
-                <div className="space-y-2">
-                  <Label htmlFor="night-start">Night Shift Start</Label>
-                  <TimePicker
-                    id="night-start"
-                    disabled={loading}
-                    value={formData.nightStart}
-                    onChange={(value) => handleInputChange('nightStart', value)}
-                  />
-                  {allErrors.nightStart && (
-                    <p className="text-red-500 text-xs">{allErrors.nightStart}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="night-end">Night Shift End</Label>
-                  <TimePicker
-                    id="night-end"
-                    disabled={loading}
-                    value={formData.nightEnd}
-                    onChange={(value) => handleInputChange('nightEnd', value)}
-                  />
-                  {allErrors.nightEnd && (
-                    <p className="text-red-500 text-xs">{allErrors.nightEnd}</p>
-                  )}
-                  {allErrors.nightShift && (
-                    <p className="text-red-500 text-xs">{allErrors.nightShift}</p>
-                  )}
-                </div>
-              </div>
+            {/* Schedule Name - Auto-generated in create mode, editable in both modes */}
+            <div className="space-y-2">
+              <Label htmlFor="schedule-name">Schedule Name</Label>
+              <Input
+                id="schedule-name"
+                type="text"
+                disabled={loading}
+                value={formData.scheduleName}
+                onChange={(e) => handleInputChange('scheduleName', e.target.value)}
+                placeholder="e.g., Shift 1, Shift 2, etc."
+              />
+              {allErrors.scheduleName && (
+                <p className="text-red-500 text-xs">{allErrors.scheduleName}</p>
+              )}
             </div>
 
-            {/* Other Settings Section */}
+            {/* Shift Schedule Section */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Schedule Settings</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="grace-period">Grace Period (Minutes)</Label>
-                  <Input
-                    id="grace-period"
-                    type="number"
-                    disabled={loading}
-                    value={formData.gracePeriod}
-                    onChange={(e) => handleInputChange('gracePeriod', e.target.value)}
-                    placeholder="15"
-                  />
-                  {allErrors.gracePeriod && (
-                    <p className="text-red-500 text-xs">{allErrors.gracePeriod}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="overtime-threshold">Overtime Threshold (Minutes)</Label>
-                  <Input
-                    id="overtime-threshold"
-                    type="number"
-                    disabled={loading}
-                    value={formData.overtimeThreshold}
-                    onChange={(e) => handleInputChange('overtimeThreshold', e.target.value)}
-                    placeholder="30"
-                  />
-                  {allErrors.overtimeThreshold && (
-                    <p className="text-red-500 text-xs">{allErrors.overtimeThreshold}</p>
-                  )}
+              {/* Shift Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="schedule-shift">Shift Schedule</Label>
+                <Select
+                  value={selectedShift}
+                  onValueChange={handleShiftChange}
+                  disabled={loading}
+                >
+                  <SelectTrigger id="schedule-shift">
+                    <SelectValue placeholder="Select a shift schedule" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="shift1">Day Shift</SelectItem>
+                    <SelectItem value="shift2">Night Shift</SelectItem>
+                    <SelectItem value="shift3">Mix</SelectItem>
+                  </SelectContent>
+                </Select>
+                {allErrors.shifts && (
+                  <p className="text-red-500 text-xs">{allErrors.shifts}</p>
+                )}
+                {allErrors.shiftOverlap && (
+                  <p className="text-red-500 text-xs">{allErrors.shiftOverlap}</p>
+                )}
+              </div>
+
+              {/* Shift Time Pickers - Show based on selected shift */}
+              <div className="space-y-4">
+                {/* Morning Shift - Shift 1, 3 */}
+                {(selectedShift === 'shift1' || selectedShift === 'shift3') && (
+                  <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+                    {selectedShift !== 'shift1' && (
+                      <h4 className="text-sm font-semibold text-foreground">Morning Shift</h4>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="morning-start">Start Time</Label>
+                        <TimePicker
+                          id="morning-start"
+                          disabled={loading}
+                          value={formData.morningStart}
+                          onChange={(value) => handleInputChange('morningStart', value)}
+                        />
+                        {allErrors.morningStart && (
+                          <p className="text-red-500 text-xs">{allErrors.morningStart}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="morning-end">End Time</Label>
+                        <TimePicker
+                          id="morning-end"
+                          disabled={loading}
+                          value={formData.morningEnd}
+                          onChange={(value) => handleInputChange('morningEnd', value)}
+                        />
+                        {allErrors.morningEnd && (
+                          <p className="text-red-500 text-xs">{allErrors.morningEnd}</p>
+                        )}
+                        {allErrors.morningShift && (
+                          <p className="text-red-500 text-xs">{allErrors.morningShift}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Afternoon Shift - Shift 3 only */}
+                {selectedShift === 'shift3' && (
+                  <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+                    <h4 className="text-sm font-semibold text-foreground">Afternoon Shift</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="afternoon-start">Start Time</Label>
+                        <TimePicker
+                          id="afternoon-start"
+                          disabled={loading}
+                          value={formData.afternoonStart}
+                          onChange={(value) => handleInputChange('afternoonStart', value)}
+                        />
+                        {allErrors.afternoonStart && (
+                          <p className="text-red-500 text-xs">{allErrors.afternoonStart}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="afternoon-end">End Time</Label>
+                        <TimePicker
+                          id="afternoon-end"
+                          disabled={loading}
+                          value={formData.afternoonEnd}
+                          onChange={(value) => handleInputChange('afternoonEnd', value)}
+                        />
+                        {allErrors.afternoonEnd && (
+                          <p className="text-red-500 text-xs">{allErrors.afternoonEnd}</p>
+                        )}
+                        {allErrors.afternoonShift && (
+                          <p className="text-red-500 text-xs">{allErrors.afternoonShift}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Night Shift - Shift 2, 3 */}
+                {(selectedShift === 'shift2' || selectedShift === 'shift3') && (
+                  <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+                    {selectedShift !== 'shift2' && (
+                      <h4 className="text-sm font-semibold text-foreground">Night Shift</h4>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="night-start">Start Time</Label>
+                        <TimePicker
+                          id="night-start"
+                          disabled={loading}
+                          value={formData.nightStart}
+                          onChange={(value) => handleInputChange('nightStart', value)}
+                        />
+                        {allErrors.nightStart && (
+                          <p className="text-red-500 text-xs">{allErrors.nightStart}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="night-end">End Time</Label>
+                        <TimePicker
+                          id="night-end"
+                          disabled={loading}
+                          value={formData.nightEnd}
+                          onChange={(value) => handleInputChange('nightEnd', value)}
+                        />
+                        {allErrors.nightEnd && (
+                          <p className="text-red-500 text-xs">{allErrors.nightEnd}</p>
+                        )}
+                        {allErrors.nightShift && (
+                          <p className="text-red-500 text-xs">{allErrors.nightShift}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show message if no shift is selected */}
+                {!selectedShift && (
+                  <div className="p-4 border border-dashed rounded-lg bg-muted/20 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Please select a shift schedule above to configure shift times.
+                    </p>
+                  </div>
+                )}
+
+                {/* Generic schedule settings (applies to all shifts) */}
+                <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/30">
+                  <div className="space-y-2">
+                    <Label htmlFor="grace-period">Grace Period (Minutes)</Label>
+                    <Input
+                      id="grace-period"
+                      type="number"
+                      disabled={loading}
+                      value={formData.gracePeriod}
+                      onChange={(e) => handleInputChange('gracePeriod', e.target.value)}
+                      placeholder="15"
+                    />
+                    {allErrors.gracePeriod && (
+                      <p className="text-red-500 text-xs">{allErrors.gracePeriod}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="overtime-threshold">Overtime Threshold (Minutes)</Label>
+                    <Input
+                      id="overtime-threshold"
+                      type="number"
+                      disabled={loading}
+                      value={formData.overtimeThreshold}
+                      onChange={(e) => handleInputChange('overtimeThreshold', e.target.value)}
+                      placeholder="30"
+                    />
+                    {allErrors.overtimeThreshold && (
+                      <p className="text-red-500 text-xs">{allErrors.overtimeThreshold}</p>
+                    )}
+                  </div>
                 </div>
               </div>
+
             </div>
 
             {/* Employee Selection */}
@@ -458,6 +676,42 @@ export function AddScheduleModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Overlap Error Modal */}
+      <Dialog open={showOverlapModal} onOpenChange={setShowOverlapModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-red-600 dark:text-red-400">
+              Schedule Overlap Detected
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground mt-2">
+              {overlapErrorMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setShowOverlapModal(false);
+                setOverlapErrorMessage('');
+              }}
+            >
+              Close
+            </Button>
+            <Button 
+              type="button"
+              onClick={() => {
+                setShowOverlapModal(false);
+                setOverlapErrorMessage('');
+              }}
+              className="bg-primary hover:bg-primary/90"
+            >
+              Understood
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

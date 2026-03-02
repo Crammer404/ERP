@@ -36,6 +36,7 @@ import { UserAvatarStack } from '@/components/ui/user-avatar-stack';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Badge } from '@/components/ui/badge';
 
 // Schedule data type
 interface Schedule {
@@ -352,7 +353,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center">Branch</TableHead>
                     <TableHead className="text-center">Schedule</TableHead>
                     <TableHead className="text-center">Grace Period</TableHead>
-                    <TableHead className="text-center">Overtime Thr</TableHead>
+                    <TableHead className="text-center">Overtime Threshold</TableHead>
                     <TableHead>Employees Assigned</TableHead>
                     <TableHead className="w-[100px] text-center">Actions</TableHead>
                   </TableRow>
@@ -365,25 +366,74 @@ export default function SchedulePage() {
                       </TableCell>
                     </TableRow>
                   ) : paginatedSchedules.length > 0 ? (
-                    paginatedSchedules.map((schedule) => (
+                    paginatedSchedules.map((schedule) => {
+                      const hasMorning = !!schedule.morningShift;
+                      const hasAfternoon = !!schedule.afternoonShift;
+                      const hasNight = !!schedule.nightShift;
+                      const activeShiftCount =
+                        (hasMorning ? 1 : 0) +
+                        (hasAfternoon ? 1 : 0) +
+                        (hasNight ? 1 : 0);
+                      const isSingleShift = activeShiftCount === 1;
+
+                      return (
                       <TableRow key={schedule.id}>
                         <TableCell className="font-medium text-center">{schedule.name}</TableCell>
-                        <TableCell className="text-center">{schedule.branch}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge 
+                            className="bg-primary/10 text-primary border-primary/20 rounded-md px-2 py-0.5 text-[10px] font-medium hover:bg-primary/10"
+                          >
+                            {schedule.branch}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-center">
                           <div className="space-y-1 text-sm">
                             {schedule.morningShift && (
                               <div>
-                                <span className="text-yellow-400 dark:text-yellow-300 font-medium">Morning Shift</span> - {schedule.morningShift}
+                                {isSingleShift ? (
+                                  <span className="text-yellow-400 dark:text-yellow-300 font-medium">
+                                    {schedule.morningShift}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="text-yellow-400 dark:text-yellow-300 font-medium">
+                                      Morning
+                                    </span>{' '}
+                                    - {schedule.morningShift}
+                                  </>
+                                )}
                               </div>
                             )}
                             {schedule.afternoonShift && (
                               <div>
-                                <span className="text-orange-400 dark:text-orange-300 font-medium">Afternoon Shift</span> - {schedule.afternoonShift}
+                                {isSingleShift ? (
+                                  <span className="text-orange-400 dark:text-orange-300 font-medium">
+                                    {schedule.afternoonShift}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="text-orange-400 dark:text-orange-300 font-medium">
+                                      Afternoon
+                                    </span>{' '}
+                                    - {schedule.afternoonShift}
+                                  </>
+                                )}
                               </div>
                             )}
                             {schedule.nightShift && (
                               <div>
-                                <span className="text-gray-500 dark:text-gray-400 font-medium">Night Shift</span> - {schedule.nightShift}
+                                {isSingleShift ? (
+                                  <span className="text-gray-500 dark:text-gray-400 font-medium">
+                                    {schedule.nightShift}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="text-gray-500 dark:text-gray-400 font-medium">
+                                      Night
+                                    </span>{' '}
+                                    - {schedule.nightShift}
+                                  </>
+                                )}
                               </div>
                             )}
                             {!schedule.morningShift && !schedule.afternoonShift && !schedule.nightShift && (
@@ -427,7 +477,7 @@ export default function SchedulePage() {
                           </DropdownMenu>
                         </TableCell>
                       </TableRow>
-                    ))
+                    )})
                   ) : (
                     <TableRow>
                       <TableCell colSpan={7} className="p-0">

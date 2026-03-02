@@ -228,6 +228,32 @@ export default function PositionsPage() {
     fetchPositions(currentPage, itemsPerPage, searchTerm);
   }, [currentPage, itemsPerPage, searchTerm]);
 
+  // Listen for branch changes
+  useEffect(() => {
+    const handleBranchChange = () => {
+      console.log('Branch changed, refreshing positions data...');
+      setCurrentPage(1);
+      clearCache();
+      fetchPositions(1, itemsPerPage, searchTerm, true);
+    };
+
+    window.addEventListener('branchChanged', handleBranchChange);
+    
+    // Also listen to storage events for cross-tab branch changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'branch_context') {
+        handleBranchChange();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('branchChanged', handleBranchChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [itemsPerPage, searchTerm]);
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };

@@ -23,6 +23,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -39,11 +46,13 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { Download, Smartphone, X, Clock, RefreshCw } from 'lucide-react';
-import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem } from '@/services/hrms/dtr';
+import { Download, Smartphone, X, Clock, RefreshCw, Edit, Plus, MoreVertical, Trash2 } from 'lucide-react';
+import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog } from '@/services/hrms/dtr';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useAuth } from '@/components/providers/auth-provider';
+import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
 
 // Data type used by the table
 interface TimeClockLog {
@@ -60,6 +69,9 @@ interface TimeClockLog {
   late: string;
   overtime: string;
   totalWorkHours: string;
+  // Raw clock times for editing
+  clockInRaw: string | null;
+  clockOutRaw: string | null;
 }
 
 export default function TimeClockPage() {
@@ -81,6 +93,17 @@ export default function TimeClockPage() {
   const [isModalShaking, setIsModalShaking] = useState(false);
   const scannerRef = useRef<any>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Manual log modal state
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [logModalMode, setLogModalMode] = useState<'add' | 'edit'>('add');
+  const [activeLog, setActiveLog] = useState<ManualLogData | null>(null);
+  
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [logToDelete, setLogToDelete] = useState<TimeClockLog | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Compute earliest log date (for export range limits)
   const earliestLogDate: Date | undefined = (() => {
@@ -209,6 +232,8 @@ export default function TimeClockPage() {
       overtime: `${item.overtime_minutes ?? 0} min`,
       totalWorkHours: formatHoursAndMinutes(item.total_work_hours),
       late: formatLateMinutes(item.late_minutes, item.grace_late_minutes),
+      clockInRaw: item.clock_in,
+      clockOutRaw: item.clock_out,
     };
   };
 
@@ -515,6 +540,18 @@ export default function TimeClockPage() {
     setClocking(true);
     try {
       const res = await clockApi(uid);
+      
+      // Check the status field in the response, not just HTTP success
+      if (res?.status === 'error') {
+        const msg = res?.message || 'Clock action failed';
+        toast({
+          title: 'Error',
+          description: msg,
+          variant: 'destructive',
+        });
+        return;
+      }
+      
       const msg = res?.message || 'Clock action completed';
       toast({
         title: 'Success',
@@ -544,6 +581,76 @@ export default function TimeClockPage() {
     // Trigger shake animation
     setIsModalShaking(true);
     setTimeout(() => setIsModalShaking(false), 600);
+  };
+
+  // Check if user can manage logs
+  const canManageLogs = (): boolean => {
+    if (!user?.role_name) return false;
+    const roleName = user.role_name.toLowerCase();
+    return roleName === 'super admin' || roleName === 'system admin' || roleName === 'tenant manager';
+  };
+
+  // Open modal for add
+  const handleAddLog = () => {
+    setLogModalMode('add');
+    setActiveLog(null);
+    setIsLogModalOpen(true);
+  };
+
+  // Open modal for edit
+  const handleEditLog = (log: TimeClockLog) => {
+    const manualLog: ManualLogData = {
+      id: log.id,
+      dateRaw: log.dateRaw,
+      employee: log.employee,
+      branch: log.branch,
+      scheduleName: log.scheduleName,
+      shift: log.shift,
+      clockInRaw: log.clockInRaw,
+      clockOutRaw: log.clockOutRaw,
+    };
+
+    setLogModalMode('edit');
+    setActiveLog(manualLog);
+    setIsLogModalOpen(true);
+  };
+
+  // Handle delete log
+  const handleDeleteLog = (log: TimeClockLog) => {
+    setLogToDelete(log);
+    setDeleteConfirmOpen(true);
+  };
+
+  // Confirm delete
+  const confirmDelete = async () => {
+    if (!logToDelete) return;
+
+    setDeleting(true);
+    try {
+      const response = await deleteManualLog(logToDelete.id);
+      
+      if (response.status === 'success') {
+        toast({
+          title: 'Success',
+          description: response.message || 'Time log deleted successfully',
+        });
+        
+        setDeleteConfirmOpen(false);
+        setLogToDelete(null);
+        fetchLogs();
+      } else {
+        throw new Error(response.message || 'Failed to delete time log');
+      }
+    } catch (error: any) {
+      console.error('Error deleting time log:', error);
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || error.message || 'Failed to delete time log',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -619,6 +726,16 @@ export default function TimeClockPage() {
         <CardHeader>
           {/* Filters */}
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4">
+            {canManageLogs() && (
+              <Button 
+                variant="default" 
+                className="bg-blue-600 hover:bg-blue-700 shrink-0"
+                onClick={handleAddLog}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Manual Log
+              </Button>
+            )}
             <Button 
               variant="default" 
               className="bg-green-600 hover:bg-green-700 shrink-0"
@@ -663,66 +780,89 @@ export default function TimeClockPage() {
 
         <CardContent>
           {/* Table */}
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>Schedule Name</TableHead>
-                  <TableHead>Shift</TableHead>
-                  <TableHead>Clock In</TableHead>
-                  <TableHead>Clock Out</TableHead>
-                  <TableHead>Late</TableHead>
-                  <TableHead>Overtime</TableHead>
-                  <TableHead>Total Work Hours</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
-                      <Loader size="sm" />
-                    </TableCell>
-                  </TableRow>
-                ) : paginatedLogs.length > 0 ? (
-                  paginatedLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>{log.date}</TableCell>
-                      <TableCell className="font-medium">{log.employee}</TableCell>
-                      <TableCell>{log.branch}</TableCell>
-                      <TableCell>{log.scheduleName}</TableCell>
-                      <TableCell>{log.shift}</TableCell>
-                      <TableCell>{log.clockIn}</TableCell>
-                      <TableCell>{log.clockOut}</TableCell>
-                      <TableCell>{log.late}</TableCell>
-                      <TableCell>{log.overtime}</TableCell>
-                      <TableCell>{log.totalWorkHours}</TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={10} className="p-0">
-                      {hasDateFilter ? (
-                        <EmptyState
-                          icon={Clock}
-                          title="No data found"
-                          description="No time clock records exist within the selected date range. Try a different range."
-                        />
-                      ) : (
-                        <EmptyState
-                          icon={Clock}
-                          title="No time clock records found"
-                          description="There are no clock-in/clock-out records for this branch yet. Employees will appear here once they clock in."
-                        />
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+           <div className="rounded-md border">
+             <Table>
+               <TableHeader>
+                 <TableRow>
+                   <TableHead>Date</TableHead>
+                   <TableHead>Employee</TableHead>
+                   <TableHead>Branch</TableHead>
+                   <TableHead>Shift</TableHead>
+                   <TableHead>Clock In</TableHead>
+                   <TableHead>Clock Out</TableHead>
+                   <TableHead>Late</TableHead>
+                   <TableHead>Overtime</TableHead>
+                   <TableHead>Total Work Hours</TableHead>
+                   {canManageLogs() && <TableHead>Action</TableHead>}
+                 </TableRow>
+               </TableHeader>
+               <TableBody>
+                 {loading ? (
+                   <TableRow>
+                     <TableCell colSpan={canManageLogs() ? 10 : 9} className="text-center py-8">
+                       <Loader size="sm" />
+                     </TableCell>
+                   </TableRow>
+                 ) : paginatedLogs.length > 0 ? (
+                   paginatedLogs.map((log) => (
+                     <TableRow key={log.id}>
+                       <TableCell>{log.date}</TableCell>
+                       <TableCell className="font-medium">{log.employee}</TableCell>
+                       <TableCell>{log.branch}</TableCell>
+                       <TableCell>{log.shift}</TableCell>
+                       <TableCell>{log.clockIn}</TableCell>
+                       <TableCell>{log.clockOut}</TableCell>
+                       <TableCell>{log.late}</TableCell>
+                       <TableCell>{log.overtime}</TableCell>
+                       <TableCell>{log.totalWorkHours}</TableCell>
+                       {canManageLogs() && (
+                         <TableCell>
+                           <DropdownMenu>
+                             <DropdownMenuTrigger asChild>
+                               <Button variant="ghost" size="icon" className="h-8 w-8">
+                                 <MoreVertical className="h-4 w-4" />
+                               </Button>
+                             </DropdownMenuTrigger>
+                             <DropdownMenuContent align="end">
+                               <DropdownMenuItem onClick={() => handleEditLog(log)}>
+                                 <Edit className="mr-2 h-4 w-4" />
+                                 Edit
+                               </DropdownMenuItem>
+                               <DropdownMenuItem 
+                                 onClick={() => handleDeleteLog(log)}
+                                 className="text-destructive"
+                               >
+                                 <Trash2 className="mr-2 h-4 w-4" />
+                                 Delete
+                               </DropdownMenuItem>
+                             </DropdownMenuContent>
+                           </DropdownMenu>
+                         </TableCell>
+                       )}
+                     </TableRow>
+                   ))
+                 ) : (
+                   <TableRow>
+                     <TableCell colSpan={canManageLogs() ? 10 : 9} className="p-0">
+                       {hasDateFilter ? (
+                         <EmptyState
+                           icon={Clock}
+                           title="No data found"
+                           description="No time clock records exist within the selected date range. Try a different range."
+                         />
+                       ) : (
+                         <EmptyState
+                           icon={Clock}
+                           title="No time clock records found"
+                           description="There are no clock-in/clock-out records for this branch yet. Employees will appear here once they clock in."
+                         />
+                       )}
+                     </TableCell>
+                   </TableRow>
+                 )}
+               </TableBody>
+             </Table>
+           </div>
 
           {/* Pagination */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
@@ -858,6 +998,34 @@ export default function TimeClockPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Manual Log Modal */}
+      {canManageLogs() && (
+        <ManualLogModal
+          isOpen={isLogModalOpen}
+          mode={logModalMode}
+          log={activeLog}
+          onClose={() => setIsLogModalOpen(false)}
+          onSuccess={async () => {
+            await fetchLogs();
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {canManageLogs() && (
+        <ConfirmDialog
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+          title="Delete Time Log"
+          description={`Are you sure you want to delete the time log for ${logToDelete?.employee} on ${logToDelete?.date}? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={confirmDelete}
+          variant="destructive"
+          loading={deleting}
+        />
+      )}
     </div>
   );
 }

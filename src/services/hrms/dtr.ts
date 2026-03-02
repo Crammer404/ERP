@@ -46,8 +46,29 @@ export interface DtrLogResponseItem {
   updated_at?: string;
 }
 
+// User schedule details for manual DTR
+export interface UserScheduleShifts {
+  morning: { start: string | null; end: string | null };
+  afternoon: { start: string | null; end: string | null };
+  night: { start: string | null; end: string | null };
+}
+
+export interface UserScheduleDetails {
+  schedule_name: string | null;
+  branch_id: number | null;
+  grace_period: number;
+  overtime: number;
+  shifts: UserScheduleShifts;
+}
+
 export const getTimeClockLogs = async (): Promise<DtrLogResponseItem[]> => {
   return await api("/hrms/dtr/logs", { method: "GET" });
+};
+
+export const getUserScheduleDetails = async (
+  userId: number,
+): Promise<{ success: boolean; data?: UserScheduleDetails; message?: string }> => {
+  return await api(`/hrms/dtr/user-schedule/${userId}`, { method: "GET" });
 };
 
 export const getAttendanceLogs = async (): Promise<DtrLogResponseItem[]> => {
@@ -279,5 +300,37 @@ export const rejectOvertime = async (id: number, notes: string): Promise<{ messa
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ notes }),
+  });
+};
+
+// Manual log management interfaces
+export interface ManualDtrPayload {
+  user_id: number;
+  date: string; // YYYY-MM-DD
+  clock_in: string; // ISO datetime string
+  clock_out: string; // ISO datetime string
+}
+
+// Manual log management functions
+export const createManualLog = async (data: ManualDtrPayload): Promise<{ status: string; message: string; data?: DtrLogResponseItem }> => {
+  return await api("/hrms/dtr/logs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+};
+
+export const updateManualLog = async (id: number, data: Partial<ManualDtrPayload>): Promise<{ status: string; message: string; data?: DtrLogResponseItem }> => {
+  return await api(`/hrms/dtr/logs/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteManualLog = async (id: number): Promise<{ status: string; message: string }> => {
+  return await api(`/hrms/dtr/logs/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
   });
 };
