@@ -18,8 +18,8 @@ export { branchService } from '../app/management/branches/services/branch-servic
 export type { Branch, CreateBranchRequest, UpdateBranchRequest } from '../app/management/branches/services/branch-service';
 
 // Role service
-export { roleService } from '../app/management/roles/services/roleService';
-export type { Role, CreateRoleRequest, UpdateRoleRequest } from '../app/management/roles/services/roleService';
+export { roleService } from '../app/management/roles/services/role-service';
+export type { Role, CreateRoleRequest, UpdateRoleRequest } from '../app/management/roles/services/role-service';
 
 // User Info service
 export { userInfoService } from './user-info/userInfoService';

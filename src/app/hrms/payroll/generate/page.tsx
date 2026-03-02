@@ -29,13 +29,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreVertical, Printer, Trash2, Search, RefreshCw } from 'lucide-react';
 import GeneratePayrollDialog from './component/generate-payroll';
-import { payrollService, PayrollReport as ServicePayrollReport } from '@/services/payroll/payrollService';
+import { generateService, type PayrollReport as ServicePayrollReport } from './services/generate-service';
 import { useToast } from '@/hooks/use-toast';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { Loader } from '@/components/ui/loader';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
 import { PayslipTemplate, type PayslipData as PayslipTemplateData } from '@/components/forms/payslip/payslip-template';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 // Frontend interface matching the table display
 interface PayrollReport {
@@ -96,6 +97,7 @@ export default function GeneratePayrollPage() {
   const [payslipsToPrint, setPayslipsToPrint] = useState<PayslipTemplateData[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
   const printRef = useRef<HTMLDivElement | null>(null);
+  const { defaultCurrency } = useCurrency();
   
   // Ensure we never use dummy data - always start empty
   if (reports.length > 0 && !loading && reports.some(r => r.dateRange.includes('2025-02-31'))) {
@@ -110,7 +112,7 @@ export default function GeneratePayrollPage() {
       console.log('🔍 Fetching payroll reports from API (REAL DATABASE DATA)...');
       console.log('API Endpoint:', '/hrms/payroll/reports/data');
       
-      const data = await payrollService.getReports();
+      const data = await generateService.getReports();
       console.log('✅ Raw API response from database:', data);
       console.log('📊 Number of records:', Array.isArray(data) ? data.length : 'Invalid format');
       
@@ -180,7 +182,8 @@ export default function GeneratePayrollPage() {
   );
 
   const formatCurrency = (amount: number) => {
-    return `₱ ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const symbol = defaultCurrency?.symbol || '₱';
+    return `${symbol} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const handleSearchChange = (value: string) => {
@@ -208,7 +211,7 @@ export default function GeneratePayrollPage() {
       setIsPrinting(false);
       setPayslipsToPrint([]);
 
-      const response = await payrollService.viewPayslips(report.id);
+      const response = await generateService.viewPayslips(report.id);
       const companyName = response.company?.name || '';
       const logoUrl = response.company?.logo || undefined;
 
@@ -258,7 +261,7 @@ export default function GeneratePayrollPage() {
           totalEarnings,
           totalDeductions,
           netPay: p.net || totalEarnings - totalDeductions,
-          currencySymbol: '₱',
+          currencySymbol: defaultCurrency?.symbol || '₱',
           primaryColor: '#111827',
           showLogo: !!logoUrl,
         };
@@ -302,7 +305,7 @@ export default function GeneratePayrollPage() {
     setDeleteErrors({});
 
     try {
-      await payrollService.deleteReport(deleteTarget.id);
+      await generateService.deleteReport(deleteTarget.id);
       toast({
         title: 'Success',
         description: 'Payroll report deleted successfully',
@@ -362,7 +365,7 @@ export default function GeneratePayrollPage() {
       console.log('🚀 Generating payroll with payload:', generatePayload);
       console.log('📡 API Endpoint:', '/hrms/payroll/reports/generate');
 
-      const response = await payrollService.generatePayroll(generatePayload);
+      const response = await generateService.generatePayroll(generatePayload);
       console.log('✅ Payroll generation response:', response);
 
       const successMessage = 'message' in response ? response.message : 'Payroll generated successfully';

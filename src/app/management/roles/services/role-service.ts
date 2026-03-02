@@ -1,12 +1,25 @@
 import { api } from '../../../../services/api';
 import { API_ENDPOINTS } from '../../../../config/api.config';
 
+export interface RoleUserBranch {
+  id: number;
+  name: string;
+}
+
+export interface RoleUser {
+  id: number;
+  name: string;
+  email?: string;
+  branches?: RoleUserBranch[];
+}
+
 export interface Role {
   id: number;
   name: string;
   description: string;
   created_at: string;
   updated_at: string;
+  users?: RoleUser[];
 }
 
 export interface CreateRoleRequest {
@@ -22,27 +35,24 @@ export interface UpdateRoleRequest {
 }
 
 export const roleService = {
-  // Get all roles
   async getAll(): Promise<Role[]> {
     const response = await api(API_ENDPOINTS.ROLES.BASE);
 
     if (Array.isArray(response)) {
-      return response; // already an array
+      return response;
     }
 
     if (response && Array.isArray(response.data)) {
-      return response.data; // Laravel Resource Collection
+      return response.data;
     }
 
     return [];
   },
 
-  // Get role by ID
   async getById(id: number): Promise<Role> {
     return await api(`${API_ENDPOINTS.ROLES.BASE}/${id}`);
   },
 
-  // Create new role
   async create(roleData: CreateRoleRequest): Promise<Role> {
     return await api(API_ENDPOINTS.ROLES.CREATE, {
       method: 'POST',
@@ -50,16 +60,13 @@ export const roleService = {
     });
   },
 
-  // Update role
   async update(id: number, roleData: UpdateRoleRequest): Promise<Role> {
     return await api(`${API_ENDPOINTS.ROLES.BASE}/${id}`, {
-      method: 'PATCH', // <-- use PATCH
+      method: 'PATCH',
       body: JSON.stringify(roleData),
     });
   },
 
-
-  // Delete role
   async delete(id: number): Promise<void> {
     return await api(`${API_ENDPOINTS.ROLES.BASE}/${id}`, {
       method: 'DELETE',

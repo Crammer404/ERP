@@ -6,6 +6,7 @@ export interface UserInfo {
   first_name: string;
   middle_name?: string;
   last_name: string;
+  payroll_positions_id?: number | string;
   address?: Partial<Address>;
   profile_pic?: string;
 }
@@ -53,6 +54,7 @@ export interface UpdateUserRequest {
     first_name?: string;
     middle_name?: string;
     last_name?: string;
+    payroll_positions_id?: number | string;
     address?: Partial<Address>;
   };
 }

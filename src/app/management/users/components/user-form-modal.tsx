@@ -20,7 +20,7 @@ import {
 import { Eye, EyeOff } from "lucide-react";
 import { PhilippineAddressForm } from "@/components/forms/address/philippine-address-form";
 import type { AddressData } from "@/services/address/psgc.service";
-import psgcService from "@/services/address/psgc.service";
+import { positionService, type PayrollPosition } from "@/app/hrms/payroll/positions/services/position-service";
 
 interface Role {
   id: number;
@@ -43,6 +43,7 @@ interface UserInfo {
   first_name: string;
   last_name: string;
   middle_name: string;
+  payroll_positions_id: string;
   address: Address;
 }
 
@@ -93,6 +94,7 @@ const getDefaultFormData = (): FormData => ({
     first_name: '',
     last_name: '',
     middle_name: '',
+    payroll_positions_id: '',
     address: {
       country: 'Philippines',
       postal_code: '',
@@ -126,12 +128,13 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [positions, setPositions] = useState<PayrollPosition[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState(false);
   const activeBranchLabel = useMemo(() => {
     if (activeBranchName) return activeBranchName;
     return 'No active branch selected';
   }, [activeBranchName]);
 
-  // Reset form when modal opens/closes or when initialData changes
   useEffect(() => {
     let cancelled = false;
 
@@ -177,7 +180,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           const address = mergedForm.user_info?.address;
           const defaultAddress = getDefaultAddressData();
 
-          // If no address data, set defaults
           if (!address || (typeof address === 'object' && Object.keys(address).length === 0)) {
             if (!cancelled) {
               setAddressData(defaultAddress);
@@ -185,7 +187,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             return;
           }
 
-          // Extract address fields, handling both string and object formats
           const street = address.street || '';
           const blockLot = address.block_lot || '';
           const country = address.country || 'Philippines';
@@ -203,16 +204,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             fullAddress: address,
           });
 
-          // Set address data immediately with names from DB
-          // Don't call PSGC API here - let the form component load it when user clicks dropdown
           if (!cancelled) {
             const addressDataWithNames = {
               blockLot,
               street,
               country,
               zipcode,
-              // Create temporary objects with names from DB
-              // PSGC API will be called when user interacts with dropdowns
               region: regionName && regionName.trim()
                 ? { name: regionName.trim(), code: regionName.trim() } as any
                 : null,
@@ -241,7 +238,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         await hydrateAddress();
       } else {
         if (!cancelled) {
-          setFormData(baseForm);
+          const employeeRole = roles.find((role) => role.name === 'Employee');
+          const defaultForm = {
+            ...baseForm,
+            role: employeeRole ? employeeRole.id.toString() : baseForm.role,
+          };
+          setFormData(defaultForm);
           setAddressData(getDefaultAddressData());
         }
       }
@@ -259,7 +261,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, mode, initialData]);
+  }, [isOpen, mode, initialData, roles]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -271,9 +273,44 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     }));
   }, [activeBranchId, isOpen, mode]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+
+    const loadPositions = async () => {
+      setPositionsLoading(true);
+      try {
+        const allPositions = await positionService.getAll();
+        const filteredPositions = allPositions
+          .filter((position) => !activeBranchId || position.branch_id === activeBranchId)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        if (!cancelled) {
+          setPositions(filteredPositions);
+        }
+      } catch (error) {
+        console.error('Failed to load payroll positions:', error);
+        if (!cancelled) {
+          setPositions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setPositionsLoading(false);
+        }
+      }
+    };
+
+    void loadPositions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, activeBranchId]);
+
   const handleInputChange = (field: string, value: string) => {
-    // Clear error for this field when user starts typing
     if (onClearError) {
+      onClearError(field);
       const errorKey = field.includes('.') ? field.split('.').pop() : field;
       if (errorKey) {
         onClearError(errorKey);
@@ -284,15 +321,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     setFormData(prev => {
       const newData = { ...prev };
       let current: any = newData;
-      
-      // Navigate to the nested property
       for (let i = 0; i < keys.length - 1; i++) {
         current = current[keys[i]];
       }
-      
-      // Set the final value
       current[keys[keys.length - 1]] = value;
-      
       return newData;
     });
   };
@@ -385,6 +417,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     : (loading ? 'Updating...' : 'Update User');
 
   const canSubmit = !loading && roles.length > 0 && (!!activeBranchId);
+  const positionError = errors.payroll_positions_id || errors['user_info.payroll_positions_id'];
 
   const addressErrors = useMemo(() => {
     const relevantKeys = new Set([
@@ -480,19 +513,46 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             />
           </div>
 
-          {/* Email + Role */}
+          {/* Email */}
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              disabled={loading}
+              value={formData.email}
+              onChange={(e) => handleInputChange('email', e.target.value)}
+              placeholder="Enter email address"
+            />
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+          </div>
+
+          {/* Position + Role */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                disabled={loading}
-                value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
-                placeholder="Enter email address"
-              />
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+              <Label htmlFor="payroll_positions_id">Position</Label>
+              <Select
+                value={formData.user_info.payroll_positions_id}
+                onValueChange={(value) => handleInputChange('user_info.payroll_positions_id', value)}
+                disabled={loading || positionsLoading}
+              >
+                <SelectTrigger id="payroll_positions_id">
+                  <SelectValue placeholder={positionsLoading ? 'Loading positions...' : 'Select position'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {!positionsLoading && positions.length === 0 && (
+                    <SelectItem value="__no_position__" disabled>
+                      No positions found for this branch
+                    </SelectItem>
+                  )}
+                  {positions.map((position) => (
+                    <SelectItem key={position.id} value={position.id.toString()}>
+                      {position.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {positionError && <p className="text-red-500 text-xs">{positionError}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">Role</Label>

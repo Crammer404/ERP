@@ -551,16 +551,6 @@ export default function BranchPage() {
 
   return (
     <div className="container mx-auto py-6 px-4">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <Store className="h-10 w-10 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold font-heading">Company Branches</h1>
-            <p className="text-sm text-muted-foreground">Manage and oversee company branches.</p>
-          </div>
-        </div>
-      </div>
-
       <Card>
         <CardContent className="p-6">
           {/* Action Bar */}

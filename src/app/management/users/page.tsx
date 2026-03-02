@@ -21,11 +21,12 @@ import { FullPageAccessDenied } from '@/components/error/error-page';
 import { Loader } from '@/components/ui/loader';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { UserFormModal } from '@/app/management/users/components/UserFormModal';
+import { UserFormModal } from '@/app/management/users/components/user-form-modal';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FlipCard } from '@/components/ui/flip-card';
 import html2canvas from 'html2canvas';
+import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
 
 const getRoleName = (role: string | number | Role | null): string => {
   if (!role) return 'N/A';
@@ -72,6 +73,7 @@ export default function UserPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [positionsById, setPositionsById] = useState<Record<number, string>>({});
   // Consolidated modal state
   const [modalState, setModalState] = useState<{
     type: 'add' | 'edit' | 'delete' | null;
@@ -176,6 +178,7 @@ export default function UserPage() {
       first_name: '',
       middle_name: '',
       last_name: '',
+      payroll_positions_id: '',
       address: {
         street: '',
         city: '',
@@ -275,6 +278,26 @@ export default function UserPage() {
     }
   };
 
+  const fetchPositions = async (branchId?: number | null) => {
+    try {
+      const positions = await positionService.getAll();
+      const filteredPositions = positions.filter((position: PayrollPosition) => {
+        if (!branchId) return true;
+        return position.branch_id === branchId;
+      });
+
+      const mappedPositions = filteredPositions.reduce((acc, position) => {
+        acc[position.id] = position.name;
+        return acc;
+      }, {} as Record<number, string>);
+
+      setPositionsById(mappedPositions);
+    } catch (error) {
+      console.error('Failed to fetch payroll positions:', error);
+      setPositionsById({});
+    }
+  };
+
   useEffect(() => {
     const currentBranch = tenantContextService.getStoredBranchContext();
     setActiveBranch(currentBranch);
@@ -282,9 +305,11 @@ export default function UserPage() {
     // Only fetch users if branch is selected
     if (currentBranch) {
       fetchUsers(currentPage, itemsPerPage, searchTerm);
+      fetchPositions(currentBranch.id);
     } else {
       // Clear users if no branch selected
       setUsers([]);
+      setPositionsById({});
       setPagination({
         current_page: 1,
         last_page: 1,
@@ -336,9 +361,11 @@ export default function UserPage() {
       // Only fetch if branch is selected
       if (currentBranch) {
         fetchUsers(1, itemsPerPage, searchTerm);
+        fetchPositions(currentBranch.id);
       } else {
         // Clear users if no branch selected
         setUsers([]);
+        setPositionsById({});
         setPagination({
           current_page: 1,
           last_page: 1,
@@ -379,6 +406,9 @@ export default function UserPage() {
     // Clear cache and reset users state
     setUserCache(new Map());
     setUsers([]);
+    if (activeBranch?.id) {
+      fetchPositions(activeBranch.id);
+    }
     // Force fresh fetch by bypassing cache
     setTimeout(() => {
       fetchUsers(currentPage, itemsPerPage, searchTerm, true);
@@ -481,6 +511,9 @@ export default function UserPage() {
     setLoading(true);
     setUsers([]);
     setUserCache(new Map());
+    if (activeBranch?.id) {
+      fetchPositions(activeBranch.id);
+    }
     
     try {
       const response = await userService.getAll(currentPage, itemsPerPage, searchTerm);
@@ -515,6 +548,7 @@ export default function UserPage() {
         first_name: '',
         middle_name: '',
         last_name: '',
+        payroll_positions_id: '',
         address: {
           street: '',
           city: '',
@@ -572,6 +606,7 @@ export default function UserPage() {
     if (!data.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(data.email)) newErrors.email = "Invalid email format";
 
+    if (!data.user_info.payroll_positions_id) newErrors.payroll_positions_id = "Position is required";
     if (!data.role) newErrors.role = "Role is required";
     if (!data.branch_ids || data.branch_ids.length === 0) newErrors.branch_ids = "Active branch is required";
 
@@ -615,6 +650,11 @@ export default function UserPage() {
       userInfo.middle_name = data.user_info.middle_name.trim();
     }
 
+    const payrollPositionId = Number(data.user_info.payroll_positions_id);
+    if (!Number.isNaN(payrollPositionId) && payrollPositionId > 0) {
+      userInfo.payroll_positions_id = payrollPositionId;
+    }
+
     const cleanedAddress = sanitizeAddressPayload(data.user_info.address);
     if (Object.keys(cleanedAddress).length > 0) {
       userInfo.address = cleanedAddress;
@@ -650,6 +690,9 @@ export default function UserPage() {
           first_name: fullUser.user_info?.first_name || '',
           middle_name: fullUser.user_info?.middle_name || '',
           last_name: fullUser.user_info?.last_name || '',
+          payroll_positions_id: fullUser.user_info?.payroll_positions_id
+            ? fullUser.user_info.payroll_positions_id.toString()
+            : '',
           address: {
             ...(() => {
               const userAddress = fullUser.user_info?.address as Record<string, any> | undefined;
@@ -805,16 +848,6 @@ export default function UserPage() {
 
   return (
     <div className="container mx-auto py-6 px-4">
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-          <UserCog className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold font-headline">Employees</h1>
-          <p className="text-sm text-muted-foreground">View, add, edit, and manage your employees.</p>
-        </div>
-      </div>
-
       <Card>
         <CardContent className="p-6">
           {/* Action Bar */}
@@ -867,7 +900,7 @@ export default function UserPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Branch</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
+                    <TableHead>Position</TableHead>
                     {(canUpdate || canDelete) && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
@@ -886,13 +919,11 @@ export default function UserPage() {
                       </TableCell>
                       <TableCell>{user.email}</TableCell>
                       <TableCell>
-                        {user.role 
-                          ? (typeof user.role === "object" 
-                            ? user.role.name 
-                            : typeof user.role === "string"
-                            ? user.role
-                            : `Role #${user.role}`)
-                          : "—"}
+                        {(() => {
+                          const positionId = Number(user.user_info?.payroll_positions_id);
+                          if (!Number.isFinite(positionId) || positionId <= 0) return "-";
+                          return positionsById[positionId] || "-";
+                        })()}
                       </TableCell>
                       {(canUpdate || canDelete) && (
                         <TableCell>

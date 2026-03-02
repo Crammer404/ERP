@@ -27,6 +27,7 @@ import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { FileText } from 'lucide-react';
 import { type CheckedState } from '@radix-ui/react-checkbox';
 import { userService, UserEntity } from '@/app/management/users/services/userService';
+import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
 import { Loader } from '@/components/ui/loader';
 
 export interface GeneratePayrollUser {
@@ -94,14 +95,18 @@ const GeneratePayrollDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    if (users) return; // external users provided
+    if (users) return;
 
     const fetchUsers = async () => {
       try {
         setLoadingUsers(true);
         setUsersError(null);
-        // Fetch first 200 users for the branch (API filters by branch_context)
         const { users: fetchedUsers } = await userService.getAll(1, 200);
+        const positions: PayrollPosition[] = await positionService.getAll();
+        const positionsById = positions.reduce<Record<number, string>>((acc, position) => {
+          acc[position.id] = position.name;
+          return acc;
+        }, {});
         const mapped: GeneratePayrollUser[] = (fetchedUsers || []).map(
           (user: UserEntity) => {
             const firstName = user.user_info?.first_name ?? '';
@@ -111,17 +116,16 @@ const GeneratePayrollDialog = ({
               user.name ||
               user.email;
 
-            let roleDisplay = '';
-            if (typeof user.role === 'object' && user.role) {
-              roleDisplay = (user.role as any).name ?? '';
-            } else if (typeof user.role === 'string') {
-              roleDisplay = user.role;
-            }
+            const positionId = Number(user.user_info?.payroll_positions_id);
+            const positionName =
+              Number.isFinite(positionId) && positionId > 0
+                ? positionsById[positionId] || ''
+                : '';
 
             return {
               id: user.id,
               name: displayName,
-              role: roleDisplay || undefined,
+              role: positionName || undefined,
             };
           }
         );
@@ -329,7 +333,7 @@ const GeneratePayrollDialog = ({
               {/* Right column - employee selection */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Label>Select Users</Label>
+                  <Label>Select Employees</Label>
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="select-all-users"

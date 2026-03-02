@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue 
+  SelectValue,
 } from '@/components/ui/select';
 import {
   Pagination,
@@ -33,13 +33,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useAuth } from '@/components/providers/auth-provider';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { User, MoreVertical, Eye, Download } from 'lucide-react';
+import { useAuth } from '@/components/providers/auth-provider';
+import { useToast } from '@/hooks/use-toast';
 import { EmptyStates } from '@/components/ui/empty-state';
-import { payrollService, PayslipData } from '@/services/payroll/payrollService';
 import { Loader } from '@/components/ui/loader';
+import { payslipService, type PayslipData as ApiPayslipData } from '@/app/hrms/payroll/payslip/services/payslip-services';
+import { PayslipTemplate, type PayslipData as PayslipTemplateData } from '@/components/forms/payslip/payslip-template';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
-// Frontend payslip record interface
 interface PayslipRecord {
   id: number;
   dateRange: string;
@@ -51,47 +59,77 @@ interface PayslipRecord {
   totalDeductions: number;
   grossPay: number;
   netPay: number;
-  payslipData?: PayslipData; // Store full data for view/download
+  payslipData: ApiPayslipData;
+}
+
+interface CompanyInfo {
+  name: string;
+  logo: string | null;
 }
 
 export default function PayslipPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
+
   const [currentTime, setCurrentTime] = useState(new Date());
   const [payslips, setPayslips] = useState<PayslipRecord[]>([]);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({ name: '', logo: null });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch payslips from API
+  const [selectedPayslip, setSelectedPayslip] = useState<PayslipRecord | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+
+  const [payslipToDownload, setPayslipToDownload] = useState<PayslipRecord | null>(null);
+  const downloadRef = useRef<HTMLDivElement | null>(null);
+  const { defaultCurrency } = useCurrency();
+  const [currentPosition, setCurrentPosition] = useState<string>('');
+
   useEffect(() => {
     const fetchPayslips = async () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await payrollService.getEmployeePayslips();
-        
-        // Map backend response to frontend format
+
+        const response = await payslipService.getEmployeePayslips();
+        setCompanyInfo({
+          name: response.company?.name || '',
+          logo: response.company?.logo || null,
+        });
+
         const mappedPayslips: PayslipRecord[] = response.payslips.map((payslip, index) => {
-          // Calculate total deductions from deductions array
-          const totalDeductions = payslip.deductions?.reduce((sum, d) => sum + (d.total || 0), 0) || 0;
-          
+          const otherDeductionsTotal =
+            payslip.deductions?.reduce((sum, deduction) => sum + (deduction.total || 0), 0) || 0;
+          const statutoryTotal =
+            (payslip.income_tax || 0) +
+            (payslip.sss || 0) +
+            (payslip.pagibig || 0) +
+            (payslip.philhealth || 0);
+
           return {
-            id: index + 1, // Use index as ID since backend doesn't return payslip ID
+            id: index + 1,
             dateRange: payslip.date_range,
             payrollType: payslip.payroll_type,
             basicPay: payslip.basic_pay || 0,
             overtimePay: payslip.overtime_pay || 0,
             nightDifferential: payslip.night_diff || 0,
             totalAllowance: payslip.total_allowance || 0,
-            totalDeductions: totalDeductions,
+            totalDeductions: statutoryTotal + otherDeductionsTotal,
             grossPay: payslip.gross || 0,
             netPay: payslip.net || 0,
-            payslipData: payslip, // Store full data for view/download
+            payslipData: payslip,
           };
         });
-        
+
         setPayslips(mappedPayslips);
+        // Use the position from the latest payslip as the current employee position
+        if (response.payslips.length > 0) {
+          setCurrentPosition(response.payslips[0].role || '');
+        } else {
+          setCurrentPosition('');
+        }
       } catch (err) {
         console.error('Error fetching payslips:', err);
         setError('Failed to load payslips. Please try again later.');
@@ -104,13 +142,123 @@ export default function PayslipPage() {
     fetchPayslips();
   }, []);
 
-  // Update current time every second
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const mapToTemplateData = (payslip: ApiPayslipData): PayslipTemplateData => {
+    const otherEarnings = [
+      ...(payslip.total_allowance ? [{ label: 'Allowance', amount: payslip.total_allowance }] : []),
+      ...(payslip.earnings || []).map((earning) => ({
+        label: earning.description,
+        amount: earning.total || 0,
+      })),
+    ];
+
+    const otherDeductions = (payslip.deductions || []).map((deduction) => ({
+      label: deduction.description,
+      amount: deduction.total || 0,
+    }));
+
+    const totalEarnings = payslip.gross ?? 0;
+    const totalDeductions =
+      (payslip.income_tax || 0) +
+      (payslip.sss || 0) +
+      (payslip.pagibig || 0) +
+      (payslip.philhealth || 0) +
+      otherDeductions.reduce((sum, d) => sum + d.amount, 0);
+
+    const currencySymbol = defaultCurrency?.symbol || 'PHP';
+
+    return {
+      companyName: companyInfo.name || 'Company',
+      companyAddress: '',
+      logoUrl: companyInfo.logo || undefined,
+      employeeName: payslip.employee_name || 'N/A',
+      designation: payslip.role || 'N/A',
+      branch: payslip.branch || 'N/A',
+      payrollType: payslip.payroll_type || 'N/A',
+      payPeriod: payslip.date_range || 'N/A',
+      generatedDate: payslip.pay_date || payslip.date_end || 'N/A',
+      basicPay: payslip.basic_pay || 0,
+      overtimePay: payslip.overtime_pay || 0,
+      nightDifferential: payslip.night_diff || 0,
+      otherEarnings,
+      incomeTax: payslip.income_tax || 0,
+      sss: payslip.sss || 0,
+      pagibig: payslip.pagibig || 0,
+      philhealth: payslip.philhealth || 0,
+      otherDeductions,
+      totalEarnings,
+      totalDeductions,
+      netPay: payslip.net || totalEarnings - totalDeductions,
+      currencySymbol,
+      primaryColor: '#111827',
+      showLogo: !!companyInfo.logo,
+    };
+  };
+
+  const selectedTemplateData = useMemo(() => {
+    if (!selectedPayslip) return null;
+    return mapToTemplateData(selectedPayslip.payslipData);
+  }, [selectedPayslip, companyInfo]);
+
+  const downloadTemplateData = useMemo(() => {
+    if (!payslipToDownload) return null;
+    return mapToTemplateData(payslipToDownload.payslipData);
+  }, [payslipToDownload, companyInfo]);
+
+  useEffect(() => {
+    if (!downloadTemplateData || !downloadRef.current) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast({
+        title: 'Download Failed',
+        description: 'Please allow pop-ups to download payslip PDF.',
+        variant: 'destructive',
+      });
+      setPayslipToDownload(null);
+      return;
+    }
+
+    const html = downloadRef.current.innerHTML;
+    const safeEmployeeName = (downloadTemplateData.employeeName || 'employee').replace(/\s+/g, '_');
+    const title = `payslip_${safeEmployeeName}_${new Date().toISOString().slice(0, 10)}`;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body {
+              font-family: Inter, "Segoe UI", Tahoma, Arial, sans-serif;
+              margin: 0;
+              padding: 16px;
+              background: #f3f4f6;
+            }
+            .payslip-page { page-break-after: always; }
+            @page { size: A4; margin: 12mm; }
+          </style>
+        </head>
+        <body>
+          <div class="payslip-page">${html}</div>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+      }, 200);
+    };
+
+    setPayslipToDownload(null);
+  }, [downloadTemplateData, toast]);
 
   const formatDateTime = (date: Date) => {
     return date.toLocaleString('en-US', {
@@ -120,7 +268,7 @@ export default function PayslipPage() {
       hour: 'numeric',
       minute: '2-digit',
       second: '2-digit',
-      hour12: true
+      hour12: true,
     });
   };
 
@@ -129,36 +277,22 @@ export default function PayslipPage() {
     return user.name || user.email || 'User';
   };
 
-  const getUserRole = () => {
-    if (!user) return '';
-    return user.role_name || '(Employee)';
-  };
+  const getUserPosition = () => currentPosition || '';
 
   const formatCurrency = (amount: number) => {
-    return `₱ ${amount.toFixed(2)}`;
+    const symbol = defaultCurrency?.symbol || 'PHP';
+    return `${symbol} ${amount.toFixed(2)}`;
   };
 
   const handleView = (payslip: PayslipRecord) => {
-    // TODO: Implement view payslip functionality (open modal or navigate to detail page)
-    console.log('View payslip:', payslip);
-    if (payslip.payslipData) {
-      // You can open a modal or navigate to a detail page here
-      // For now, just log the full payslip data
-      console.log('Full payslip data:', payslip.payslipData);
-    }
+    setSelectedPayslip(payslip);
+    setIsViewDialogOpen(true);
   };
 
   const handleDownload = (payslip: PayslipRecord) => {
-    // TODO: Implement download payslip functionality (generate PDF)
-    console.log('Download payslip:', payslip);
-    if (payslip.payslipData) {
-      // You can implement PDF generation here
-      // For now, just log the full payslip data
-      console.log('Full payslip data for download:', payslip.payslipData);
-    }
+    setPayslipToDownload(payslip);
   };
 
-  // Pagination
   const totalPages = Math.ceil(payslips.length / itemsPerPage);
   const paginatedPayslips = payslips.slice(
     (currentPage - 1) * itemsPerPage,
@@ -166,135 +300,124 @@ export default function PayslipPage() {
   );
 
   const handleItemsPerPageChange = (value: string) => {
-    setItemsPerPage(parseInt(value));
+    setItemsPerPage(parseInt(value, 10));
     setCurrentPage(1);
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left Section: Employee Profile */}
-        <div className="lg:col-span-1">
-          <Card className="h-fit max-w-xs">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Employee Profile</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {/* Profile Picture */}
-              <div className="flex flex-col items-center">
-                <Avatar className="w-20 h-20 mb-2">
-                  <AvatarFallback className="text-lg bg-muted">
-                    <User className="w-10 h-10 text-muted-foreground" />
-                  </AvatarFallback>
-                </Avatar>
-                
-                {/* Employee Name and Role */}
-                <div className="text-center">
-                  <h3 className="text-sm font-semibold">{getUserDisplayName()}</h3>
-                  <p className="text-xs text-muted-foreground">{getUserRole()}</p>
-                </div>
+      <div className="lg:col-span-1">
+        <Card className="h-fit max-w-xs">
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-col items-center pt-5">
+              <Avatar className="w-20 h-20 mb-2">
+                <AvatarFallback className="text-lg bg-muted">
+                  <User className="w-10 h-10 text-muted-foreground" />
+                </AvatarFallback>
+              </Avatar>
+
+              <div className="text-center">
+                <h3 className="text-sm font-semibold">{getUserDisplayName()}</h3>
+                <p className="text-xs text-muted-foreground">{getUserPosition()}</p>
               </div>
-              
-              {/* Current Date and Time */}
-              <div className="pt-2 border-t">
-                <p className="text-xs font-medium text-center">
-                  Today: {formatDateTime(currentTime)}
+            </div>
+
+            <div className="pt-2 border-t">
+              <p className="text-xs font-medium text-center">
+                Today: {formatDateTime(currentTime)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="lg:col-span-3">
+        <Card>
+          <CardHeader>
+            <div className="space-y-4">
+              {!loading && (
+                <p className="text-sm text-muted-foreground">
+                  {payslips.length > 0
+                    ? `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, payslips.length)} of ${payslips.length} records`
+                    : 'No payslips found'}
                 </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Section: Payslip Records */}
-        <div className="lg:col-span-3">
-       <Card>
-        <CardHeader>
-              <div className="space-y-4">
-                {/* Records Count */}
-                {!loading && (
-                  <p className="text-sm text-muted-foreground">
-                    Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, payslips.length)} of {payslips.length} records
-                  </p>
-                )}
-                {error && (
-                  <p className="text-sm text-destructive">{error}</p>
-                )}
-              </div>
-        </CardHeader>
-
-        <CardContent>
-              {loading ? (
-                <div className="flex justify-center items-center py-12">
-                  <Loader />
-                </div>
-              ) : (
-                <>
-                  {/* Table */}
-                  <div className="rounded-md border overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="whitespace-nowrap">Date Range</TableHead>
-                          <TableHead className="whitespace-nowrap">Payroll Type</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Basic Pay</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Overtime Pay</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Night Differential</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Total Allowance</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Total Deductions</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Gross Pay</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Net Pay</TableHead>
-                          <TableHead className="w-[70px]">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paginatedPayslips.length > 0 ? (
-                          paginatedPayslips.map((payslip) => (
-                            <TableRow key={payslip.id}>
-                              <TableCell className="whitespace-nowrap">{payslip.dateRange}</TableCell>
-                              <TableCell className="whitespace-nowrap">{payslip.payrollType}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(payslip.basicPay)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(payslip.overtimePay)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(payslip.nightDifferential)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(payslip.totalAllowance)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(payslip.totalDeductions)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(payslip.grossPay)}</TableCell>
-                              <TableCell className="text-right font-medium">{formatCurrency(payslip.netPay)}</TableCell>
-                              <TableCell>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon">
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => handleView(payslip)}>
-                                      <Eye className="mr-2 h-4 w-4" />
-                                      View
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleDownload(payslip)}>
-                                      <Download className="mr-2 h-4 w-4" />
-                                      Download
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={10} className="p-0">
-                              <EmptyStates.Payslips />
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </>
               )}
+              {error && (
+                <p className="text-sm text-destructive">{error}</p>
+              )}
+            </div>
+          </CardHeader>
 
-              {/* Pagination */}
-              {!loading && payslips.length > 0 && (
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
+          <CardContent>
+            {loading ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader />
+              </div>
+            ) : (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Date Range</TableHead>
+                      <TableHead className="whitespace-nowrap">Payroll Type</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Basic Pay</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Overtime Pay</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Night Differential</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Total Allowance</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Total Deductions</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Gross Pay</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Net Pay</TableHead>
+                      <TableHead className="w-[70px]">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedPayslips.length > 0 ? (
+                      paginatedPayslips.map((payslip) => (
+                        <TableRow key={payslip.id}>
+                          <TableCell className="whitespace-nowrap">{payslip.dateRange}</TableCell>
+                          <TableCell className="whitespace-nowrap">{payslip.payrollType}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(payslip.basicPay)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(payslip.overtimePay)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(payslip.nightDifferential)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(payslip.totalAllowance)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(payslip.totalDeductions)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(payslip.grossPay)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(payslip.netPay)}</TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleView(payslip)}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDownload(payslip)}>
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Download PDF
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={10} className="p-0">
+                          <EmptyStates.Payslips />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {!loading && payslips.length > 0 && (
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Rows per page:</span>
                   <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
@@ -351,11 +474,30 @@ export default function PayslipPage() {
                     </PaginationItem>
                   </PaginationContent>
                 </Pagination>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Payslip Preview</DialogTitle>
+          </DialogHeader>
+          {selectedTemplateData ? (
+            <PayslipTemplate data={selectedTemplateData} className="shadow-none" />
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">No payslip selected.</div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {downloadTemplateData && (
+        <div ref={downloadRef} className="hidden">
+          <PayslipTemplate data={downloadTemplateData} className="shadow-none" />
         </div>
+      )}
     </div>
   );
 }

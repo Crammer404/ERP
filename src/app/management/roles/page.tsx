@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,8 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PersonStanding, MoreVertical, Plus, Trash2, Edit, Search, RefreshCw, Shield } from 'lucide-react';
-import { roleService, Role, CreateRoleRequest, UpdateRoleRequest, moduleSubmenuService, ModuleSubmenuWithPermissions } from '@/services';
+import { MoreVertical, Plus, Trash2, Edit, Search, RefreshCw, Shield, Users } from 'lucide-react';
+import { roleService, Role, CreateRoleRequest, UpdateRoleRequest, moduleSubmenuService, ModuleSubmenuWithPermissions, userService } from '@/services';
 import { PermissionGuard, PermissionButton } from '@/components/guards';
 import { useModulePermissions } from '@/contexts/PermissionContext';
 import { Loader } from '@/components/ui/loader';
@@ -22,6 +22,10 @@ import { useToast } from '@/hooks/use-toast';
 import ConfirmationDialog from '@/components/ui/confirmation-dialog';
 import { FullPageAccessDenied } from '@/components/error/error-page';
 import { PaginationInfos } from '@/components/ui/pagination-info';
+import { UserAvatarStack, UserData } from '@/components/ui/user-avatar-stack';
+import { RoleFormModal } from './components/role-form-modal';
+import { RoleUsersModal } from './components/role-users-modal';
+import { tenantContextService } from '@/services/tenant/tenantContextService';
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -35,53 +39,66 @@ export default function RolesPage() {
   // Toast for notifications
   const { toast } = useToast();
 
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  // Filtered roles based on search
   const filteredRoles = roles.filter(role => 
     role.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     role.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Handle items per page change
   const handleItemsPerPageChange = (newItemsPerPage: string) => {
     const perPage = parseInt(newItemsPerPage);
     setItemsPerPage(perPage);
-    setCurrentPage(1); // Reset to first page when changing items per page
+    setCurrentPage(1);
   };
 
-  // Modal states
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [manageUsersModalOpen, setManageUsersModalOpen] = useState(false);
 
-  // Selected role for edit/delete operations
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [roleUsers, setRoleUsers] = useState<UserData[]>([]);
+  const [allUsers, setAllUsers] = useState<UserData[]>([]);
+  const [loadingUsersModal, setLoadingUsersModal] = useState(false);
+  const [selectedUserIdToAdd, setSelectedUserIdToAdd] = useState<string>('');
 
-  // Form states
   const [formData, setFormData] = useState({
     name: '',
     description: ''
   });
 
-  // Loading state
   const [formLoading, setFormLoading] = useState(false);
-  
-  // Form validation errors
+
   const [formErrors, setFormErrors] = useState({
     name: '',
     description: ''
   });
-  
-  // Confirmation dialog states
+
   const [permissionsConfirmOpen, setPermissionsConfirmOpen] = useState(false);
 
-  // Permissions tab state
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
   const [moduleSubmenus, setModuleSubmenus] = useState<ModuleSubmenuWithPermissions[]>([]);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+
+  const getRoleUsers = (role: Role): UserData[] => {
+    if (!role.users || !Array.isArray(role.users)) {
+      return [];
+    }
+    const branchContext = tenantContextService.getStoredBranchContext();
+    const branchId = branchContext?.id;
+    const filteredUsers = branchId
+      ? role.users.filter((user) =>
+          !user.branches || user.branches.some((branch) => branch.id === branchId)
+        )
+      : role.users;
+    return filteredUsers.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    }));
+  };
 
   const fetchRoles = async () => {
     setLoading(true);
@@ -109,12 +126,10 @@ export default function RolesPage() {
     fetchRoles();
   }, []);
 
-  // Reset to first page when search term changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  // Reset form data
   const resetForm = () => {
     setFormData({
       name: '',
@@ -126,19 +141,16 @@ export default function RolesPage() {
     });
   };
 
-  // Check if form is valid
   const isFormValid = () => {
     return formData.name.trim() !== '' && formData.description.trim() !== '';
   };
 
-  // Handle form input changes
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
-    
-    // Clear error for this field when user starts typing
+
     if (formErrors[field as keyof typeof formErrors]) {
       setFormErrors(prev => ({
         ...prev,
@@ -147,7 +159,6 @@ export default function RolesPage() {
     }
   };
 
-  // Open edit modal with role data
   const openEditModal = (role: Role) => {
     setSelectedRole(role);
     setFormData({
@@ -157,20 +168,145 @@ export default function RolesPage() {
     setEditModalOpen(true);
   };
 
-  // Open delete modal
   const openDeleteModal = (role: Role) => {
     setSelectedRole(role);
     setDeleteModalOpen(true);
   };
 
-  // Handle create role
+  const openManageUsersModal = async (role: Role) => {
+    setSelectedRole(role);
+    setRoleUsers(getRoleUsers(role));
+    setManageUsersModalOpen(true);
+    setLoadingUsersModal(true);
+    try {
+      const response = await userService.getAll(1, 1000, '');
+      const users = response.users || [];
+      const mapped: UserData[] = users.map((user: any) => {
+        const name =
+          user.name ||
+          (user.user_info
+            ? `${user.user_info.first_name || ''} ${user.user_info.last_name || ''}`.trim()
+            : '') ||
+          user.email;
+        return {
+          id: user.id,
+          name,
+          email: user.email,
+        };
+      });
+      setAllUsers(mapped);
+    } catch {
+      setAllUsers([]);
+    } finally {
+      setLoadingUsersModal(false);
+    }
+  };
+
+  const handleAssignUserToRole = async () => {
+    if (!selectedRole || !selectedUserIdToAdd) return;
+    const userId = parseInt(selectedUserIdToAdd);
+    if (Number.isNaN(userId)) return;
+
+    setFormLoading(true);
+    try {
+      await userService.update(userId, { role_id: selectedRole.id });
+      const assignedUser = allUsers.find((user) => user.id === userId);
+      setRoles((prev) =>
+        prev.map((role) => {
+          const existingUsers = role.users || [];
+          const filteredUsers = existingUsers.filter((user) => user.id !== userId);
+          if (role.id === selectedRole.id && assignedUser) {
+            return {
+              ...role,
+              users: [
+                ...filteredUsers,
+                {
+                  id: assignedUser.id,
+                  name: assignedUser.name,
+                  email: assignedUser.email,
+                },
+              ],
+            };
+          }
+          return {
+            ...role,
+            users: filteredUsers,
+          };
+        }),
+      );
+      const updatedRoleUsers = roleUsers.filter((user) => user.id !== userId);
+      if (assignedUser) {
+        updatedRoleUsers.push(assignedUser);
+      }
+      setRoleUsers(updatedRoleUsers);
+      setSelectedUserIdToAdd('');
+      toast({
+        title: 'Success',
+        description: 'User assigned to role successfully.',
+        variant: 'success',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.message || 'Failed to assign user to role.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleChangeUserRole = async (userId: number, newRoleId: number) => {
+    if (!selectedRole || !newRoleId) return;
+    setFormLoading(true);
+    try {
+      await userService.update(userId, { role_id: newRoleId });
+      const movedUser = roleUsers.find((user) => user.id === userId);
+      setRoles((prev) =>
+        prev.map((role) => {
+          const existingUsers = role.users || [];
+          const filteredUsers = existingUsers.filter((user) => user.id !== userId);
+          if (role.id === newRoleId && movedUser) {
+            return {
+              ...role,
+              users: [
+                ...filteredUsers,
+                {
+                  id: movedUser.id,
+                  name: movedUser.name,
+                  email: movedUser.email,
+                },
+              ],
+            };
+          }
+          return {
+            ...role,
+            users: filteredUsers,
+          };
+        }),
+      );
+      if (newRoleId !== selectedRole.id) {
+        setRoleUsers((prev) => prev.filter((user) => user.id !== userId));
+      }
+      toast({
+        title: 'Success',
+        description: 'User role updated successfully.',
+        variant: 'success',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.message || 'Failed to update user role.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Clear previous errors
     setFormErrors({ name: '', description: '' });
-    
-    // Validate required fields
     const errors = { name: '', description: '' };
     let hasErrors = false;
     
@@ -183,8 +319,7 @@ export default function RolesPage() {
       errors.description = 'Description is required';
       hasErrors = true;
     }
-    
-    // Check for duplicate role name
+
     if (formData.name.trim()) {
       const existingRole = roles.find(role => 
         role.name.toLowerCase() === formData.name.trim().toLowerCase()
@@ -206,11 +341,9 @@ export default function RolesPage() {
       const payload: CreateRoleRequest = {
         name: formData.name,
         description: formData.description,
-        permissions: [], // Empty permissions array for now
+        permissions: [],
       };
       await roleService.create(payload);
-      
-      // Success toast
       toast({
         title: "Success",
         description: "Role created successfully!",
@@ -221,7 +354,7 @@ export default function RolesPage() {
       resetForm();
       fetchRoles();
     } catch (err: any) {
-      // Error toast
+
       toast({
         title: "Error",
         description: err.response?.data?.message || 'Failed to create role.',
@@ -236,11 +369,7 @@ export default function RolesPage() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) return;
-
-    // Clear previous errors
     setFormErrors({ name: '', description: '' });
-    
-    // Validate required fields
     const errors = { name: '', description: '' };
     let hasErrors = false;
     
@@ -253,8 +382,7 @@ export default function RolesPage() {
       errors.description = 'Description is required';
       hasErrors = true;
     }
-    
-    // Check for duplicate role name (excluding current role)
+
     if (formData.name.trim()) {
       const existingRole = roles.find(role => 
         role.name.toLowerCase() === formData.name.trim().toLowerCase() && 
@@ -277,11 +405,9 @@ export default function RolesPage() {
       const payload: UpdateRoleRequest = {
         name: formData.name,
         description: formData.description,
-        permissions: [], // Empty permissions array for now
+        permissions: [],
       };
       await roleService.update(selectedRole.id, payload);
-      
-      // Success toast
       toast({
         title: "Success",
         description: "Role updated successfully!",
@@ -293,7 +419,6 @@ export default function RolesPage() {
       resetForm();
       fetchRoles();
     } catch (err: any) {
-      // Error toast
       toast({
         title: "Error",
         description: err.response?.data?.message || 'Failed to update role.',
@@ -304,16 +429,11 @@ export default function RolesPage() {
     }
   };
 
-  // Handle delete role
   const handleDelete = async () => {
     if (!selectedRole) return;
-
     setFormLoading(true);
-
     try {
       await roleService.delete(selectedRole.id);
-      
-      // Success toast
       toast({
         title: "Success",
         description: "Role deleted successfully!",
@@ -324,7 +444,6 @@ export default function RolesPage() {
       setSelectedRole(null);
       fetchRoles();
     } catch (err: any) {
-      // Error toast
       toast({
         title: "Error",
         description: err.response?.data?.message || 'Failed to delete role.',
@@ -351,7 +470,6 @@ export default function RolesPage() {
       const submenus = await moduleSubmenuService.getModuleSubmenusWithPermissions(id);
       setModuleSubmenus(submenus);
     } catch (err: any) {
-      // Error toast
       toast({
         title: "Error",
         description: err.response?.data?.message || 'Failed to fetch permissions.',
@@ -388,7 +506,6 @@ export default function RolesPage() {
           permissions: {
             ...submenu.permissions,
             read: value,
-            // If read is false, disable all other permissions
             create: value ? (submenu.permissions?.create || false) : false,
             update: value ? (submenu.permissions?.update || false) : false,
             delete: value ? (submenu.permissions?.delete || false) : false,
@@ -417,7 +534,6 @@ export default function RolesPage() {
       permissions: {
         ...submenu.permissions,
         read: value,
-        // If read is false, disable all other permissions
         create: value ? (submenu.permissions?.create || false) : false,
         update: value ? (submenu.permissions?.update || false) : false,
         delete: value ? (submenu.permissions?.delete || false) : false,
@@ -458,7 +574,6 @@ export default function RolesPage() {
     })));
   };
 
-  // Handle save all permissions
   const handleSavePermissions = () => {
     if (!selectedRoleId) return;
     setPermissionsConfirmOpen(true);
@@ -472,7 +587,7 @@ export default function RolesPage() {
 
     try {
       const permissions = moduleSubmenus
-        .filter(submenu => submenu.id && submenu.id > 0) // Filter out invalid IDs
+        .filter(submenu => submenu.id && submenu.id > 0)
         .map(submenu => ({
           module_submenu_id: submenu.id,
           create: submenu.permissions?.create || false,
@@ -483,8 +598,6 @@ export default function RolesPage() {
 
       console.log('Sending permissions:', permissions);
       await moduleSubmenuService.updateRolePermissions(selectedRoleId, permissions);
-      
-      // Success toast
       toast({
         title: "Success",
         description: "Permissions saved successfully!",
@@ -493,7 +606,6 @@ export default function RolesPage() {
       
       window.location.reload();
     } catch (err: any) {
-      // Error toast
       toast({
         title: "Error",
         description: err.response?.data?.message || 'Failed to save permissions.',
@@ -516,17 +628,7 @@ export default function RolesPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <PersonStanding className="h-10 w-10 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold font-headline">Roles</h1>
-            <p className="text-sm text-muted-foreground">Manage and oversee employee roles and permissions.</p>
-          </div>
-        </div>
-      </div>
-
+    <div>
       <Card>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -602,7 +704,8 @@ export default function RolesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Description</TableHead>
+                      <TableHead className="w-1/3">Description</TableHead>
+                      <TableHead>Users</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -610,7 +713,18 @@ export default function RolesPage() {
                         {paginatedRoles.map((role, index) => (
                         <TableRow key={role.id || `role-${index}`}>
                         <TableCell className="font-medium">{role.name}</TableCell>
-                        <TableCell>{role.description}</TableCell>
+                        <TableCell className="max-w-xs">
+                          <div className="truncate text-sm text-muted-foreground">
+                            {role.description}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <UserAvatarStack
+                            users={getRoleUsers(role)}
+                            maxVisible={4}
+                            size="sm"
+                          />
+                        </TableCell>
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -623,6 +737,12 @@ export default function RolesPage() {
                                    <DropdownMenuItem onClick={() => openEditModal(role)}>
                                      <Edit className="h-4 w-4 mr-2" />
                                      Edit
+                                   </DropdownMenuItem>
+                                 )}
+                                 {canUpdate && (
+                                   <DropdownMenuItem onClick={() => openManageUsersModal(role)}>
+                                     <Users className="h-4 w-4 mr-2" />
+                                     Manage Users
                                    </DropdownMenuItem>
                                  )}
                                  {canDelete && (
@@ -944,131 +1064,34 @@ export default function RolesPage() {
         </CardContent>
       </Card>
 
-      {/* Add Role Modal */}
-      <Dialog open={addModalOpen} onOpenChange={(open) => {
-        setAddModalOpen(open);
-        if (!open) resetForm();
-      }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add New Role</DialogTitle>
-            <DialogDescription>
-              Enter role details below. All fields are required.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Role Name</Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="e.g. Superman"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-              />
-              {formErrors.name && (
-                <p className="text-sm text-red-500">{formErrors.name}</p>
-              )}
-            </div>
+      <RoleFormModal
+        isOpen={addModalOpen}
+        mode="create"
+        formData={formData}
+        formErrors={formErrors}
+        loading={formLoading}
+        onClose={() => {
+          setAddModalOpen(false);
+          resetForm();
+        }}
+        onChange={(field, value) => handleInputChange(field, value)}
+        onSubmit={handleCreate}
+      />
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                id="description"
-                type="text"
-                placeholder="e.g. A powerful role with special abilities"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-              />
-              {formErrors.description && (
-                <p className="text-sm text-red-500">{formErrors.description}</p>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => {
-                setAddModalOpen(false);
-                resetForm();
-              }}>
-                Cancel
-              </Button>
-              <PermissionButton
-                module="roles"
-                action="create"
-                type="submit"
-                disabled={formLoading}
-              >
-                {formLoading ? 'Creating...' : 'Create Role'}
-              </PermissionButton>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Role Modal */}
-      <Dialog open={editModalOpen} onOpenChange={(open) => {
-        setEditModalOpen(open);
-        if (!open) {
+      <RoleFormModal
+        isOpen={editModalOpen}
+        mode="edit"
+        formData={formData}
+        formErrors={formErrors}
+        loading={formLoading}
+        onClose={() => {
+          setEditModalOpen(false);
           setSelectedRole(null);
           resetForm();
-        }
-      }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Role</DialogTitle>
-            <DialogDescription>
-              Update role details below.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleUpdate} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Role Name</Label>
-              <Input
-                id="edit-name"
-                type="text"
-                placeholder="Superman"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-              />
-              {formErrors.name && (
-                <p className="text-sm text-red-500">{formErrors.name}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-description">Description</Label>
-              <Input
-                id="edit-description"
-                type="text"
-                placeholder="A powerful role with special abilities"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-              />
-              {formErrors.description && (
-                <p className="text-sm text-red-500">{formErrors.description}</p>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => {
-                setEditModalOpen(false);
-                setSelectedRole(null);
-                resetForm();
-              }}>
-                Cancel
-              </Button>
-              <PermissionButton
-                module="roles"
-                action="update"
-                type="submit"
-                disabled={formLoading || !isFormValid()}
-              >
-                {formLoading ? 'Updating...' : 'Update Role'}
-              </PermissionButton>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+        }}
+        onChange={(field, value) => handleInputChange(field, value)}
+        onSubmit={handleUpdate}
+      />
 
       {/* Delete Role Modal */}
       <Dialog open={deleteModalOpen} onOpenChange={(open) => {
@@ -1113,6 +1136,26 @@ export default function RolesPage() {
         cancelText="Cancel"
         onConfirm={confirmSavePermissions}
         onCancel={() => setPermissionsConfirmOpen(false)}
+      />
+      <RoleUsersModal
+        open={manageUsersModalOpen}
+        selectedRole={selectedRole}
+        loading={loadingUsersModal}
+        roleUsers={roleUsers}
+        allUsers={allUsers}
+        roles={roles}
+        selectedUserIdToAdd={selectedUserIdToAdd}
+        formLoading={formLoading}
+        onClose={() => {
+          setManageUsersModalOpen(false);
+          setSelectedRole(null);
+          setRoleUsers([]);
+          setAllUsers([]);
+          setSelectedUserIdToAdd('');
+        }}
+        onChangeUserRole={handleChangeUserRole}
+        onChangeSelectedUserId={setSelectedUserIdToAdd}
+        onAssignUser={handleAssignUserToRole}
       />
     </div>
   );

@@ -190,7 +190,8 @@ const NavItem = ({
   isCollapsed, 
   onClick,
   isOpen,
-  hasSubLinks
+  hasSubLinks,
+  isSubItem = false,
 }: { 
   link: NavLink; 
   isActive: boolean; 
@@ -198,6 +199,7 @@ const NavItem = ({
   onClick?: () => void;
   isOpen?: boolean;
   hasSubLinks?: boolean;
+  isSubItem?: boolean;
 }) => {
   const Icon = link.icon;
   const router = useRouter();
@@ -217,17 +219,42 @@ const NavItem = ({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={isActive ? 'default' : 'ghost'}
+            variant="ghost"
             size={isCollapsed ? 'icon' : 'default'}
             className={cn(
-              !isCollapsed && 'w-full justify-start px-3'
+              "group transition-all duration-150",
+              isCollapsed
+                ? "h-10 w-10 rounded-xl p-0"
+                : isSubItem
+                  ? "h-9 w-full justify-start rounded-lg px-3"
+                  : "h-11 w-full justify-start rounded-xl px-3",
+              isActive
+                ? "bg-slate-200/70 text-slate-800 hover:bg-slate-200/80 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-800"
+                : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:hover:text-slate-100"
             )}
             onClick={handleClick}
           >
-            <Icon className={cn('h-4 w-4', !isCollapsed && 'mr-2')} />
+            <Icon
+              className={cn(
+                isSubItem ? "h-[17px] w-[17px]" : "h-[18px] w-[18px]",
+                !isCollapsed && "mr-2 shrink-0",
+                isActive
+                  ? "text-slate-700 dark:text-slate-200"
+                  : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200"
+              )}
+            />
             {!isCollapsed && (
               <>
-                <span className="flex-1 text-left">{link.label}</span>
+                <span
+                  className={cn(
+                    "flex-1 truncate text-left",
+                    isSubItem
+                      ? "text-[0.80rem] font-medium tracking-tight"
+                      : "text-[0.88rem] font-medium tracking-[-0.01em]"
+                  )}
+                >
+                  {link.label}
+                </span>
                 {hasSubLinks && (
                   <span className="ml-auto">
                     {isOpen ? (
@@ -390,10 +417,10 @@ export function SidebarNav() {
     setOpenMenu(prev => (prev === menuHref ? undefined : menuHref));
   };
 
-    return (
+  return (
     <ScrollArea className="flex-1">
       <nav className={cn(
-        "flex flex-col gap-1 p-2",
+        "flex flex-col gap-1.5 p-3",
         isCollapsed && "items-center"
       )}>
         {dynamicMenu.map((link) => {
@@ -446,11 +473,14 @@ export function SidebarNav() {
             onClick={link.subLinks ? () => handleToggle(link.href) : undefined}
             isOpen={isDropdownOpen}
             hasSubLinks={!!link.subLinks}
+            isSubItem={false}
           />
           {link.subLinks && isDropdownOpen && (
             <div className={cn(
               "mt-1 space-y-1",
-              isCollapsed ? "flex flex-col items-center gap-1 px-2" : "ml-4"
+              isCollapsed
+                ? "flex flex-col items-center gap-1 px-2"
+                : "ml-6 border-l border-slate-200/80 pl-3 dark:border-slate-700/80"
             )}>
               {link.subLinks.map((subLink) => (
                 <div key={subLink.href} className={cn(
@@ -462,6 +492,7 @@ export function SidebarNav() {
                     isCollapsed={isCollapsed}
                     hasSubLinks={false}
                     isOpen={false}
+                    isSubItem={true}
                   />
                 </div>
               ))}
