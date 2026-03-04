@@ -21,6 +21,10 @@ export interface Employee {
     first_name: string;
     middle_name?: string;
     last_name: string;
+    payroll_position?: {
+      id: number;
+      name: string;
+    } | null;
     profile_pic?: string;
     address?: {
       country?: string;
@@ -155,6 +159,8 @@ class EmployeeService {
     const role = typeof employee.role === 'string'
       ? employee.role
       : employee.role?.name || 'N/A';
+
+    const position = employee.user_info?.payroll_position?.name || null;
     
     const branch = employee.branches && employee.branches.length > 0 
                    ? employee.branches[0].name 
@@ -166,6 +172,8 @@ class EmployeeService {
       name,
       email: employee.email,
       role,
+      position,
+      displayRole: position || role,
       branch,
       raw: employee, // Keep raw data for detailed operations
     };
@@ -173,4 +181,3 @@ class EmployeeService {
 }
 
 export const employeeService = new EmployeeService();
-

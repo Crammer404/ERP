@@ -93,6 +93,18 @@ export default function UserPage() {
   const frontCardRef = useRef<HTMLDivElement>(null);
   const backCardRef = useRef<HTMLDivElement>(null);
 
+  const getPositionOrRole = useCallback((targetUser: UserEntity): string => {
+    const positionId = Number(targetUser.user_info?.payroll_positions_id);
+    const positionName =
+      Number.isFinite(positionId) && positionId > 0 ? positionsById[positionId] : undefined;
+
+    if (positionName && positionName.trim().length > 0) {
+      return positionName;
+    }
+
+    return getRoleName(targetUser.role);
+  }, [positionsById]);
+
   const filterRolesForCurrentUser = useCallback((availableRoles: Role[]): Role[] => {
     const currentRoleName = user?.role_name;
     if (!currentRoleName) {
@@ -427,7 +439,7 @@ export default function UserPage() {
         id: user.id,
         name: getDisplayName(user),
         email: user.email,
-        role: getRoleName(user.role),
+        role: getPositionOrRole(user),
         branch: getPrimaryBranchName(user),
       };
 
@@ -1094,7 +1106,7 @@ export default function UserPage() {
           ) : selectedUserForId && qrCode ? (
             (() => {
               const displayName = getDisplayName(selectedUserForId);
-              const roleName = getRoleName(selectedUserForId.role);
+              const positionOrRole = getPositionOrRole(selectedUserForId);
               const branchName = getPrimaryBranchName(selectedUserForId);
 
               return (
@@ -1124,8 +1136,8 @@ export default function UserPage() {
                             </div>
                             <div className="h-px bg-white/20"></div>
                             <div className="flex justify-between items-center">
-                              <span className="text-white/80">Role:</span>
-                              <span className="font-semibold text-right ml-2">{roleName}</span>
+                              <span className="text-white/80">Position:</span>
+                              <span className="font-semibold text-right ml-2">{positionOrRole}</span>
                             </div>
                             <div className="h-px bg-white/20"></div>
                             <div className="flex justify-between items-center">
@@ -1199,8 +1211,8 @@ export default function UserPage() {
                                 </div>
                                 <div className="h-px bg-white/20"></div>
                                 <div className="flex justify-between items-center">
-                                  <span className="text-white/80">Role:</span>
-                                  <span className="font-semibold text-right ml-2">{roleName}</span>
+                                  <span className="text-white/80">Position:</span>
+                                  <span className="font-semibold text-right ml-2">{positionOrRole}</span>
                                 </div>
                                 <div className="h-px bg-white/20"></div>
                                 <div className="flex justify-between items-center">

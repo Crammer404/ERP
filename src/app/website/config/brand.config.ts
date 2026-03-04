@@ -1,30 +1,39 @@
 export const BRANDING_CONFIG = {
   // Brand Name
-  name: 'ActiveWear',
+  name: 'TimeWorx',
   
   // Logo Configuration
   logo: {
-    // Default logo SVG (minimal apparel-inspired mark)
+    // Default logo SVG (clock/workforce mark)
     default: {
       viewBox: "0 0 256 256",
       paths: [
         {
-          // Outer shirt / hanger silhouette
-          d: "M88,64a24,24,0,0,1,48,0v8h-8V64a16,16,0,0,0-32,0v4a8,8,0,0,1-4.3,7.1L67,89.4A16,16,0,0,0,58,103.3L48,200a12,12,0,0,0,12,12H196a12,12,0,0,0,12-12l-10-96.7A16,16,0,0,0,189,89.4L164.3,75.1A8,8,0,0,1,160,68V64",
+          // Clock face
+          d: "M128 40a88 88 0 1 0 0 176a88 88 0 1 0 0 -176",
           fill: "none",
           stroke: "currentColor",
           strokeLinecap: "round",
           strokeLinejoin: "round",
-          strokeWidth: "16"
+          strokeWidth: "14"
         },
         {
-          // Bottom hem line
-          d: "M64,184H192",
+          // Hour hand
+          d: "M128 84v48",
           fill: "none",
           stroke: "currentColor",
           strokeLinecap: "round",
           strokeLinejoin: "round",
-          strokeWidth: "16"
+          strokeWidth: "14"
+        },
+        {
+          // Minute hand
+          d: "M128 132l34 20",
+          fill: "none",
+          stroke: "currentColor",
+          strokeLinecap: "round",
+          strokeLinejoin: "round",
+          strokeWidth: "14"
         }
       ]
     }
@@ -66,7 +75,7 @@ export const BRANDING_CONFIG = {
   // Copyright
   copyright: {
     startYear: 2025,
-    entity: 'ActiveWear',
+    entity: 'TimeWorx',
   }
 } as const;
 
