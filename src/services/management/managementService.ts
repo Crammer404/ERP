@@ -35,8 +35,8 @@ export interface Employee {
 
 class ManagementService {
   /**
-   * Fetch all tenants (Super Admin only)
-   * Passes a high per_page value to get all tenants without pagination limits
+   * Fetch tenants visible to current user.
+   * Backend returns all for super admin, scoped set for non-global roles.
    */
   async fetchAllTenants(): Promise<Tenant[]> {
     try {

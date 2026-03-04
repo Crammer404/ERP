@@ -48,7 +48,7 @@ const getPrimaryBranchName = (user: UserEntity): string => {
   return user.branches && user.branches.length > 0 ? user.branches[0].name : 'N/A';
 };
 
-const ROLE_ORDER = ['Super Admin', 'Tenant Manager', 'Branch Manager', 'Employee'] as const;
+const ROLE_ORDER = ['Super Admin', 'Owner', 'Tenant Manager', 'Branch Manager', 'Employee'] as const;
 type KnownRoleName = typeof ROLE_ORDER[number];
 
 

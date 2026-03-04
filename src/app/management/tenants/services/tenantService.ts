@@ -12,11 +12,29 @@ export interface TenantAddress {
   country: string;
 }
 
+export interface TenantOwner {
+  id: number;
+  email: string;
+  name: string | null;
+}
+
+export interface TenantManager {
+  id: number;
+  email: string;
+  name: string | null;
+  assigned_by: number | null;
+}
+
 export interface Tenant {
   id: number;
+  user_id?: number | null; // backward compatibility
+  owner_user_id?: number | null;
   name: string;
   email: string;
   phone: string;
+  owner?: TenantOwner | null;
+  tenant_manager_ids?: number[];
+  tenant_managers?: TenantManager[];
   address: TenantAddress | null;
   created_at: string;
   updated_at: string;
@@ -27,6 +45,8 @@ export interface CreateTenantRequest {
   email: string;
   phone: string;
   address: TenantAddress;
+  owner_user_id?: number | null;
+  tenant_manager_ids?: number[];
 }
 
 export interface UpdateTenantRequest {
@@ -34,6 +54,8 @@ export interface UpdateTenantRequest {
   email?: string;
   phone?: string;
   address?: TenantAddress;
+  owner_user_id?: number | null;
+  tenant_manager_ids?: number[];
 }
 
 export interface TenantSettings {
@@ -300,6 +322,21 @@ export const tenantService = {
     return await api(`${API_ENDPOINTS.TENANTS.BASE}/${id}`, {
       method: 'DELETE',
     });
+  },
+
+  async transferOwner(id: number, newOwnerUserId: number): Promise<Tenant> {
+    const response = await api(API_ENDPOINTS.TENANTS.TRANSFER_OWNER.replace('{id}', id.toString()), {
+      method: 'POST',
+      body: JSON.stringify({
+        new_owner_user_id: newOwnerUserId,
+      }),
+    });
+
+    if (response?.tenant) {
+      return response.tenant;
+    }
+
+    return response;
   },
 
   async getSettings(id: number): Promise<TenantSettings> {

@@ -2,6 +2,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Menu, User, LogOut, Maximize, Minimize, ShoppingCart, ChevronDown, Bell, Check, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -90,11 +91,21 @@ export function SiteHeader() {
   const { toggleSidebar, isCollapsed, isMobile, isOpen } = useSidebar();
   const { user: accessUser } = useAccessControl();
   const { user, logout } = useAuth();
+  const router = useRouter();
   
   // State for tenant and branch selection
-  const [selectedTenant, setSelectedTenant] = useState<string>('');
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState<string>(
+    () => tenantContextService.getStoredTenantContext()?.id?.toString() ?? ''
+  );
+  const [selectedBranch, setSelectedBranch] = useState<string>(
+    () => tenantContextService.getStoredBranchContext()?.id?.toString() ?? ''
+  );
+  const [tenants, setTenants] = useState<Tenant[]>(
+    () => {
+      const storedTenant = tenantContextService.getStoredTenantContext();
+      return storedTenant ? [storedTenant as Tenant] : [];
+    }
+  );
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoadingTenants, setIsLoadingTenants] = useState(false);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
@@ -105,36 +116,24 @@ export function SiteHeader() {
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   
   const isSuperAdmin = user?.role_name === 'Super Admin';
+  const canSwitchTenant = tenants.length > 1;
+  const showTenantSelector = canSwitchTenant || !!selectedTenant;
   
-  // Load initial context from localStorage
+  // Load tenant options for the current user.
   useEffect(() => {
-    const storedTenant = tenantContextService.getStoredTenantContext();
-    const storedBranch = tenantContextService.getStoredBranchContext();
-    
-    if (storedTenant) {
-      setSelectedTenant(storedTenant.id.toString());
-    }
-    if (storedBranch) {
-      setSelectedBranch(storedBranch.id.toString());
-    }
-  }, []);
-  
-  // Load tenants for Super Admin on mount
-  useEffect(() => {
-    if (isSuperAdmin) {
+    if (user) {
       loadTenants();
     }
-  }, [isSuperAdmin]);
+  }, [user, isSuperAdmin]);
 
   // Load branches when component mounts or tenant changes
   useEffect(() => {
-    if (isSuperAdmin && selectedTenant) {
+    if (selectedTenant) {
       loadBranchesForTenant(parseInt(selectedTenant));
-    } else if (!isSuperAdmin && user) {
-      // For non-super admins, load their accessible branches
+    } else if (user) {
       loadUserBranches();
     }
-  }, [selectedTenant, isSuperAdmin, user]);
+  }, [selectedTenant, user]);
 
   // Debug branches state
   useEffect(() => {
@@ -158,9 +157,9 @@ export function SiteHeader() {
 
         // If this is the currently selected branch, refresh the branches list to ensure consistency
         if (selectedBranch === branchId.toString()) {
-          if (isSuperAdmin && selectedTenant) {
+          if (selectedTenant) {
             await loadBranchesForTenant(parseInt(selectedTenant));
-          } else if (!isSuperAdmin) {
+          } else {
             await loadUserBranches();
           }
         }
@@ -172,7 +171,7 @@ export function SiteHeader() {
     return () => {
       window.removeEventListener('branchChanged', handleBranchUpdate);
     };
-  }, [selectedBranch, selectedTenant, isSuperAdmin]);
+  }, [selectedBranch, selectedTenant]);
 
   // Load stock notifications
   useEffect(() => {
@@ -230,11 +229,24 @@ export function SiteHeader() {
   const loadTenants = async () => {
     setIsLoadingTenants(true);
     try {
-      const fetchedTenants = await managementService.fetchAllTenants();
+      let fetchedTenants: Tenant[] = [];
+      if (isSuperAdmin) {
+        fetchedTenants = await managementService.fetchAllTenants();
+      } else {
+        const context = await tenantContextService.fetchTenantContext();
+        fetchedTenants = (context?.accessibleTenants && context.accessibleTenants.length > 0)
+          ? context.accessibleTenants as Tenant[]
+          : (context?.tenant ? [context.tenant as Tenant] : []);
+      }
+
+      const storedTenant = tenantContextService.getStoredTenantContext();
+      if (storedTenant && !fetchedTenants.some(t => t.id === storedTenant.id)) {
+        fetchedTenants = [storedTenant as Tenant, ...fetchedTenants];
+      }
+
       setTenants(fetchedTenants);
 
       // Check localStorage directly for stored tenant (avoid race condition with state)
-      const storedTenant = tenantContextService.getStoredTenantContext();
       const storedTenantId = storedTenant?.id?.toString();
       
       // If there's a stored tenant and it exists in the fetched tenants, use it
@@ -244,8 +256,8 @@ export function SiteHeader() {
         if (selectedTenant !== storedTenantId) {
           setSelectedTenant(storedTenantId);
         }
-      } else if (fetchedTenants.length > 0 && !selectedTenant && !storedTenantId && isSuperAdmin) {
-        // Only select first tenant if no stored tenant exists
+      } else if (fetchedTenants.length > 0 && !selectedTenant && !storedTenantId) {
+        // Select first visible tenant if no stored tenant exists
         handleTenantChange(fetchedTenants[0].id.toString());
       }
     } catch (error) {
@@ -329,12 +341,14 @@ export function SiteHeader() {
     
     // Load branches for the selected tenant immediately
     // The loadBranchesForTenant function will check for cached branch
-    if (isSuperAdmin) {
-      await loadBranchesForTenant(parseInt(tenantId));
-    }
+    await loadBranchesForTenant(parseInt(tenantId));
   };
   
-  const handleBranchChange = async (branchId: string) => {
+  const handleBranchChange = (branchId: string) => {
+    if (branchId === selectedBranch) {
+      return;
+    }
+
     setSelectedBranch(branchId);
 
     // Clear previous stock statuses when switching branches
@@ -351,9 +365,9 @@ export function SiteHeader() {
         detail: { branchId: parseInt(branchId), branch }
       }));
 
-      // Reload the entire page to fetch new branch data
-      // This ensures all components re-initialize with the new branch context
-      window.location.reload();
+      // Refresh server components without resetting client state.
+      // Branch-aware client components should react to `branchChanged`.
+      router.refresh();
     }
   };
   
@@ -401,8 +415,8 @@ export function SiteHeader() {
                 
                 {/* Tenant and Branch Dropdowns */}
                 <div className="flex items-center gap-2">
-                  {/* Tenant Dropdown - Only for Super Admin */}
-                  {isSuperAdmin && (
+                  {/* Tenant Dropdown - shown when user has multiple accessible tenants */}
+                  {showTenantSelector && (
                     <Select value={selectedTenant} onValueChange={handleTenantChange} disabled={isLoadingTenants}>
                       <SelectTrigger className="w-[160px] h-9">
                         <SelectValue placeholder={isLoadingTenants ? "Loading..." : "Select Tenant"} />
@@ -429,10 +443,8 @@ export function SiteHeader() {
                     </Select>
                   )}
                   
-                  {/* Branch Dropdown - Show for all users */}
-                  {/* For Super Admin: show when tenant is selected */}
-                  {/* For others: always show their accessible branches */}
-                  {((isSuperAdmin && selectedTenant) || !isSuperAdmin) && (
+                  {/* Branch Dropdown */}
+                  {(!showTenantSelector || !!selectedTenant) && (
                     <Select value={selectedBranch} onValueChange={handleBranchChange} disabled={isLoadingBranches}>
                       <SelectTrigger className="w-[160px] h-9">
                         <SelectValue placeholder={isLoadingBranches ? "Loading..." : "Select Branch"} />

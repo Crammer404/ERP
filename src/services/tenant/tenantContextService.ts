@@ -25,7 +25,9 @@ export interface TenantContextData {
   tenant: TenantContext;
   branch: BranchContext;
   subscription?: SubscriptionContext;
+  accessibleTenants?: TenantContext[];
   accessibleBranches: BranchContext[];
+  access_level?: string;
 }
 
 class TenantContextService {
@@ -140,6 +142,7 @@ class TenantContextService {
       return {
         tenant,
         branch,
+        accessibleTenants: [tenant],
         accessibleBranches: [branch] // Default to current branch
       };
     }
@@ -164,6 +167,22 @@ class TenantContextService {
       console.error('Error switching branch:', error);
       return false;
     }
+  }
+
+  /**
+   * Get tenants available to the authenticated user from in-memory context.
+   */
+  public getAccessibleTenants(): TenantContext[] {
+    const context = this.getCurrentTenantContext();
+    if (!context) {
+      return [];
+    }
+
+    if (context.accessibleTenants && context.accessibleTenants.length > 0) {
+      return context.accessibleTenants;
+    }
+
+    return context.tenant ? [context.tenant] : [];
   }
 
   /**

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ interface FormData {
   name: string;
   email: string;
   phone: string;
+  owner_user_id?: number | null;
+  tenant_manager_ids: number[];
   address: AddressFormData;
 }
 
@@ -34,6 +36,15 @@ interface TenantFormModalProps {
   onClearError?: (field: string) => void;
 }
 
+const getDefaultFormData = (): FormData => ({
+  name: '',
+  email: '',
+  phone: '',
+  owner_user_id: null,
+  tenant_manager_ids: [],
+  address: addressService.getDefaultAddress(),
+});
+
 export const TenantFormModal: React.FC<TenantFormModalProps> = ({
   isOpen,
   onClose,
@@ -42,62 +53,90 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
   onSubmit,
   loading,
   errors,
-  onClearError
+  onClearError,
 }) => {
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    phone: '',
-    address: addressService.getDefaultAddress()
-  });
+  const [formData, setFormData] = useState<FormData>(getDefaultFormData());
+  const [tenantManagerIdsInput, setTenantManagerIdsInput] = useState<string>('');
 
   useEffect(() => {
-    if (isOpen) {
-      if (mode === 'edit' && initialData) {
-        const formDataCopy = {
-          name: initialData.name || '',
-          email: initialData.email || '',
-          phone: initialData.phone || '',
-          address: addressService.createAddressFormData(initialData.address)
-        };
-        setFormData(formDataCopy);
-      } else if (mode === 'create') {
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          address: addressService.getDefaultAddress()
-        });
-      }
-    } else {
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        address: addressService.getDefaultAddress()
-      });
+    if (!isOpen) {
+      setFormData(getDefaultFormData());
+      setTenantManagerIdsInput('');
+      return;
     }
+
+    if (mode === 'edit' && initialData) {
+      const formDataCopy = {
+        name: initialData.name || '',
+        email: initialData.email || '',
+        phone: initialData.phone || '',
+        owner_user_id: initialData.owner_user_id ?? null,
+        tenant_manager_ids: initialData.tenant_manager_ids || [],
+        address: addressService.createAddressFormData(initialData.address),
+      };
+      setFormData(formDataCopy);
+      setTenantManagerIdsInput((formDataCopy.tenant_manager_ids || []).join(', '));
+      return;
+    }
+
+    setFormData(getDefaultFormData());
+    setTenantManagerIdsInput('');
   }, [isOpen, mode, initialData]);
 
-  const handleInputChange = (field: string, value: string) => {
-    if (onClearError) {
-      const errorKey = field.includes('.') ? field.split('.').pop() : field;
-      if (errorKey) {
-        onClearError(errorKey);
-      }
+  const parseTenantManagerIds = (value: string): number[] => {
+    return Array.from(
+      new Set(
+        value
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .map((item) => Number.parseInt(item, 10))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    );
+  };
+
+  const clearFieldError = (field: string) => {
+    if (!onClearError) {
+      return;
     }
 
+    const errorKey = field.includes('.') ? field.split('.').pop() : field;
+    if (errorKey) {
+      onClearError(errorKey);
+    }
+    onClearError(field);
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    clearFieldError(field);
+
     const keys = field.split('.');
-    setFormData(prev => {
+    setFormData((prev) => {
       const newData = { ...prev };
       let current: any = newData;
-      
+
       for (let i = 0; i < keys.length - 1; i++) {
         current = current[keys[i]];
       }
-      current[keys[keys.length - 1]] = value;
+
+      const targetKey = keys[keys.length - 1];
+      if (targetKey === 'owner_user_id') {
+        current[targetKey] = value ? Number.parseInt(value, 10) : null;
+      } else {
+        current[targetKey] = value;
+      }
       return newData;
     });
+  };
+
+  const handleTenantManagerInputChange = (value: string) => {
+    clearFieldError('tenant_manager_ids');
+    setTenantManagerIdsInput(value);
+    setFormData((prev) => ({
+      ...prev,
+      tenant_manager_ids: parseTenantManagerIds(value),
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -107,13 +146,12 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
 
   const isCreateMode = mode === 'create';
   const modalTitle = isCreateMode ? 'Add New Tenant' : 'Edit Tenant';
-  const modalDescription = isCreateMode 
-    ? 'Enter tenant details below. All fields are required.'
-    : 'Update tenant details below.';
-  const submitButtonText = isCreateMode 
+  const modalDescription = isCreateMode
+    ? 'Enter tenant details below. Owner User ID is required.'
+    : 'Update tenant details below. Use Transfer Owner action for ownership changes.';
+  const submitButtonText = isCreateMode
     ? (loading ? 'Creating...' : 'Create Tenant')
     : (loading ? 'Updating...' : 'Update Tenant');
-
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -124,7 +162,7 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
             {modalDescription}
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="max-h-[60vh] overflow-y-auto">
           <form onSubmit={handleSubmit} className="space-y-4 my-2 mx-2">
             <div className="space-y-2">
@@ -162,7 +200,6 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
                   disabled={loading}
                   value={formData.phone}
                   onChange={(e) => {
-                    // Allow +, -, and numbers only, limit to reasonable length
                     const value = e.target.value.replace(/[^+\-\d]/g, '').slice(0, 11);
                     handleInputChange('phone', value);
                   }}
@@ -175,6 +212,44 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
                     {formData.phone.length}/11 digits
                   </p>
                 </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="owner_user_id">Owner User ID</Label>
+                <Input
+                  id="owner_user_id"
+                  type="number"
+                  min={1}
+                  disabled={loading || !isCreateMode}
+                  value={formData.owner_user_id ?? ''}
+                  onChange={(e) => handleInputChange('owner_user_id', e.target.value)}
+                  placeholder={isCreateMode ? "Enter owner user id" : "Use transfer owner action"}
+                />
+                {(errors.owner_user_id || errors.user_id) && (
+                  <p className="text-red-500 text-xs">{errors.owner_user_id || errors.user_id}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tenant_manager_ids">Tenant Manager User IDs</Label>
+                <Input
+                  id="tenant_manager_ids"
+                  type="text"
+                  disabled={loading}
+                  value={tenantManagerIdsInput}
+                  onChange={(e) => handleTenantManagerInputChange(e.target.value)}
+                  placeholder="e.g. 12, 15, 22"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated user IDs with Tenant Manager role.
+                </p>
+                {(errors.tenant_manager_ids || errors['tenant_manager_ids.*']) && (
+                  <p className="text-red-500 text-xs">
+                    {errors.tenant_manager_ids || errors['tenant_manager_ids.*']}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -193,9 +268,7 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
 
                 {addressService.getAddressFields().map(({ field, placeholder }) => (
                   <div key={field} className="space-y-2">
-                    <Label htmlFor={field}>
-                      {addressService.formatAddressLabel(field)}
-                    </Label>
+                    <Label htmlFor={field}>{addressService.formatAddressLabel(field)}</Label>
                     <Input
                       id={field}
                       type="text"
@@ -204,8 +277,8 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
                       onChange={(e) => handleInputChange(`address.${field}`, e.target.value)}
                       placeholder={placeholder}
                     />
-                    {errors[field] && (
-                      <p className="text-red-500 text-xs">{errors[field]}</p>
+                    {(errors[field] || errors[`address.${field}`]) && (
+                      <p className="text-red-500 text-xs">{errors[field] || errors[`address.${field}`]}</p>
                     )}
                   </div>
                 ))}
@@ -220,8 +293,8 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
           <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={loading}
             onClick={handleSubmit}
             className="min-w-[100px]"
@@ -232,4 +305,4 @@ export const TenantFormModal: React.FC<TenantFormModalProps> = ({
       </DialogContent>
     </Dialog>
   );
-}
+};

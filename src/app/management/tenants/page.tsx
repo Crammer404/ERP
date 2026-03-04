@@ -7,8 +7,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Building, MoreVertical, Plus, Trash2, Edit, Building2, Search, RefreshCw } from 'lucide-react';
+import { Building, MoreVertical, Plus, Trash2, Edit, Building2, Search, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { tenantService, Tenant } from '@/services';
 import { addressService } from '@/services/address/addressService';
 import { useToast } from '@/hooks/use-toast';
@@ -49,7 +50,7 @@ export default function TenantsPage() {
   };
 
   const [modalState, setModalState] = useState<{
-    type: 'add' | 'edit' | 'delete' | null;
+    type: 'add' | 'edit' | 'delete' | 'transferOwner' | null;
     isOpen: boolean;
     tenant?: Tenant | null;
     formData?: any;
@@ -63,8 +64,11 @@ export default function TenantsPage() {
     name: '',
     email: '',
     phone: '',
+    owner_user_id: null as number | null,
+    tenant_manager_ids: [] as number[],
     address: addressService.getDefaultAddress()
   });
+  const [transferOwnerUserId, setTransferOwnerUserId] = useState('');
 
   const totalPages = pagination.last_page;
 
@@ -115,6 +119,8 @@ export default function TenantsPage() {
       name: '',
       email: '',
       phone: '',
+      owner_user_id: null,
+      tenant_manager_ids: [],
       address: addressService.getDefaultAddress()
     });
     setErrors({});
@@ -127,6 +133,7 @@ export default function TenantsPage() {
     if (!data.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(data.email)) newErrors.email = "Invalid email format";
     if (!data.phone.trim()) newErrors.phone = "Phone number is required";
+    if (!data.owner_user_id) newErrors.owner_user_id = "Owner user id is required";
 
     const addressErrors = addressService.validateAddress(data.address);
     Object.assign(newErrors, addressErrors);
@@ -234,6 +241,34 @@ export default function TenantsPage() {
     }
   };
 
+  const handleTransferOwner = async () => {
+    if (!modalState.tenant) return;
+
+    const nextOwnerUserId = Number.parseInt(transferOwnerUserId, 10);
+    if (!Number.isFinite(nextOwnerUserId) || nextOwnerUserId <= 0) {
+      setErrors({ new_owner_user_id: "Please enter a valid owner user id." });
+      return;
+    }
+
+    setFormLoading(true);
+    setErrors({});
+
+    try {
+      await tenantService.transferOwner(modalState.tenant.id, nextOwnerUserId);
+      closeModal();
+      forceRefresh();
+      toast({
+        title: "Owner Transferred",
+        description: "Tenant ownership transferred successfully.",
+        variant: "success",
+      });
+    } catch (err: any) {
+      handleApiError(err, "Failed to transfer tenant owner");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
@@ -277,12 +312,15 @@ export default function TenantsPage() {
   };
 
 
-  const openModal = async (type: 'add' | 'edit' | 'delete', tenant?: Tenant) => {
+  const openModal = async (type: 'add' | 'edit' | 'delete' | 'transferOwner', tenant?: Tenant) => {
     setErrors({});
 
     if (type === 'add') {
       resetForm();
       setModalState({ type: 'add', isOpen: true, tenant: null, formData: null });
+    } else if (type === 'transferOwner' && tenant) {
+      setTransferOwnerUserId('');
+      setModalState({ type: 'transferOwner', isOpen: true, tenant, formData: null });
     } else if (type === 'delete' && tenant) {
       setModalState({ type: 'delete', isOpen: true, tenant, formData: null });
     } else if (type === 'edit' && tenant) {
@@ -294,6 +332,8 @@ export default function TenantsPage() {
           name: fullTenant.name || '',
           email: fullTenant.email || '',
           phone: fullTenant.phone || '',
+          owner_user_id: fullTenant.owner_user_id || fullTenant.user_id || null,
+          tenant_manager_ids: fullTenant.tenant_manager_ids || [],
           address: addressService.createAddressFormData(fullTenant.address)
         };
         
@@ -310,6 +350,7 @@ export default function TenantsPage() {
 
   const closeModal = () => {
     setModalState({ type: null, isOpen: false, tenant: null, formData: null });
+    setTransferOwnerUserId('');
   };
 
   const handleApiError = (err: any, defaultMessage: string = "An error occurred") => {
@@ -324,6 +365,12 @@ export default function TenantsPage() {
           apiErrors.email = "Email already exists";
         } else if (key === 'phone') {
           apiErrors.phone = "Phone number already exists";
+        } else if (key === 'owner_user_id' || key === 'user_id') {
+          apiErrors.owner_user_id = errorMessage;
+        } else if (key.startsWith('tenant_manager_ids')) {
+          apiErrors.tenant_manager_ids = errorMessage;
+        } else if (key === 'new_owner_user_id') {
+          apiErrors.new_owner_user_id = errorMessage;
         } else {
           apiErrors[key] = errorMessage;
         }
@@ -349,6 +396,12 @@ export default function TenantsPage() {
             apiErrors.email = "Email already exists";
           } else if (key === 'phone') {
             apiErrors.phone = "Phone number already exists";
+          } else if (key === 'owner_user_id' || key === 'user_id') {
+            apiErrors.owner_user_id = message;
+          } else if (key.startsWith('tenant_manager_ids')) {
+            apiErrors.tenant_manager_ids = message;
+          } else if (key === 'new_owner_user_id') {
+            apiErrors.new_owner_user_id = message;
           } else {
                   apiErrors[key] = message;
                 }
@@ -463,6 +516,10 @@ export default function TenantsPage() {
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit
                                 </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openModal('transferOwner', tenant)}>
+                                  <ArrowLeftRight className="h-4 w-4 mr-2" />
+                                  Transfer Owner
+                                </DropdownMenuItem>
                               </PermissionGuard>
                               <PermissionGuard module="tenants" action="read">
                               <DropdownMenuItem onClick={() => openViewBranchesModal(tenant)}>
@@ -573,6 +630,45 @@ export default function TenantsPage() {
             errors={errors}
           />
       </PermissionGuard>
+      )}
+
+      {modalState.type === 'transferOwner' && (
+        <PermissionGuard module="tenants" action="update">
+          <Dialog open={modalState.isOpen} onOpenChange={(isOpen) => (!isOpen ? closeModal() : null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Transfer Tenant Owner</DialogTitle>
+                <DialogDescription>
+                  Transfer owner for "{modalState.tenant?.name}". Previous owner will be demoted to tenant manager.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 py-2">
+                <Label htmlFor="new_owner_user_id">New Owner User ID</Label>
+                <Input
+                  id="new_owner_user_id"
+                  type="number"
+                  min={1}
+                  value={transferOwnerUserId}
+                  onChange={(e) => {
+                    setTransferOwnerUserId(e.target.value);
+                    clearError('new_owner_user_id');
+                  }}
+                  placeholder="Enter new owner user id"
+                  disabled={formLoading}
+                />
+                {errors.new_owner_user_id && <p className="text-red-500 text-xs">{errors.new_owner_user_id}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={closeModal} disabled={formLoading}>
+                  Cancel
+                </Button>
+                <Button onClick={handleTransferOwner} disabled={formLoading}>
+                  {formLoading ? 'Transferring...' : 'Transfer Owner'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </PermissionGuard>
       )}
 
       <PermissionGuard module="tenants" action="read">
