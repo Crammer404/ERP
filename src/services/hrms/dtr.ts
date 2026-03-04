@@ -53,12 +53,33 @@ export interface UserScheduleShifts {
   night: { start: string | null; end: string | null };
 }
 
+export interface UserScheduleShiftDetail {
+  key: 'morning' | 'afternoon' | 'night';
+  label: string;
+  start: string | null;
+  end: string | null;
+  is_overnight: boolean;
+}
+
+export interface UserScheduleLogItem {
+  id: number;
+  date: string | null;
+  shift: string;
+  shift_key: 'morning' | 'afternoon' | 'night' | null;
+  clock_in: string | null;
+  clock_out: string | null;
+}
+
 export interface UserScheduleDetails {
   schedule_name: string | null;
   branch_id: number | null;
   grace_period: number;
   overtime: number;
   shifts: UserScheduleShifts;
+  shift_details?: UserScheduleShiftDetail[];
+  start_date?: string | null;
+  shift_logs?: Partial<Record<'morning' | 'afternoon' | 'night', UserScheduleLogItem>>;
+  logs?: UserScheduleLogItem[];
 }
 
 export const getTimeClockLogs = async (): Promise<DtrLogResponseItem[]> => {
@@ -67,8 +88,12 @@ export const getTimeClockLogs = async (): Promise<DtrLogResponseItem[]> => {
 
 export const getUserScheduleDetails = async (
   userId: number,
+  date?: string,
 ): Promise<{ success: boolean; data?: UserScheduleDetails; message?: string }> => {
-  return await api(`/hrms/dtr/user-schedule/${userId}`, { method: "GET" });
+  const params = new URLSearchParams();
+  if (date) params.append("date", date);
+  const query = params.toString();
+  return await api(`/hrms/dtr/user-schedule/${userId}${query ? `?${query}` : ''}`, { method: "GET" });
 };
 
 export const getAttendanceLogs = async (): Promise<DtrLogResponseItem[]> => {
@@ -309,6 +334,7 @@ export interface ManualDtrPayload {
   date: string; // YYYY-MM-DD
   clock_in: string; // ISO datetime string
   clock_out: string; // ISO datetime string
+  shift?: 'Morning' | 'Afternoon' | 'Night';
 }
 
 // Manual log management functions

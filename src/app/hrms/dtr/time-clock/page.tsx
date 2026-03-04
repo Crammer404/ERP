@@ -57,6 +57,7 @@ import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
 // Data type used by the table
 interface TimeClockLog {
   id: number;
+  userId: number;
   date: string;
   // raw date from API (YYYY-MM-DD) for filtering
   dateRaw: string;
@@ -221,6 +222,7 @@ export default function TimeClockPage() {
 
     return {
       id: item.id,
+      userId: item.user_id,
       date: toDate(item.date),
       dateRaw: item.date,
       employee: employeeName,
@@ -587,7 +589,7 @@ export default function TimeClockPage() {
   const canManageLogs = (): boolean => {
     if (!user?.role_name) return false;
     const roleName = user.role_name.toLowerCase();
-    return roleName === 'super admin' || roleName === 'system admin' || roleName === 'tenant manager';
+    return roleName === 'super admin' || roleName === 'system admin' || roleName === 'tenant manager' || roleName === 'owner';
   };
 
   // Open modal for add
@@ -601,6 +603,7 @@ export default function TimeClockPage() {
   const handleEditLog = (log: TimeClockLog) => {
     const manualLog: ManualLogData = {
       id: log.id,
+      userId: log.userId,
       dateRaw: log.dateRaw,
       employee: log.employee,
       branch: log.branch,
