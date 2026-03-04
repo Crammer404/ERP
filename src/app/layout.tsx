@@ -2,11 +2,15 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { cn } from '@/lib/utils';
 import { ClientRoot } from './client-root';
-import { BRANDING_CONFIG } from './website/config/brand.config';
+import { BRAND_CONFIG } from '@/config/brand.config';
 
 export const metadata: Metadata = {
-  title: BRANDING_CONFIG.name,
-  description: BRANDING_CONFIG.tagline,
+  title: {
+    default: BRAND_CONFIG.name,
+    template: `%s | ${BRAND_CONFIG.name}`,
+  },
+  description: BRAND_CONFIG.tagline,
+  applicationName: BRAND_CONFIG.name,
 };
 
 export default function RootLayout({

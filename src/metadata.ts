@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { BRAND_CONFIG } from '@/config/brand.config';
 
 export const metadata: Metadata = {
-  title: 'Checkout Champ',
-  description: 'A Point of Sale system for your grocery store.',
+  title: BRAND_CONFIG.name,
+  description: BRAND_CONFIG.tagline,
+  applicationName: BRAND_CONFIG.name,
 };
