@@ -88,8 +88,21 @@ export function AssignEmployeesModal({
   };
 
   const getEmployeePositionOrRole = (employee: Employee): string => {
-    const position = (employee as any)?.user_info?.payroll_position?.name;
-    return position || employee.role?.name || 'Employee';
+    const employeeData = employee as any;
+
+    const position =
+      employeeData?.user_info?.payroll_position?.name ||
+      employeeData?.user_info?.position?.name ||
+      employeeData?.payroll_position?.name ||
+      employeeData?.position?.name ||
+      employeeData?.position ||
+      null;
+
+    if (position) {
+      return position;
+    }
+
+    return employee.role?.name || 'Employee';
   };
 
   const handleSave = async () => {
@@ -165,7 +178,7 @@ export function AssignEmployeesModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
-        className="w-[94vw] max-w-3xl overflow-hidden p-0"
+        className="w-[98vw] max-w-6xl overflow-hidden p-0"
         onPointerDownOutside={(event) => event.preventDefault()}
       >
         <DialogHeader className="space-y-2 border-b px-6 pb-4 pt-6">
