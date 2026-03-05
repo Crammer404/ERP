@@ -491,18 +491,6 @@ export default function OvertimePage() {
 
   return (
     <div className="container mx-auto py-6 px-4">
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-          <BadgeCheck className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold font-headline">Employee Overtime Management</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage overtime requests and approvals.
-          </p>
-        </div>
-      </div>
-
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 mb-6">
           <TabsTrigger value="approval" className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import { api } from '../api';
+import { API_ENDPOINTS } from '@/config/api.config';
 
 export interface Tenant {
   id: number;
@@ -103,8 +104,31 @@ class ManagementService {
    */
   async fetchBranchEmployees(): Promise<Employee[]> {
     try {
-      const response = await api('/management/users');
-      return response.users || [];
+      const perPage = 100;
+      let page = 1;
+      let users: Employee[] = [];
+      let hasMore = true;
+
+      while (hasMore) {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          per_page: perPage.toString(),
+        });
+
+        const response = await api(`${API_ENDPOINTS.USERS.BASE}?${params.toString()}`);
+        const pageUsers = response.users || [];
+        users = users.concat(pageUsers);
+
+        const pagination = response.pagination;
+        if (!pagination) {
+          hasMore = false;
+        } else {
+          hasMore = Boolean(pagination.has_more_pages);
+          page += 1;
+        }
+      }
+
+      return users;
     } catch (error) {
       console.error('Error fetching branch employees:', error);
       return [];

@@ -46,7 +46,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { Download, Smartphone, X, Clock, RefreshCw, Edit, Plus, MoreVertical, Trash2 } from 'lucide-react';
+import { Download, Smartphone, X, Clock, RefreshCw, Edit, Plus, MoreVertical, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog } from '@/services/hrms/dtr';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
@@ -83,6 +83,7 @@ export default function TimeClockPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [isScanning, setIsScanning] = useState(false);
+  const [isScannerPanelCollapsed, setIsScannerPanelCollapsed] = useState(false);
   const [logs, setLogs] = useState<TimeClockLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [clocking, setClocking] = useState(false);
@@ -658,72 +659,80 @@ export default function TimeClockPage() {
 
   return (
     <div className="container mx-auto py-6 px-4">
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-          <BadgeCheck className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold font-headline">Time Clock</h1>
-          <p className="text-sm text-muted-foreground">
-            Clock in and out of your shift.
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left Section: QR Scanner */}
-        <div className="lg:w-[300px] shrink-0">
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>QR Scanner</CardTitle>
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Left Section: Collapsible QR Scanner Panel */}
+        <div
+          className={`shrink-0 transition-all duration-300 ease-in-out ${
+            isScannerPanelCollapsed ? 'w-full lg:w-14' : 'w-full lg:w-[320px]'
+          }`}
+        >
+          <Card className="h-fit overflow-hidden">
+            <CardHeader className={`flex flex-row items-center ${isScannerPanelCollapsed ? 'justify-center p-2' : 'justify-between'}`}>
+              {!isScannerPanelCollapsed && <CardTitle>QR Scanner</CardTitle>}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsScannerPanelCollapsed(prev => !prev)}
+                aria-label={isScannerPanelCollapsed ? 'Expand scanner panel' : 'Collapse scanner panel'}
+              >
+                {isScannerPanelCollapsed ? (
+                  <ChevronLeft className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {!isScanning ? (
-                <div className="flex flex-col items-center justify-center py-8 space-y-4">
-                  <div className="text-center">
-                    <Smartphone className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Click the button below to start scanning
-                    </p>
+
+            {!isScannerPanelCollapsed && (
+              <CardContent className="space-y-4">
+                {!isScanning ? (
+                  <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                    <div className="text-center">
+                      <Smartphone className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Click the button below to start scanning
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleStartScanning}
+                      className="w-full"
+                      size="lg"
+                    >
+                      Start Scanner
+                    </Button>
                   </div>
-                  <Button 
-                    onClick={handleStartScanning}
-                    className="w-full"
-                    size="lg"
-                  >
-                    Start Scanner
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <div className="w-full max-w-[300px] mx-auto relative">
-                    <div id="timeclock-qr-reader" className="w-full [&_img]:mx-auto [&>div]:flex [&>div]:flex-col [&>div]:items-center" />
-                    {isProcessingScan && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
-                        <div className="text-center text-white">
-                          <Clock className="h-8 w-8 animate-spin mx-auto mb-2" />
-                          <p className="text-sm font-medium">Processing...</p>
+                ) : (
+                  <>
+                    <div className="w-full max-w-[300px] mx-auto relative">
+                      <div id="timeclock-qr-reader" className="w-full [&_img]:mx-auto [&>div]:flex [&>div]:flex-col [&>div]:items-center" />
+                      {isProcessingScan && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+                          <div className="text-center text-white">
+                            <Clock className="h-8 w-8 animate-spin mx-auto mb-2" />
+                            <p className="text-sm font-medium">Processing...</p>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <p className="text-sm text-muted-foreground text-center">
-                    Scan to Clock In/Out
+                      )}
+                    </div>
+
+                    <p className="text-sm text-muted-foreground text-center">
+                      Scan to Clock In/Out
+                    </p>
+                  </>
+                )}
+
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-medium">
+                    Today: {formatDateTime(currentTime)}
                   </p>
-                </>
-              )}
-              
-              <div className="pt-4 border-t">
-                <p className="text-sm font-medium">
-                  Today: {formatDateTime(currentTime)}
-                </p>
-              </div>
-            </CardContent>
+                </div>
+              </CardContent>
+            )}
           </Card>
         </div>
 
-        {/* Right Section: Time Clock Records */}
+        {/* Main Section: Time Clock Records */}
         <div className="flex-1 min-w-0">
        <Card>
         <CardHeader>

@@ -100,16 +100,17 @@ class TenantContextService {
   /**
    * Fetch current tenant context from API
    */
-  public async fetchTenantContext(): Promise<TenantContextData | null> {
+  public async fetchTenantContext(options?: { persistToStorage?: boolean }): Promise<TenantContextData | null> {
     try {
       const response = await api('/auth/users/context');
       this.tenantContext = response;
+      const persistToStorage = options?.persistToStorage ?? true;
 
       // Update localStorage with fresh data
-      if (response.tenant) {
+      if (persistToStorage && response.tenant) {
         this.storeTenantContext(response.tenant);
       }
-      if (response.branch) {
+      if (persistToStorage && response.branch) {
         this.storeBranchContext(response.branch);
       }
 

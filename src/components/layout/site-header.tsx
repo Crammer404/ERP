@@ -229,36 +229,38 @@ export function SiteHeader() {
   const loadTenants = async () => {
     setIsLoadingTenants(true);
     try {
+      const storedTenant = tenantContextService.getStoredTenantContext();
+      const storedTenantId = storedTenant?.id?.toString() ?? '';
+
       let fetchedTenants: Tenant[] = [];
       if (isSuperAdmin) {
         fetchedTenants = await managementService.fetchAllTenants();
       } else {
-        const context = await tenantContextService.fetchTenantContext();
+        const context = await tenantContextService.fetchTenantContext({ persistToStorage: false });
         fetchedTenants = (context?.accessibleTenants && context.accessibleTenants.length > 0)
           ? context.accessibleTenants as Tenant[]
           : (context?.tenant ? [context.tenant as Tenant] : []);
       }
 
-      const storedTenant = tenantContextService.getStoredTenantContext();
       if (storedTenant && !fetchedTenants.some(t => t.id === storedTenant.id)) {
         fetchedTenants = [storedTenant as Tenant, ...fetchedTenants];
       }
 
       setTenants(fetchedTenants);
 
-      // Check localStorage directly for stored tenant (avoid race condition with state)
-      const storedTenantId = storedTenant?.id?.toString();
-      
-      // If there's a stored tenant and it exists in the fetched tenants, use it
-      if (storedTenantId && fetchedTenants.some(t => t.id.toString() === storedTenantId)) {
-        // Only update if not already selected (avoid unnecessary re-renders)
-        // The useEffect for loading branches will handle the rest
-        if (selectedTenant !== storedTenantId) {
-          setSelectedTenant(storedTenantId);
+      const preferredTenantId = selectedTenant || storedTenantId;
+      if (preferredTenantId && fetchedTenants.some(t => t.id.toString() === preferredTenantId)) {
+        if (selectedTenant !== preferredTenantId) {
+          setSelectedTenant(preferredTenantId);
         }
-      } else if (fetchedTenants.length > 0 && !selectedTenant && !storedTenantId) {
-        // Select first visible tenant if no stored tenant exists
-        handleTenantChange(fetchedTenants[0].id.toString());
+        const preferredTenant = fetchedTenants.find(t => t.id.toString() === preferredTenantId);
+        if (preferredTenant) {
+          tenantContextService.storeTenantContext(preferredTenant);
+        }
+      } else if (!preferredTenantId && fetchedTenants.length > 0) {
+        const defaultTenant = fetchedTenants[0];
+        setSelectedTenant(defaultTenant.id.toString());
+        tenantContextService.storeTenantContext(defaultTenant);
       }
     } catch (error) {
       console.error('Failed to load tenants:', error);
@@ -270,28 +272,33 @@ export function SiteHeader() {
   const loadBranchesForTenant = async (tenantId: number) => {
     setIsLoadingBranches(true);
     try {
-      console.log(`🔄 Loading branches for tenant ID: ${tenantId}`);
       const fetchedBranches = await managementService.fetchTenantBranches(tenantId);
-      console.log(`✅ Loaded ${fetchedBranches.length} branches:`, fetchedBranches);
       setBranches(fetchedBranches);
 
-      // Check if there's a stored branch that belongs to this tenant
       const storedBranch = tenantContextService.getStoredBranchContext();
-      if (storedBranch && fetchedBranches.some(b => b.id === storedBranch.id)) {
-        // Restore the cached branch if it exists in the fetched branches
-        console.log(`✅ Restoring cached branch: ${storedBranch.id} - ${storedBranch.name}`);
-        setSelectedBranch(storedBranch.id.toString());
+      const storedBranchId = storedBranch?.id?.toString() ?? '';
+      const preferredBranchId = selectedBranch || storedBranchId;
+
+      if (preferredBranchId && fetchedBranches.some(b => b.id.toString() === preferredBranchId)) {
+        if (selectedBranch !== preferredBranchId) {
+          setSelectedBranch(preferredBranchId);
+        }
+        const preferredBranch = fetchedBranches.find(b => b.id.toString() === preferredBranchId);
+        if (preferredBranch) {
+          tenantContextService.storeBranchContext(preferredBranch);
+        }
+      } else if (fetchedBranches.length > 0) {
+        const defaultBranch = fetchedBranches[0];
+        setSelectedBranch(defaultBranch.id.toString());
+        tenantContextService.storeBranchContext(defaultBranch);
       } else {
-        // Only clear branch selection if no valid cached branch exists
-        console.log('⚠️ No valid cached branch found, clearing selection');
         setSelectedBranch('');
-        // Clear only branch context, keep tenant context
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("branch_context");
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('branch_context');
         }
       }
     } catch (error) {
-      console.error('❌ Failed to load branches:', error);
+      console.error('Failed to load branches:', error);
     } finally {
       setIsLoadingBranches(false);
     }
@@ -303,19 +310,26 @@ export function SiteHeader() {
       const fetchedBranches = await managementService.fetchUserBranches();
       setBranches(fetchedBranches);
 
-      // Check if there's a stored branch that matches the fetched branches
       const storedBranch = tenantContextService.getStoredBranchContext();
-      if (storedBranch && fetchedBranches.some(b => b.id === storedBranch.id)) {
-        // Restore the cached branch if it exists in the fetched branches
-        console.log(`✅ Restoring cached branch: ${storedBranch.id} - ${storedBranch.name}`);
-        setSelectedBranch(storedBranch.id.toString());
+      const storedBranchId = storedBranch?.id?.toString() ?? '';
+      const preferredBranchId = selectedBranch || storedBranchId;
+
+      if (preferredBranchId && fetchedBranches.some(b => b.id.toString() === preferredBranchId)) {
+        if (selectedBranch !== preferredBranchId) {
+          setSelectedBranch(preferredBranchId);
+        }
+        const preferredBranch = fetchedBranches.find(b => b.id.toString() === preferredBranchId);
+        if (preferredBranch) {
+          tenantContextService.storeBranchContext(preferredBranch);
+        }
+      } else if (fetchedBranches.length > 0) {
+        const defaultBranch = fetchedBranches[0];
+        setSelectedBranch(defaultBranch.id.toString());
+        tenantContextService.storeBranchContext(defaultBranch);
       } else {
-        // Only clear branch selection if no valid cached branch exists
-        console.log('⚠️ No valid cached branch found, clearing selection');
         setSelectedBranch('');
-        // Clear only branch context, keep tenant context
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("branch_context");
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('branch_context');
         }
       }
     } catch (error) {
@@ -687,3 +701,4 @@ export function SiteHeader() {
     </header>
   );
 }
+
