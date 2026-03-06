@@ -279,15 +279,7 @@ export default function TimeClockPage() {
       }
 
       setLoading(true);
-
-      const response: any = await getTimeClockLogs({
-        page,
-        per_page: perPage,
-        search: searchTerm.trim() || undefined,
-        shift: selectedShift !== 'all' ? selectedShift : undefined,
-        start_date: toApiDate(dateRange?.from),
-        end_date: toApiDate(dateRange?.to),
-      });
+      const response: any = await getTimeClockLogs();
 
       const isPaginatedShape = response && !Array.isArray(response) && Array.isArray(response.data);
       const rawLogs: DtrLogResponseItem[] = isPaginatedShape
