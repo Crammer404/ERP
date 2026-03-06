@@ -46,20 +46,19 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { Download, Smartphone, X, Clock, RefreshCw, Edit, Plus, MoreVertical, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, Smartphone, X, Clock, RefreshCw, Edit, CirclePlus, MoreVertical, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog } from '@/services/hrms/dtr';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
+import { Badge } from '@/components/ui/badge';
 
-// Data type used by the table
 interface TimeClockLog {
   id: number;
   userId: number;
   date: string;
-  // raw date from API (YYYY-MM-DD) for filtering
   dateRaw: string;
   employee: string;
   branch: string;
@@ -70,9 +69,17 @@ interface TimeClockLog {
   late: string;
   overtime: string;
   totalWorkHours: string;
-  // Raw clock times for editing
   clockInRaw: string | null;
   clockOutRaw: string | null;
+}
+
+interface CachedPageData {
+  logs: TimeClockLog[];
+  totalItems: number;
+  totalPages: number;
+  pageFrom: number;
+  pageTo: number;
+  earliestLogDate?: Date;
 }
 
 export default function TimeClockPage() {
@@ -85,6 +92,10 @@ export default function TimeClockPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [isScannerPanelCollapsed, setIsScannerPanelCollapsed] = useState(false);
   const [logs, setLogs] = useState<TimeClockLog[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageFrom, setPageFrom] = useState(0);
+  const [pageTo, setPageTo] = useState(0);
   const [loading, setLoading] = useState(false);
   const [clocking, setClocking] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -93,29 +104,19 @@ export default function TimeClockPage() {
   const [userIdInput, setUserIdInput] = useState('');
   const [isProcessingScan, setIsProcessingScan] = useState(false);
   const [isModalShaking, setIsModalShaking] = useState(false);
+  const [earliestLogDate, setEarliestLogDate] = useState<Date | undefined>();
   const scannerRef = useRef<any>(null);
+  const isProcessingScanRef = useRef(false);
+  const prevFilterKeyRef = useRef<string>('');
+  const pageCacheRef = useRef<Map<string, CachedPageData>>(new Map());
   const { toast } = useToast();
   const { user } = useAuth();
-
-  // Manual log modal state
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [logModalMode, setLogModalMode] = useState<'add' | 'edit'>('add');
   const [activeLog, setActiveLog] = useState<ManualLogData | null>(null);
-  
-  // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [logToDelete, setLogToDelete] = useState<TimeClockLog | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // Compute earliest log date (for export range limits)
-  const earliestLogDate: Date | undefined = (() => {
-    if (!logs.length) return undefined;
-    const timestamps = logs
-      .map(l => new Date(l.dateRaw).getTime())
-      .filter(t => isFinite(t));
-    if (!timestamps.length) return undefined;
-    return new Date(Math.min(...timestamps));
-  })();
 
   const today = new Date();
 
@@ -135,26 +136,20 @@ export default function TimeClockPage() {
       const value = primary ?? secondary ?? 0;
       if (!value || value <= 0) return '0h 0m';
 
-      // If value looks like minutes (e.g., >= 60 or a whole number commonly used by API), treat as minutes
-      // If value looks like decimal hours (e.g., 7.5), convert fractional part to minutes
       let hours = 0;
       let minutes = 0;
 
       if (Number.isInteger(value) && value >= 60) {
-        // minutes
         hours = Math.floor(value / 60);
         minutes = Math.round(value % 60);
       } else if (!Number.isInteger(value) && value < 48) {
-        // decimal hours (cap 2 days to be safe)
         hours = Math.floor(value);
         minutes = Math.round((value - hours) * 60);
       } else {
-        // assume minutes if ambiguous
         hours = Math.floor(value / 60);
         minutes = Math.round(value % 60);
       }
 
-      // Normalize minute overflow
       if (minutes >= 60) {
         hours += Math.floor(minutes / 60);
         minutes = minutes % 60;
@@ -204,7 +199,6 @@ export default function TimeClockPage() {
       if (!isNaN(d.getTime())) {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
-      // Fallback if backend sends formatted date already
       return item.date;
     };
 
@@ -215,10 +209,7 @@ export default function TimeClockPage() {
       || [nestedFirst, nestedLast].filter(Boolean).join(' ')
       || `#${item.user_id}`;
 
-    // Get branch name from first branch_user
     const branchName = item.user?.branch_users?.[0]?.branch?.name || '-';
-    
-    // Get schedule name from the API response
     const scheduleName = item.schedule_name || '-';
 
     return {
@@ -240,11 +231,120 @@ export default function TimeClockPage() {
     };
   };
 
-  const fetchLogs = async () => {
-    setLoading(true);
+  const toApiDate = (date?: Date): string | undefined => {
+    if (!date) return undefined;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const clearLogsCache = () => {
+    pageCacheRef.current.clear();
+  };
+
+  const getLogsCacheKey = (page: number, perPage: number): string => {
+    return [
+      page,
+      perPage,
+      searchTerm.trim().toLowerCase(),
+      selectedShift,
+      toApiDate(dateRange?.from) || '',
+      toApiDate(dateRange?.to) || '',
+    ].join('|');
+  };
+
+  const applyPageData = (snapshot: CachedPageData) => {
+    setLogs(snapshot.logs);
+    setTotalItems(snapshot.totalItems);
+    setTotalPages(snapshot.totalPages);
+    setPageFrom(snapshot.pageFrom);
+    setPageTo(snapshot.pageTo);
+    setEarliestLogDate(snapshot.earliestLogDate);
+  };
+
+  const fetchLogs = async (overrides?: { page?: number; perPage?: number; force?: boolean }) => {
     try {
-      const res = await getTimeClockLogs();
-      setLogs((res || []).map(mapLog));
+      const page = overrides?.page ?? currentPage;
+      const perPage = overrides?.perPage ?? itemsPerPage;
+      const forceRefresh = overrides?.force ?? false;
+      const cacheKey = getLogsCacheKey(page, perPage);
+
+      if (!forceRefresh) {
+        const cachedPage = pageCacheRef.current.get(cacheKey);
+        if (cachedPage) {
+          applyPageData(cachedPage);
+          return;
+        }
+      }
+
+      setLoading(true);
+
+      const response: any = await getTimeClockLogs({
+        page,
+        per_page: perPage,
+        search: searchTerm.trim() || undefined,
+        shift: selectedShift !== 'all' ? selectedShift : undefined,
+        start_date: toApiDate(dateRange?.from),
+        end_date: toApiDate(dateRange?.to),
+      });
+
+      const isPaginatedShape = response && !Array.isArray(response) && Array.isArray(response.data);
+      const rawLogs: DtrLogResponseItem[] = isPaginatedShape
+        ? response.data
+        : Array.isArray(response)
+          ? response
+          : [];
+
+      const slicedLogs = isPaginatedShape
+        ? rawLogs
+        : rawLogs.slice((page - 1) * perPage, page * perPage);
+
+      const mappedLogs = slicedLogs.map(mapLog);
+
+      let snapshot: CachedPageData;
+      if (isPaginatedShape) {
+        const total = response.meta?.total || 0;
+        const pages = response.meta?.last_page || 1;
+        const from = response.meta?.from || 0;
+        const to = response.meta?.to || 0;
+        const earliestDateRaw = response.filters?.earliest_log_date;
+        let earliest: Date | undefined;
+        if (earliestDateRaw) {
+          const parsed = new Date(earliestDateRaw);
+          earliest = Number.isNaN(parsed.getTime()) ? undefined : parsed;
+        }
+
+        snapshot = {
+          logs: mappedLogs,
+          totalItems: total,
+          totalPages: pages,
+          pageFrom: from,
+          pageTo: to,
+          earliestLogDate: earliest,
+        };
+      } else {
+        const total = rawLogs.length;
+        const from = total > 0 ? (page - 1) * perPage + 1 : 0;
+        const to = Math.min(page * perPage, total);
+        const pages = Math.max(1, Math.ceil(total / perPage));
+        const earliest = rawLogs
+          .map((item) => new Date(item.date).getTime())
+          .filter((value) => Number.isFinite(value))
+          .sort((a, b) => a - b)[0];
+
+        snapshot = {
+          logs: mappedLogs,
+          totalItems: total,
+          totalPages: pages,
+          pageFrom: from,
+          pageTo: to,
+          earliestLogDate: typeof earliest === 'number' ? new Date(earliest) : undefined,
+        };
+      }
+
+      pageCacheRef.current.set(cacheKey, snapshot);
+      applyPageData(snapshot);
     } catch (e: any) {
       const apiErr = e?.response?.data?.message || e?.message || 'Failed to load logs';
       toast({
@@ -257,28 +357,31 @@ export default function TimeClockPage() {
     }
   };
 
-  // Initial load
   useEffect(() => {
-    fetchLogs();
-    // Auto-start scanner on page load
     setIsScanning(true);
   }, []);
 
-  // Listen for branch context changes
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'branch_context') {
-        // Branch changed, refetch logs
-        fetchLogs();
+        clearLogsCache();
+        if (currentPage === 1) {
+          fetchLogs({ page: 1, force: true });
+        } else {
+          setCurrentPage(1);
+        }
       }
     };
 
-    // Listen to storage events from other tabs/windows
     window.addEventListener('storage', handleStorageChange);
 
-    // Also listen to custom event for same-window changes
     const handleBranchChange = () => {
-      fetchLogs();
+      clearLogsCache();
+      if (currentPage === 1) {
+        fetchLogs({ page: 1, force: true });
+      } else {
+        setCurrentPage(1);
+      }
     };
     window.addEventListener('branchChanged', handleBranchChange);
 
@@ -286,9 +389,8 @@ export default function TimeClockPage() {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('branchChanged', handleBranchChange);
     };
-  }, []);
+  }, [currentPage, itemsPerPage, searchTerm, selectedShift, dateRange?.from?.getTime(), dateRange?.to?.getTime()]);
 
-  // Update current time every second
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -296,11 +398,22 @@ export default function TimeClockPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // QR Scanner lifecycle
+  useEffect(() => {
+    isProcessingScanRef.current = isProcessingScan;
+  }, [isProcessingScan]);
+
+  useEffect(() => {
+    if (isScannerPanelCollapsed) {
+      isProcessingScanRef.current = false;
+      setIsProcessingScan(false);
+    }
+  }, [isScannerPanelCollapsed]);
+
   useEffect(() => {
     let mounted = true;
     const init = async () => {
-      if (!isScanning) return;
+      if (!isScanning || isScannerPanelCollapsed) return;
+      if (!document.getElementById('timeclock-qr-reader')) return;
       try {
         const mod: any = await import('html5-qrcode');
         const Html5QrcodeScanner = mod.Html5QrcodeScanner;
@@ -317,20 +430,18 @@ export default function TimeClockPage() {
         scannerRef.current = scanner;
 
         const onScanSuccess = async (decodedText: string) => {
-          if (!mounted || isProcessingScan) return; // Ignore if already processing
+          if (!mounted || isProcessingScanRef.current) return;
           
+          isProcessingScanRef.current = true;
           setIsProcessingScan(true);
           
           try {
-            // Parse QR data (could be JSON or just text with user ID)
             let userId: number | null = null;
             
             try {
-              // Try parsing as JSON first (from our QR code generation)
               const qrData = JSON.parse(decodedText);
               userId = qrData.id;
             } catch {
-              // Fallback: extract first number sequence as user ID
               const match = decodedText.match(/\d+/);
               if (match) {
                 userId = parseInt(match[0], 10);
@@ -347,15 +458,15 @@ export default function TimeClockPage() {
               });
             }
           } finally {
-            // Resume scanning after a short delay to prevent double-scanning same QR
             setTimeout(() => {
+              if (!mounted) return;
+              isProcessingScanRef.current = false;
               setIsProcessingScan(false);
             }, 1500);
           }
         };
 
         const onScanFailure = () => {
-          // Ignore continuous scan errors to avoid spamming UI
         };
 
         scanner.render(onScanSuccess, onScanFailure);
@@ -372,6 +483,7 @@ export default function TimeClockPage() {
 
     return () => {
       mounted = false;
+      isProcessingScanRef.current = false;
       if (scannerRef.current) {
         try {
           scannerRef.current.clear();
@@ -379,55 +491,58 @@ export default function TimeClockPage() {
         scannerRef.current = null;
       }
     };
-  }, [isScanning, isProcessingScan]);
-
-  // Helpers for date filter (normalize to start/end of day local time)
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-  const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-
-  // Filter logs (search, shift, date range)
-  const filteredLogs = logs.filter(log => {
-    const matchesSearch = log.employee.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesShift = selectedShift === 'all' || log.shift.toLowerCase() === selectedShift.toLowerCase();
-    const matchesDate = (() => {
-      if (!dateRange?.from && !dateRange?.to) return true;
-      const logDate = new Date(log.dateRaw);
-      if (!isFinite(logDate.getTime())) return true; // if parse fails, don't exclude
-      const from = dateRange?.from ? startOfDay(dateRange.from).getTime() : -Infinity;
-      const to = dateRange?.to ? endOfDay(dateRange.to).getTime() : Infinity;
-      return logDate.getTime() >= from && logDate.getTime() <= to;
-    })();
-    return matchesSearch && matchesShift && matchesDate;
-  });
+  }, [isScanning, isScannerPanelCollapsed]);
 
   const hasDateFilter = Boolean(dateRange?.from || dateRange?.to);
+  const filterKey = [
+    searchTerm.trim().toLowerCase(),
+    selectedShift,
+    toApiDate(dateRange?.from) || '',
+    toApiDate(dateRange?.to) || '',
+    itemsPerPage,
+  ].join('|');
 
-  // Pagination
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
-  const paginatedLogs = filteredLogs.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  useEffect(() => {
+    const filtersChanged = prevFilterKeyRef.current !== filterKey;
+    prevFilterKeyRef.current = filterKey;
+
+    if (filtersChanged && currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
+
+    fetchLogs();
+  }, [currentPage, filterKey]);
 
   const handleItemsPerPageChange = (value: string) => {
-    setItemsPerPage(parseInt(value));
+    const parsed = parseInt(value, 10);
+    setItemsPerPage(Number.isNaN(parsed) ? 10 : parsed);
     setCurrentPage(1);
   };
 
   const handleRefresh = () => {
+    const hasChanges =
+      searchTerm !== '' ||
+      selectedShift !== 'all' ||
+      Boolean(dateRange?.from || dateRange?.to) ||
+      currentPage !== 1;
+
+    clearLogsCache();
     setSearchTerm('');
     setDateRange(undefined);
     setSelectedShift('all');
-    fetchLogs();
+    setCurrentPage(1);
+
+    if (!hasChanges) {
+      fetchLogs({ page: 1, force: true });
+    }
   };
 
   const handleExport = () => {
-    // Open modal for date range selection
     setExportModalOpen(true);
   };
 
   const handleConfirmExport = async () => {
-    // Validate date range is selected
     if (!exportDateRange?.from || !exportDateRange?.to) {
       toast({
         title: 'Date Range Required',
@@ -437,7 +552,6 @@ export default function TimeClockPage() {
       return;
     }
 
-    // Clamp range within [earliestLogDate, today]
     const minAllowed = earliestLogDate ? new Date(earliestLogDate.getFullYear(), earliestLogDate.getMonth(), earliestLogDate.getDate()) : undefined;
     const maxAllowed = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -447,14 +561,12 @@ export default function TimeClockPage() {
     if (minAllowed && from < minAllowed) { from = minAllowed; adjusted = true; }
     if (to > maxAllowed) { to = maxAllowed; adjusted = true; }
 
-    // Format dates for display
     const fromStr = from.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const toStr = to.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     try {
       setExporting(true);
       
-      // Format dates (use local date to avoid timezone issues)
       const startDate = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
       const endDate = `${to.getFullYear()}-${String(to.getMonth() + 1).padStart(2, '0')}-${String(to.getDate()).padStart(2, '0')}`;
       
@@ -468,13 +580,11 @@ export default function TimeClockPage() {
         variant: 'default',
       });
 
-      // Close modal and reset
       setExportModalOpen(false);
       setExportDateRange(undefined);
     } catch (error: any) {
       console.error('Export error:', error);
       
-      // Check if it's a "no data" error
       const statusCode = error?.status || error?.response?.status || 0;
       const errorMessage = error?.response?.data?.message || error?.message || '';
       const lowerMessage = errorMessage.toLowerCase();
@@ -501,21 +611,21 @@ export default function TimeClockPage() {
 
   const handleStopScanning = () => {
     setIsScanning(false);
+    isProcessingScanRef.current = false;
     setIsProcessingScan(false);
   };
 
   const handleRestartScanning = async () => {
     setIsScanning(false);
+    isProcessingScanRef.current = false;
     setIsProcessingScan(false);
     
-    // Wait a bit for the scanner to fully stop
     await new Promise(resolve => setTimeout(resolve, 300));
     
     setIsScanning(true);
   };
 
   const handleScanImage = () => {
-    // TODO: Implement image file scanning
     console.log('Scan image file...');
   };
 
@@ -544,7 +654,6 @@ export default function TimeClockPage() {
     try {
       const res = await clockApi(uid);
       
-      // Check the status field in the response, not just HTTP success
       if (res?.status === 'error') {
         const msg = res?.message || 'Clock action failed';
         toast({
@@ -561,7 +670,8 @@ export default function TimeClockPage() {
         description: msg,
         variant: 'default',
       });
-      await fetchLogs();
+      clearLogsCache();
+      await fetchLogs({ force: true });
     } catch (e: any) {
       const apiErr = e?.response?.data?.message || e?.message || 'Clock action failed';
       toast({
@@ -581,26 +691,22 @@ export default function TimeClockPage() {
 
   const handleModalOutsideClick = () => {
     console.log('Outside click detected - triggering shake effect');
-    // Trigger shake animation
     setIsModalShaking(true);
     setTimeout(() => setIsModalShaking(false), 600);
   };
 
-  // Check if user can manage logs
   const canManageLogs = (): boolean => {
     if (!user?.role_name) return false;
     const roleName = user.role_name.toLowerCase();
     return roleName === 'super admin' || roleName === 'system admin' || roleName === 'tenant manager' || roleName === 'owner';
   };
 
-  // Open modal for add
   const handleAddLog = () => {
     setLogModalMode('add');
     setActiveLog(null);
     setIsLogModalOpen(true);
   };
 
-  // Open modal for edit
   const handleEditLog = (log: TimeClockLog) => {
     const manualLog: ManualLogData = {
       id: log.id,
@@ -619,13 +725,11 @@ export default function TimeClockPage() {
     setIsLogModalOpen(true);
   };
 
-  // Handle delete log
   const handleDeleteLog = (log: TimeClockLog) => {
     setLogToDelete(log);
     setDeleteConfirmOpen(true);
   };
 
-  // Confirm delete
   const confirmDelete = async () => {
     if (!logToDelete) return;
 
@@ -641,7 +745,8 @@ export default function TimeClockPage() {
         
         setDeleteConfirmOpen(false);
         setLogToDelete(null);
-        fetchLogs();
+        clearLogsCache();
+        fetchLogs({ force: true });
       } else {
         throw new Error(response.message || 'Failed to delete time log');
       }
@@ -658,11 +763,11 @@ export default function TimeClockPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
+    <div className="container mx-auto py-6 px-4 overflow-x-hidden">
+      <div className="flex flex-col lg:flex-row gap-6 items-start w-full max-w-full overflow-x-hidden">
         {/* Left Section: Collapsible QR Scanner Panel */}
         <div
-          className={`shrink-0 transition-all duration-300 ease-in-out ${
+          className={`shrink-0 min-w-0 transition-all duration-300 ease-in-out ${
             isScannerPanelCollapsed ? 'w-full lg:w-14' : 'w-full lg:w-[320px]'
           }`}
         >
@@ -677,9 +782,9 @@ export default function TimeClockPage() {
                 aria-label={isScannerPanelCollapsed ? 'Expand scanner panel' : 'Collapse scanner panel'}
               >
                 {isScannerPanelCollapsed ? (
-                  <ChevronLeft className="h-4 w-4" />
-                ) : (
                   <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
                 )}
               </Button>
             </CardHeader>
@@ -726,28 +831,19 @@ export default function TimeClockPage() {
                   <p className="text-sm font-medium">
                     Today: {formatDateTime(currentTime)}
                   </p>
-                </div>
+                </div> 
               </CardContent>
             )}
           </Card>
         </div>
 
         {/* Main Section: Time Clock Records */}
-        <div className="flex-1 min-w-0">
-       <Card>
+        <div className="flex-1 min-w-0 w-full">
+       <Card className="w-full">
         <CardHeader>
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4">
-            {canManageLogs() && (
-              <Button 
-                variant="default" 
-                className="bg-blue-600 hover:bg-blue-700 shrink-0"
-                onClick={handleAddLog}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Manual Log
-              </Button>
-            )}
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4 w-full min-w-0">
+            {/* Export Button */}
             <Button 
               variant="default" 
               className="bg-green-600 hover:bg-green-700 shrink-0"
@@ -756,20 +852,23 @@ export default function TimeClockPage() {
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
+            {/* Search Input */}
             <Input
               placeholder="Search Name"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="sm:w-64 min-w-[200px] flex-1 sm:flex-none"
+              className="w-full sm:flex-1 sm:min-w-[100px]"
             />
+            {/* Date Range Picker */}
             <DateRangePicker
               date={dateRange}
               onDateChange={setDateRange}
               placeholder="Select Date Range"
-              className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
+              className="w-full sm:flex-1 sm:min-w-[110px]"
             />
+            {/* Shift Filter */}
             <Select value={selectedShift} onValueChange={setSelectedShift}>
-              <SelectTrigger className="sm:w-40 min-w-[140px]">
+              <SelectTrigger className="w-full sm:max-w-[110px] sm:min-w-[60px]">
                 <SelectValue placeholder="All Shifts" />
               </SelectTrigger>
               <SelectContent>
@@ -779,22 +878,35 @@ export default function TimeClockPage() {
                 <SelectItem value="evening">Evening</SelectItem>
               </SelectContent>
             </Select>
+            {/* Refresh Button */}
             <Button
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none shrink-0"
+              className="w-full sm:w-auto flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white sm:flex-none shrink-0"
               variant="default" 
               onClick={handleRefresh}
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Clear
+              Refresh
             </Button>
+            {/* Add Log Button */}
+            {canManageLogs() && (
+              <Button 
+                variant="default" 
+                className="bg-blue-600 hover:bg-blue-700 shrink-0"
+                onClick={handleAddLog}
+              >
+                <CirclePlus className="h-4 w-4 mr-2" />
+                Add Log
+              </Button>
+            )}
+
           </div>
         </CardHeader>
 
         <CardContent>
           {/* Table */}
-           <div className="rounded-md border">
-             <Table>
-               <TableHeader>
+           <div className="rounded-md border w-full overflow-x-auto">
+             <Table className="min-w-[980px]">
+               <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
                  <TableRow>
                    <TableHead>Date</TableHead>
                    <TableHead>Employee</TableHead>
@@ -808,19 +920,23 @@ export default function TimeClockPage() {
                    {canManageLogs() && <TableHead>Action</TableHead>}
                  </TableRow>
                </TableHeader>
-               <TableBody>
+               <TableBody className="[&_td]:text-[11px]">
                  {loading ? (
                    <TableRow>
                      <TableCell colSpan={canManageLogs() ? 10 : 9} className="text-center py-8">
                        <Loader size="sm" />
                      </TableCell>
                    </TableRow>
-                 ) : paginatedLogs.length > 0 ? (
-                   paginatedLogs.map((log) => (
+                 ) : logs.length > 0 ? (
+                   logs.map((log) => (
                      <TableRow key={log.id}>
                        <TableCell>{log.date}</TableCell>
                        <TableCell className="font-medium">{log.employee}</TableCell>
-                       <TableCell>{log.branch}</TableCell>
+                       <TableCell>
+                         <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 text-[10px] font-medium rounded-md px-2 py-0.5">
+                           {log.branch}
+                         </Badge>
+                       </TableCell>
                        <TableCell>{log.shift}</TableCell>
                        <TableCell>{log.clockIn}</TableCell>
                        <TableCell>{log.clockOut}</TableCell>
@@ -879,9 +995,9 @@ export default function TimeClockPage() {
           {/* Pagination */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
             <PaginationInfos.Standard
-              from={(currentPage - 1) * itemsPerPage + 1}
-              to={Math.min(currentPage * itemsPerPage, filteredLogs.length)}
-              total={filteredLogs.length}
+              from={pageFrom}
+              to={pageTo}
+              total={totalItems}
               itemsPerPage={itemsPerPage}
               onItemsPerPageChange={handleItemsPerPageChange}
             />
@@ -937,9 +1053,7 @@ export default function TimeClockPage() {
 
       {/* Export Modal */}
       <Dialog open={exportModalOpen} onOpenChange={(open) => {
-        // Allow normal open/close behavior (X button will work)
         setExportModalOpen(open);
-        // Reset date range when closing
         if (!open) {
           setExportDateRange(undefined);
         }
@@ -1019,7 +1133,8 @@ export default function TimeClockPage() {
           log={activeLog}
           onClose={() => setIsLogModalOpen(false)}
           onSuccess={async () => {
-            await fetchLogs();
+            clearLogsCache();
+            await fetchLogs({ force: true });
           }}
         />
       )}

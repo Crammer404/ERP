@@ -68,6 +68,28 @@ const getDefaultFormData = (): ScheduleFormData => ({
   selectedEmployees: [],
 });
 
+const hasCompleteShiftRange = (start?: string, end?: string): boolean => {
+  return Boolean(start?.trim() && end?.trim());
+};
+
+const getShiftSelectionFromFormData = (data: ScheduleFormData): string => {
+  const hasMorning = hasCompleteShiftRange(data.morningStart, data.morningEnd);
+  const hasAfternoon = hasCompleteShiftRange(data.afternoonStart, data.afternoonEnd);
+  const hasNight = hasCompleteShiftRange(data.nightStart, data.nightEnd);
+
+  const activeShiftCount = [hasMorning, hasAfternoon, hasNight].filter(Boolean).length;
+
+  // Any multi-shift setup is treated as Mixed Shift.
+  if (activeShiftCount > 1) return 'shift3';
+  if (hasNight) return 'shift2';
+  if (hasMorning) return 'shift1';
+
+  // Afternoon-only can only be edited via the mixed form layout.
+  if (hasAfternoon) return 'shift3';
+
+  return '';
+};
+
 // Get schedule name based on selected shift
 const getScheduleName = (shift: string): string => {
   const shiftMap: Record<string, string> = {
@@ -102,23 +124,7 @@ export function AddScheduleModal({
     if (isOpen) {
       if (mode === 'edit' && initialData) {
         setFormData({ ...initialData });
-        // Determine shift based on existing data
-        const hasMorning = !!(initialData.morningStart && initialData.morningEnd);
-        const hasAfternoon = !!(initialData.afternoonStart && initialData.afternoonEnd);
-        const hasNight = !!(initialData.nightStart && initialData.nightEnd);
-        
-        // Shift 3: Mix (has all three shifts)
-        if (hasMorning && hasAfternoon && hasNight) {
-          setSelectedShift('shift3');
-        } else if (hasNight) {
-          // Shift 2: Night Shift (only night)
-          setSelectedShift('shift2');
-        } else if (hasMorning) {
-          // Shift 1: Day Shift (only morning)
-          setSelectedShift('shift1');
-        } else {
-          setSelectedShift('');
-        }
+        setSelectedShift(getShiftSelectionFromFormData(initialData));
       } else if (mode === 'create') {
         setFormData(getDefaultFormData());
         setSelectedShift('');
@@ -450,7 +456,7 @@ export function AddScheduleModal({
                   <SelectContent>
                     <SelectItem value="shift1">Day Shift</SelectItem>
                     <SelectItem value="shift2">Night Shift</SelectItem>
-                    <SelectItem value="shift3">Mix</SelectItem>
+                    <SelectItem value="shift3">Mixed Shift</SelectItem>
                   </SelectContent>
                 </Select>
                 {allErrors.shifts && (
@@ -715,4 +721,3 @@ export function AddScheduleModal({
     </Dialog>
   );
 }
-
