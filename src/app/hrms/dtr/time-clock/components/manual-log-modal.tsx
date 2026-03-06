@@ -38,7 +38,7 @@ import {
   getUserScheduleDetails,
   UserScheduleDetails,
   UserScheduleShiftDetail,
-} from '@/services/hrms/dtr/time-clock';
+} from '@/services/hrms/dtr';
 import {
   managementService,
   Employee,
