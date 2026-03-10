@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
+import { Switch } from '@/components/ui/switch';
+import useLocalStorage from '@/hooks/use-local-storage';
 
 const ColorPicker = () => {
     const { primaryColor, setPrimaryColor, resetToDefault } = useThemeColor();
@@ -86,6 +88,39 @@ const ColorPicker = () => {
     );
 };
 
+const IdHeaderPreference = () => {
+    const [preference, setPreference] = useLocalStorage<'tenant' | 'branch'>('id-header-display', 'tenant');
+    const isTenantPreferred = preference === 'tenant';
+
+    const handleToggle = (checked: boolean) => {
+        setPreference(checked ? 'tenant' : 'branch');
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Employee ID Display</CardTitle>
+                <CardDescription>
+                    Choose whether the digital ID header shows the tenant name or the current branch name.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between">
+                <div className="space-y-1">
+                    <p className="text-sm font-medium">ID Header</p>
+                    <p className="text-xs text-muted-foreground">
+                        This affects the title text on the digital employee ID card.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Branch</span>
+                    <Switch checked={isTenantPreferred} onCheckedChange={handleToggle} />
+                    <span className="text-xs text-muted-foreground">Tenant</span>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
 // Function to convert HSL to Hex
 function hslToHex(h: number, s: number, l: number) {
     s /= 100;
@@ -120,6 +155,9 @@ export default function SystemConfigurationPage() {
         </div>
       </div>
       <ColorPicker />
+      <div className="mt-6">
+        <IdHeaderPreference />
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FlipCard } from '@/components/ui/flip-card';
@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/auth-provider';
 import { Loader } from '@/components/ui/loader';
 import html2canvas from 'html2canvas';
+import useLocalStorage from '@/hooks/use-local-storage';
+import { tenantContextService } from '@/services/tenant/tenantContextService';
 
 interface EmployeeDisplay {
   id: number;
@@ -21,7 +23,17 @@ interface EmployeeDisplay {
   branch: string;
 }
 
-export function EmployeeId() {
+interface EmployeeIdCardProps {
+  compact?: boolean;
+  hideDownloadButton?: boolean;
+  onDownloadRequestReady?: (handler: (() => Promise<void>) | null) => void;
+}
+
+export function EmployeeIdCard({
+  compact = false,
+  hideDownloadButton = false,
+  onDownloadRequestReady,
+}: EmployeeIdCardProps) {
   const { user } = useAuth();
   const [employee, setEmployee] = useState<EmployeeDisplay | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +41,7 @@ export function EmployeeId() {
   const [downloading, setDownloading] = useState(false);
   const frontCardRef = useRef<HTMLDivElement>(null);
   const backCardRef = useRef<HTMLDivElement>(null);
+  const [idHeaderPreference] = useLocalStorage<'tenant' | 'branch'>('id-header-display', 'tenant');
 
   useEffect(() => {
     if (user) {
@@ -83,7 +96,7 @@ export function EmployeeId() {
     }
   };
 
-  const handleDownloadCards = async () => {
+  const handleDownloadCards = useCallback(async () => {
     if (!employee || !frontCardRef.current || !backCardRef.current) return;
 
     try {
@@ -141,16 +154,25 @@ export function EmployeeId() {
     } finally {
       setDownloading(false);
     }
-  };
+  }, [employee]);
+
+  useEffect(() => {
+    onDownloadRequestReady?.(handleDownloadCards);
+    return () => {
+      onDownloadRequestReady?.(null);
+    };
+  }, [handleDownloadCards, onDownloadRequestReady]);
 
   if (loading) {
+    if (compact) {
+      return (
+        <div className="flex items-center justify-center py-6">
+          <Loader size="sm" />
+        </div>
+      );
+    }
     return (
       <div className="container mx-auto px-4 py-6">
-        <div>
-          <h1 className="font-headline text-2xl font-bold">Digital Employee ID</h1>
-          <p className="text-sm text-muted-foreground">Your digital employee ID card.</p>
-        </div>
-
         <div className="flex min-h-[500px] items-center justify-center">
           <Loader size="lg" />
         </div>
@@ -159,9 +181,15 @@ export function EmployeeId() {
   }
 
   if (!employee || !qrCode) {
+    if (compact) {
+      return (
+        <div className="flex items-center justify-center py-6">
+          <p className="text-xs text-muted-foreground">Unable to load your employee ID.</p>
+        </div>
+      );
+    }
     return (
       <div className="container mx-auto px-4 py-6">
-        <h1 className="mb-6 text-3xl font-bold">Digital Employee ID</h1>
         <Card>
           <CardContent className="py-12">
             <p className="text-center text-muted-foreground">
@@ -173,28 +201,96 @@ export function EmployeeId() {
     );
   }
 
+  const tenantContext = tenantContextService.getCurrentTenantContext();
+  const headerName =
+    idHeaderPreference === 'branch'
+      ? (tenantContext?.branch?.name || employee.branch)
+      : (tenantContext?.tenant?.name || tenantContext?.branch?.name || employee.branch);
+
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="mb-6 flex items-center gap-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-          <BadgeCheck className="h-6 w-6 text-primary" />
+    <>
+      <div className="fixed -left-[9999px] top-0">
+        <div
+          ref={frontCardRef}
+          className="h-[380px] w-[260px] rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 p-5 text-white shadow-2xl"
+        >
+          <div className="flex h-full flex-col items-center">
+            <div className="mb-4 text-center">
+              <h3 className="text-sm font-bold tracking-widest">{headerName}</h3>
+              <div className="mx-auto mt-1.5 h-0.5 w-12 rounded-full bg-white/30"></div>
+            </div>
+            <div className="mb-4 flex-shrink-0">
+              <div className="flex h-24 w-24 items-center justify-center rounded-full border-3 border-white/30 bg-white/10 backdrop-blur-sm">
+                <User className="h-12 w-12 text-white" />
+              </div>
+            </div>
+            <div className="flex flex-1 w-full flex-col justify-center space-y-2.5 text-center">
+              <h2 className="px-2 text-xl font-bold leading-tight">{employee.name}</h2>
+              <div className="space-y-1.5 rounded-lg bg-white/10 p-3 text-xs backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">ID:</span>
+                  <span className="font-semibold">{employee.id}</span>
+                </div>
+                <div className="h-px bg-white/20"></div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">Position:</span>
+                  <span className="ml-2 text-right font-semibold">{employee.displayRole}</span>
+                </div>
+                <div className="h-px bg-white/20"></div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">Branch:</span>
+                  <span className="font-semibold">{employee.branch}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div>
-          <h1 className="font-headline text-2xl font-bold">Digital Employee ID</h1>
-          <p className="text-sm text-muted-foreground">Your digital employee ID card.</p>
+
+        <div
+          ref={backCardRef}
+          className="h-[380px] w-[260px] rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 p-4 shadow-2xl"
+        >
+          <div className="flex h-full flex-col items-center">
+            <div className="mb-2 text-center">
+              <h3 className="text-sm font-bold text-gray-800">Digital ID</h3>
+              <p className="mt-0.5 text-[9px] text-gray-500">Scan to Clock In/Out</p>
+            </div>
+            <div className="my-2 flex flex-1 items-center justify-center">
+              <div
+                className="rounded-lg border border-gray-300 bg-white p-1.5 shadow-sm [&_svg]:h-[110px] [&_svg]:w-[110px]"
+                dangerouslySetInnerHTML={{ __html: qrCode }}
+              />
+            </div>
+            <div className="w-full rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
+              <h4 className="mb-1.5 text-[9px] font-bold tracking-wider text-gray-500">EMPLOYEE INFORMATION</h4>
+              <div className="space-y-1 text-[10px]">
+                <div>
+                  <span className="block text-[8px] leading-tight text-gray-500">Name</span>
+                  <span className="text-[10px] font-medium text-gray-800">{employee.name}</span>
+                </div>
+                <div className="h-px bg-gray-200"></div>
+                <div>
+                  <span className="block text-[8px] leading-tight text-gray-500">Employee ID</span>
+                  <span className="text-[10px] font-medium text-gray-800">{employee.id}</span>
+                </div>
+                <div className="h-px bg-gray-200"></div>
+                <div>
+                  <span className="block text-[8px] leading-tight text-gray-500">Branch</span>
+                  <span className="text-[10px] font-medium text-gray-800">{employee.branch}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-md">
-        <CardContent>
-          <div className="fixed -left-[9999px] top-0">
-            <div
-              ref={frontCardRef}
-              className="h-[380px] w-[260px] rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 p-5 text-white shadow-2xl"
-            >
+      <div className="mx-auto w-full max-w-[220px] h-[330px]">
+        <FlipCard
+          front={
+            <div className="h-full w-full rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 p-5 text-white shadow-2xl">
               <div className="flex h-full flex-col items-center">
                 <div className="mb-4 text-center">
-                  <h3 className="text-sm font-bold tracking-widest">THE NEST</h3>
+                  <h3 className="text-sm font-bold tracking-widest">{headerName}</h3>
                   <div className="mx-auto mt-1.5 h-0.5 w-12 rounded-full bg-white/30"></div>
                 </div>
                 <div className="mb-4 flex-shrink-0">
@@ -223,11 +319,9 @@ export function EmployeeId() {
                 </div>
               </div>
             </div>
-
-            <div
-              ref={backCardRef}
-              className="h-[380px] w-[260px] rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 p-4 shadow-2xl"
-            >
+          }
+          back={
+            <div className="h-full w-full rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 p-4 shadow-2xl">
               <div className="flex h-full flex-col items-center">
                 <div className="mb-2 text-center">
                   <h3 className="text-sm font-bold text-gray-800">Digital ID</h3>
@@ -260,99 +354,27 @@ export function EmployeeId() {
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="mx-auto h-[380px] w-[260px]">
-            <FlipCard
-              front={
-                <div className="h-full w-full rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 p-5 text-white shadow-2xl">
-                  <div className="flex h-full flex-col items-center">
-                    <div className="mb-4 text-center">
-                      <h3 className="text-sm font-bold tracking-widest">THE NEST</h3>
-                      <div className="mx-auto mt-1.5 h-0.5 w-12 rounded-full bg-white/30"></div>
-                    </div>
-                    <div className="mb-4 flex-shrink-0">
-                      <div className="flex h-24 w-24 items-center justify-center rounded-full border-3 border-white/30 bg-white/10 backdrop-blur-sm">
-                        <User className="h-12 w-12 text-white" />
-                      </div>
-                    </div>
-                    <div className="flex flex-1 w-full flex-col justify-center space-y-2.5 text-center">
-                      <h2 className="px-2 text-xl font-bold leading-tight">{employee.name}</h2>
-                      <div className="space-y-1.5 rounded-lg bg-white/10 p-3 text-xs backdrop-blur-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-white/80">ID:</span>
-                          <span className="font-semibold">{employee.id}</span>
-                        </div>
-                        <div className="h-px bg-white/20"></div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-white/80">Position:</span>
-                          <span className="ml-2 text-right font-semibold">{employee.displayRole}</span>
-                        </div>
-                        <div className="h-px bg-white/20"></div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-white/80">Branch:</span>
-                          <span className="font-semibold">{employee.branch}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              }
-              back={
-                <div className="h-full w-full rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 p-4 shadow-2xl">
-                  <div className="flex h-full flex-col items-center">
-                    <div className="mb-2 text-center">
-                      <h3 className="text-sm font-bold text-gray-800">Digital ID</h3>
-                      <p className="mt-0.5 text-[9px] text-gray-500">Scan to Clock In/Out</p>
-                    </div>
-                    <div className="my-2 flex flex-1 items-center justify-center">
-                      <div
-                        className="rounded-lg border border-gray-300 bg-white p-1.5 shadow-sm [&_svg]:h-[110px] [&_svg]:w-[110px]"
-                        dangerouslySetInnerHTML={{ __html: qrCode }}
-                      />
-                    </div>
-                    <div className="w-full rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
-                      <h4 className="mb-1.5 text-[9px] font-bold tracking-wider text-gray-500">EMPLOYEE INFORMATION</h4>
-                      <div className="space-y-1 text-[10px]">
-                        <div>
-                          <span className="block text-[8px] leading-tight text-gray-500">Name</span>
-                          <span className="text-[10px] font-medium text-gray-800">{employee.name}</span>
-                        </div>
-                        <div className="h-px bg-gray-200"></div>
-                        <div>
-                          <span className="block text-[8px] leading-tight text-gray-500">Employee ID</span>
-                          <span className="text-[10px] font-medium text-gray-800">{employee.id}</span>
-                        </div>
-                        <div className="h-px bg-gray-200"></div>
-                        <div>
-                          <span className="block text-[8px] leading-tight text-gray-500">Branch</span>
-                          <span className="text-[10px] font-medium text-gray-800">{employee.branch}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              }
-            />
-          </div>
-
-          <div className="mt-6 flex justify-center">
-            <Button onClick={handleDownloadCards} size="lg" disabled={downloading}>
-              {downloading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download ID Card
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
+          }
+        />
       </div>
-    </div>
+
+      {!hideDownloadButton && (
+        <div className="mt-6 flex justify-center">
+          <Button onClick={handleDownloadCards} size="lg" disabled={downloading}>
+            {downloading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Downloading...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Download ID Card
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+    </>
   );
 }

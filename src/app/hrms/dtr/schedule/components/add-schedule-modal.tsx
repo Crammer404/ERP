@@ -90,16 +90,6 @@ const getShiftSelectionFromFormData = (data: ScheduleFormData): string => {
   return '';
 };
 
-// Get schedule name based on selected shift
-const getScheduleName = (shift: string): string => {
-  const shiftMap: Record<string, string> = {
-    'shift1': 'Shift 1',
-    'shift2': 'Shift 2',
-    'shift3': 'Shift 3',
-  };
-  return shiftMap[shift] || '';
-};
-
 export function AddScheduleModal({
   isOpen,
   onClose,
@@ -251,12 +241,39 @@ export function AddScheduleModal({
     });
   };
 
-  // Convert time string (HH:MM or HH:MM:SS) to minutes for comparison
+  const convert12To24Hour = (time12: string): string => {
+    if (!time12) return '';
+    const trimmed = time12.trim();
+    const parts = trimmed.split(' ');
+    if (parts.length !== 2) return time12;
+    const timePart = parts[0];
+    const periodPart = parts[1];
+    const hm = timePart.split(':');
+    const hoursPart = hm[0] || '0';
+    const minutesPart = hm[1] || '0';
+    const hours = Number(hoursPart);
+    const minutes = Number(minutesPart);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return '';
+    let hours24 = hours;
+    const normalizedPeriod = periodPart.toUpperCase();
+    if (normalizedPeriod === 'PM' && hours !== 12) {
+      hours24 = hours + 12;
+    } else if (normalizedPeriod === 'AM' && hours === 12) {
+      hours24 = 0;
+    }
+    return `${String(hours24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  };
+
   const timeToMinutes = (timeStr: string): number => {
     if (!timeStr) return 0;
-    const parts = timeStr.split(':');
+    let normalized = timeStr;
+    if (timeStr.toUpperCase().includes('AM') || timeStr.toUpperCase().includes('PM')) {
+      normalized = convert12To24Hour(timeStr);
+    }
+    const parts = normalized.split(':');
     const hours = parseInt(parts[0] || '0', 10);
     const minutes = parseInt(parts[1] || '0', 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0;
     return hours * 60 + minutes;
   };
 
@@ -454,9 +471,9 @@ export function AddScheduleModal({
                     <SelectValue placeholder="Select a shift schedule" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="shift1">Day Shift</SelectItem>
-                    <SelectItem value="shift2">Night Shift</SelectItem>
-                    <SelectItem value="shift3">Mixed Shift</SelectItem>
+                    <SelectItem value="shift1">Day Shift (no break shift)</SelectItem>
+                    <SelectItem value="shift2">Night Shift (no break shift)</SelectItem>
+                    <SelectItem value="shift3">Mixed Shift (with break shift)</SelectItem>
                   </SelectContent>
                 </Select>
                 {allErrors.shifts && (

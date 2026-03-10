@@ -37,6 +37,7 @@ import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
+import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
 
 // Schedule data type
 interface Schedule {
@@ -379,12 +380,12 @@ export default function SchedulePage() {
                             {schedule.morningShift && (
                               <div>
                                 {isSingleShift ? (
-                                  <span className="text-yellow-400 dark:text-yellow-300 font-medium">
+                                  <span className={SHIFT_COLOR_CLASSES.Morning}>
                                     {schedule.morningShift}
                                   </span>
                                 ) : (
                                   <>
-                                    <span className="text-yellow-400 dark:text-yellow-300 font-medium">
+                                    <span className={SHIFT_COLOR_CLASSES.Morning}>
                                       Morning
                                     </span>{' '}
                                     - {schedule.morningShift}
@@ -395,12 +396,12 @@ export default function SchedulePage() {
                             {schedule.afternoonShift && (
                               <div>
                                 {isSingleShift ? (
-                                  <span className="text-orange-400 dark:text-orange-300 font-medium">
+                                  <span className={SHIFT_COLOR_CLASSES.Afternoon}>
                                     {schedule.afternoonShift}
                                   </span>
                                 ) : (
                                   <>
-                                    <span className="text-orange-400 dark:text-orange-300 font-medium">
+                                    <span className={SHIFT_COLOR_CLASSES.Afternoon}>
                                       Afternoon
                                     </span>{' '}
                                     - {schedule.afternoonShift}
@@ -411,12 +412,12 @@ export default function SchedulePage() {
                             {schedule.nightShift && (
                               <div>
                                 {isSingleShift ? (
-                                  <span className="text-gray-500 dark:text-gray-400 font-medium">
+                                  <span className={SHIFT_COLOR_CLASSES.Night}>
                                     {schedule.nightShift}
                                   </span>
                                 ) : (
                                   <>
-                                    <span className="text-gray-500 dark:text-gray-400 font-medium">
+                                    <span className={SHIFT_COLOR_CLASSES.Night}>
                                       Night
                                     </span>{' '}
                                     - {schedule.nightShift}

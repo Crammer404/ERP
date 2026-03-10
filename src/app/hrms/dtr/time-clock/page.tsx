@@ -54,6 +54,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
 import { Badge } from '@/components/ui/badge';
+import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
 
 interface TimeClockLog {
   id: number;
@@ -139,10 +140,7 @@ export default function TimeClockPage() {
       let hours = 0;
       let minutes = 0;
 
-      if (Number.isInteger(value) && value >= 60) {
-        hours = Math.floor(value / 60);
-        minutes = Math.round(value % 60);
-      } else if (!Number.isInteger(value) && value < 48) {
+      if (value < 48) {
         hours = Math.floor(value);
         minutes = Math.round((value - hours) * 60);
       } else {
@@ -929,7 +927,11 @@ export default function TimeClockPage() {
                            {log.branch}
                          </Badge>
                        </TableCell>
-                       <TableCell>{log.shift}</TableCell>
+                       <TableCell>
+                         <span className={SHIFT_COLOR_CLASSES[log.shift] || ''}>
+                           {log.shift}
+                         </span>
+                       </TableCell>
                        <TableCell>{log.clockIn}</TableCell>
                        <TableCell>{log.clockOut}</TableCell>
                        <TableCell>{log.late}</TableCell>

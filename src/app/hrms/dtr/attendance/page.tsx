@@ -1,13 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DateRange } from 'react-day-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { BadgeCheck } from 'lucide-react';
 import { 
   Select,
   SelectContent,
@@ -40,12 +38,13 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { useAuth } from '@/components/providers/auth-provider';
-import { Download, User, RefreshCw, Clock } from 'lucide-react';
+import { Download, Loader2, RefreshCw, Clock } from 'lucide-react';
+import { EmployeeIdCard } from '../employeeId/components/employee-id';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useToast } from '@/hooks/use-toast';
 import { exportAttendance, getAttendanceLogs, DtrLogResponseItem } from '@/services/hrms/dtr';
+import { cn } from '@/lib/utils';
 
 // Data type used by the table
 interface AttendanceRecord {
@@ -62,7 +61,6 @@ interface AttendanceRecord {
 }
 
 export default function AttendancePage() {
-  const { user } = useAuth();
   const { toast } = useToast();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
@@ -76,6 +74,10 @@ export default function AttendancePage() {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportDateRange, setExportDateRange] = useState<DateRange | undefined>();
   const [isModalShaking, setIsModalShaking] = useState(false);
+  const [leftPanelHeight, setLeftPanelHeight] = useState(0);
+  const leftPanelRef = useRef<HTMLDivElement | null>(null);
+  const employeeIdDownloadRef = useRef<(() => Promise<void>) | null>(null);
+  const [downloadingEmployeeId, setDownloadingEmployeeId] = useState(false);
 
   const mapLog = (item: DtrLogResponseItem): AttendanceRecord => {
     const toTime = (ts: string | null): string => {
@@ -234,6 +236,7 @@ export default function AttendancePage() {
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+  const isTableEmpty = !loading && paginatedRecords.length === 0;
 
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(parseInt(value));
@@ -335,45 +338,68 @@ export default function AttendancePage() {
     });
   };
 
-  const getUserDisplayName = () => {
-    if (!user) return 'Loading...';
-    return user.name || user.email || 'User';
-  };
-
-  const getUserRole = () => {
-    if (!user) return '';
-    // Get role from user object if available
-    return user.role_name || '(Employee)';
-  };
+  useEffect(() => {
+    if (!leftPanelRef.current || typeof ResizeObserver === 'undefined') return;
+    const el = leftPanelRef.current;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setLeftPanelHeight(Math.ceil(entry.contentRect.height));
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   return (
     <div className="container mx-auto py-6 px-4">
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Left Section: Employee Profile */}
-        <div className="lg:w-[300px] shrink-0">
+        <div ref={leftPanelRef} className="lg:w-[300px] shrink-0">
           <Card className="h-fit">
             <CardHeader>
-              <CardTitle>Employee Profile</CardTitle>
+              <CardTitle className="text-base font-semibold uppercase text-center">Digital Employee ID</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Profile Picture */}
-              <div className="flex flex-col items-center">
-                <Avatar className="w-20 h-20 mb-2">
-                  <AvatarFallback className="text-lg bg-muted">
-                    <User className="w-10 h-10 text-muted-foreground" />
-                  </AvatarFallback>
-                </Avatar>
-                
-                {/* Employee Name and Role */}
-                <div className="text-center">
-                  <h3 className="text-sm font-semibold">{getUserDisplayName()}</h3>
-                  <p className="text-xs text-muted-foreground">{getUserRole()}</p>
-                </div>
+              <div className="flex justify-center">
+                <EmployeeIdCard
+                  compact
+                  hideDownloadButton
+                  onDownloadRequestReady={(handler) => {
+                    employeeIdDownloadRef.current = handler;
+                  }}
+                />
               </div>
-              
-              {/* Current Date and Time */}
-              <div className="pt-4 border-t">
-                <p className="text-sm font-medium">
+              <div className="flex justify-center">
+                <Button
+                  className="text-xs"
+                  disabled={downloadingEmployeeId || !employeeIdDownloadRef.current}
+                  onClick={async () => {
+                    if (!employeeIdDownloadRef.current) return;
+                    setDownloadingEmployeeId(true);
+                    try {
+                      await employeeIdDownloadRef.current();
+                    } finally {
+                      setDownloadingEmployeeId(false);
+                    }
+                  }}
+                >
+                  {downloadingEmployeeId ? (
+                    <>
+                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-3 w-3" />
+                      Download ID Card
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="pt-4 border-t text-center">
+                <p className="text-sm font-normal">
                   Today: {formatDateTime(currentTime)}
                 </p>
               </div>
@@ -383,7 +409,10 @@ export default function AttendancePage() {
 
         {/* Right Section: Attendance Records */}
         <div className="flex-1 min-w-0">
-          <Card>
+          <Card
+            className={isTableEmpty ? 'h-full flex flex-col' : ''}
+            style={isTableEmpty && leftPanelHeight > 0 ? { minHeight: `${leftPanelHeight}px` } : undefined}
+          >
             <CardHeader>
               {/* Filters */}
               <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4">
@@ -399,10 +428,10 @@ export default function AttendancePage() {
                   date={dateRange}
                   onDateChange={setDateRange}
                   placeholder="Select Date Range"
-                  className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
+                  className="w-full sm:flex-1 sm:min-w-[110px]"
                 />
                 <Select value={selectedShift} onValueChange={setSelectedShift}>
-                  <SelectTrigger className="sm:w-40 min-w-[140px]">
+                  <SelectTrigger className="w-full sm:flex-1 sm:min-w-[110px]">
                     <SelectValue placeholder="All Shifts" />
                   </SelectTrigger>
                   <SelectContent>
@@ -418,15 +447,15 @@ export default function AttendancePage() {
                   onClick={handleRefresh}
                 >
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                  Clear
+                  Refresh
                 </Button>
               </div>
             </CardHeader>
 
-            <CardContent>
+            <CardContent className={cn(isTableEmpty && 'flex flex-1 min-h-0 flex-col')}>
               {/* Table */}
-              <div className="rounded-md border">
-                <Table>
+              <div className={cn('rounded-md border', isTableEmpty && 'flex-1 min-h-[280px] flex flex-col')}>
+                <Table className={cn(isTableEmpty && 'shrink-0')}>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
@@ -440,7 +469,8 @@ export default function AttendancePage() {
                       <TableHead>Total Work Hours</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
+                  {!isTableEmpty && (
+                    <TableBody>
                     {loading ? (
                       <TableRow>
                         <TableCell colSpan={9} className="text-center py-8">
@@ -461,19 +491,20 @@ export default function AttendancePage() {
                           <TableCell>{record.totalWorkHours}</TableCell>
                         </TableRow>
                       ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={9} className="p-0">
-                          <EmptyState
-                            icon={Clock}
-                            title="No attendance records found"
-                            description="There are no attendance records for this branch yet. Records will appear here once employees clock in."
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
+                    ) : null}
+                    </TableBody>
+                  )}
                 </Table>
+                {isTableEmpty && (
+                  <div className="flex flex-1 items-center justify-center">
+                    <EmptyState
+                      icon={Clock}
+                      title="No attendance records found"
+                      description="There are no attendance records for this branch yet. Records will appear here once employees clock in."
+                      className="py-0"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Pagination */}

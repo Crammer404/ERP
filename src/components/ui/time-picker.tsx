@@ -95,6 +95,7 @@ export function TimePicker({
   }
 
   const handleCancel = () => {
+    onChange?.("")
     setOpen(false)
   }
 

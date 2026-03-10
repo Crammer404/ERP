@@ -38,7 +38,6 @@ import {
 import { useSidebar } from '../providers/sidebar-provider';
 import { ThemeToggle } from './theme-toggle';
 import { useEffect, useState } from 'react';
-import { useAccessControl } from '../providers/access-control-provider';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { useAuth } from '../providers/auth-provider';
 import { cn } from '@/lib/utils';
@@ -89,7 +88,6 @@ const FullscreenToggle = () => {
 
 export function SiteHeader() {
   const { toggleSidebar, isCollapsed, isMobile, isOpen } = useSidebar();
-  const { user: accessUser } = useAccessControl();
   const { user, logout } = useAuth();
   const router = useRouter();
   
@@ -115,9 +113,12 @@ export function SiteHeader() {
   const [outOfStockProducts, setOutOfStockProducts] = useState<any[]>([]);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   
-  const isSuperAdmin = user?.role_name === 'Super Admin';
+  const roleSlug = user?.role_slug ?? '';
+  const isSuperAdmin = roleSlug === 'super_admin';
+  const isEmployee = roleSlug === 'employee';
+  const isBranchManager = roleSlug === 'branch_manager';
   const canSwitchTenant = tenants.length > 1;
-  const showTenantSelector = canSwitchTenant || !!selectedTenant;
+  const showTenantSelector = !isEmployee && !isBranchManager && (canSwitchTenant || !!selectedTenant);
   
   // Load tenant options for the current user.
   useEffect(() => {
@@ -268,6 +269,31 @@ export function SiteHeader() {
       setIsLoadingTenants(false);
     }
   };
+
+  const syncBranchContext = (nextBranch: Branch | null) => {
+    const currentBranchId = tenantContextService.getStoredBranchContext()?.id?.toString() ?? '';
+    const nextBranchId = nextBranch?.id?.toString() ?? '';
+
+    if (selectedBranch !== nextBranchId) {
+      setSelectedBranch(nextBranchId);
+    }
+
+    if (nextBranch) {
+      tenantContextService.storeBranchContext(nextBranch);
+    } else if (typeof window !== 'undefined') {
+      localStorage.removeItem('branch_context');
+    }
+
+    if (currentBranchId === nextBranchId) {
+      return;
+    }
+
+    clearStockStatuses();
+    window.dispatchEvent(new CustomEvent('branchChanged', {
+      detail: { branchId: nextBranch?.id ?? null, branch: nextBranch ?? null }
+    }));
+    router.refresh();
+  };
   
   const loadBranchesForTenant = async (tenantId: number) => {
     setIsLoadingBranches(true);
@@ -278,24 +304,16 @@ export function SiteHeader() {
       const storedBranch = tenantContextService.getStoredBranchContext();
       const storedBranchId = storedBranch?.id?.toString() ?? '';
       const preferredBranchId = selectedBranch || storedBranchId;
+      const preferredBranch = preferredBranchId
+        ? fetchedBranches.find(b => b.id.toString() === preferredBranchId) ?? null
+        : null;
 
-      if (preferredBranchId && fetchedBranches.some(b => b.id.toString() === preferredBranchId)) {
-        if (selectedBranch !== preferredBranchId) {
-          setSelectedBranch(preferredBranchId);
-        }
-        const preferredBranch = fetchedBranches.find(b => b.id.toString() === preferredBranchId);
-        if (preferredBranch) {
-          tenantContextService.storeBranchContext(preferredBranch);
-        }
+      if (preferredBranch) {
+        syncBranchContext(preferredBranch);
       } else if (fetchedBranches.length > 0) {
-        const defaultBranch = fetchedBranches[0];
-        setSelectedBranch(defaultBranch.id.toString());
-        tenantContextService.storeBranchContext(defaultBranch);
+        syncBranchContext(fetchedBranches[0]);
       } else {
-        setSelectedBranch('');
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('branch_context');
-        }
+        syncBranchContext(null);
       }
     } catch (error) {
       console.error('Failed to load branches:', error);
@@ -313,24 +331,16 @@ export function SiteHeader() {
       const storedBranch = tenantContextService.getStoredBranchContext();
       const storedBranchId = storedBranch?.id?.toString() ?? '';
       const preferredBranchId = selectedBranch || storedBranchId;
+      const preferredBranch = preferredBranchId
+        ? fetchedBranches.find(b => b.id.toString() === preferredBranchId) ?? null
+        : null;
 
-      if (preferredBranchId && fetchedBranches.some(b => b.id.toString() === preferredBranchId)) {
-        if (selectedBranch !== preferredBranchId) {
-          setSelectedBranch(preferredBranchId);
-        }
-        const preferredBranch = fetchedBranches.find(b => b.id.toString() === preferredBranchId);
-        if (preferredBranch) {
-          tenantContextService.storeBranchContext(preferredBranch);
-        }
+      if (preferredBranch) {
+        syncBranchContext(preferredBranch);
       } else if (fetchedBranches.length > 0) {
-        const defaultBranch = fetchedBranches[0];
-        setSelectedBranch(defaultBranch.id.toString());
-        tenantContextService.storeBranchContext(defaultBranch);
+        syncBranchContext(fetchedBranches[0]);
       } else {
-        setSelectedBranch('');
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('branch_context');
-        }
+        syncBranchContext(null);
       }
     } catch (error) {
       console.error('Failed to load user branches:', error);
@@ -363,25 +373,9 @@ export function SiteHeader() {
       return;
     }
 
-    setSelectedBranch(branchId);
-
-    // Clear previous stock statuses when switching branches
-    clearStockStatuses();
-
-    // Update branch context in localStorage
     const branch = branches.find(b => b.id.toString() === branchId);
     if (branch) {
-      tenantContextService.storeBranchContext(branch);
-
-      // Trigger a custom event to notify other components about branch change
-      // This will also clear the cart globally
-      window.dispatchEvent(new CustomEvent('branchChanged', {
-        detail: { branchId: parseInt(branchId), branch }
-      }));
-
-      // Refresh server components without resetting client state.
-      // Branch-aware client components should react to `branchChanged`.
-      router.refresh();
+      syncBranchContext(branch);
     }
   };
   

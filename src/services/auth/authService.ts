@@ -134,7 +134,13 @@ export const authService = {
         return null;
       }
 
-      return JSON.parse(cachedData);
+      const parsed = JSON.parse(cachedData) as User;
+      if (!parsed || typeof parsed !== 'object' || !('role_slug' in parsed)) {
+        this.clearCachedData();
+        return null;
+      }
+
+      return parsed;
     } catch (error) {
       console.error('Error reading cached user data:', error);
       this.clearCachedData();

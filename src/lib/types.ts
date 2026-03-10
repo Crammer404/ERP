@@ -30,6 +30,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  role_slug: string;
   role_name: string; // Display name only
   permissions: Record<string, UserModuleGroup>; // Grouped modules: { "main": { group: {...}, modules: [...] } }
 }

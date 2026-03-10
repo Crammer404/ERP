@@ -1,5 +1,5 @@
-// DTR (Time Clock) service
 import { api } from "../api";
+import { API_CONFIG } from "@/config/api.config";
 
 export interface DtrUserInfo {
   first_name?: string;
@@ -108,9 +108,7 @@ export const exportAttendance = async (startDate?: string, endDate?: string): Pr
     
     const queryString = params.toString();
     const endpoint = `/hrms/dtr/attendance/export${queryString ? '?' + queryString : ''}`;
-    
-    // Make API call to get the file
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}${endpoint}`, {
+    const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -183,9 +181,7 @@ export const exportTimesheet = async (startDate?: string, endDate?: string): Pro
     
     const queryString = params.toString();
     const endpoint = `/hrms/dtr/export-timesheet${queryString ? '?' + queryString : ''}`;
-    
-    // Make API call to get the file
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}${endpoint}`, {
+    const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
