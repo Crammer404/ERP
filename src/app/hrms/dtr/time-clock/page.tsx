@@ -854,7 +854,7 @@ export default function TimeClockPage() {
               date={dateRange}
               onDateChange={setDateRange}
               placeholder="Select Date Range"
-              className="w-full sm:flex-1 sm:min-w-[110px]"
+              className="w-full sm:flex-1 sm:min-w-[120px]"
             />
             {/* Shift Filter */}
             <Select value={selectedShift} onValueChange={setSelectedShift}>

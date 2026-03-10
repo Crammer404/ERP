@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { DateRange } from 'react-day-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,11 +78,13 @@ import {
   OvertimeRequestRecord
 } from '@/services/hrms/dtr';
 
+type OvertimeTab = 'approval' | 'myOvertime';
+
 export default function OvertimePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState('approval');
+  const [activeTab, setActiveTab] = useState<OvertimeTab>('approval');
   
   // Manager Approval Tab States
   const [searchTerm, setSearchTerm] = useState('');
@@ -119,6 +121,40 @@ export default function OvertimePage() {
     dtr_log_id: 0,
     reason: '',
   });
+
+  const overtimePermissions = useMemo(() => {
+    if (!user?.permissions) {
+      return null;
+    }
+
+    for (const groupData of Object.values(user.permissions)) {
+      const overtimeModule = groupData.modules.find((module) => module.module_path === '/hrms/dtr/overtime');
+      if (overtimeModule?.permissions) {
+        return overtimeModule.permissions;
+      }
+    }
+
+    return null;
+  }, [user?.permissions]);
+
+  const canViewManagerApproval = Boolean(overtimePermissions?.update);
+  const canViewMyOvertime = Boolean(overtimePermissions?.create);
+  const hasOvertimeTabAccess = canViewManagerApproval || canViewMyOvertime;
+
+  useEffect(() => {
+    if (!hasOvertimeTabAccess) {
+      return;
+    }
+
+    if (activeTab === 'approval' && !canViewManagerApproval && canViewMyOvertime) {
+      setActiveTab('myOvertime');
+      return;
+    }
+
+    if (activeTab === 'myOvertime' && !canViewMyOvertime && canViewManagerApproval) {
+      setActiveTab('approval');
+    }
+  }, [activeTab, canViewManagerApproval, canViewMyOvertime, hasOvertimeTabAccess]);
 
   const fetchApprovalRecords = async () => {
     setLoading(true);
@@ -166,23 +202,23 @@ export default function OvertimePage() {
 
   // Initial load
   useEffect(() => {
-    if (activeTab === 'approval') {
+    if (activeTab === 'approval' && canViewManagerApproval) {
       fetchApprovalRecords();
-    } else {
+    } else if (activeTab === 'myOvertime' && canViewMyOvertime) {
       fetchMyOvertimeRecords();
     }
-  }, [activeTab]);
+  }, [activeTab, canViewManagerApproval, canViewMyOvertime]);
 
   // Refetch when filters change for approval tab
   useEffect(() => {
-    if (activeTab === 'approval') {
+    if (activeTab === 'approval' && canViewManagerApproval) {
       fetchApprovalRecords();
     }
-  }, [selectedStatus, searchTerm, dateRange]);
+  }, [activeTab, canViewManagerApproval, selectedStatus, searchTerm, dateRange]);
 
   // Listen for branch context changes (for Manager Approval tab)
   useEffect(() => {
-    if (activeTab !== 'approval') return;
+    if (activeTab !== 'approval' || !canViewManagerApproval) return;
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'branch_context') {
@@ -204,7 +240,7 @@ export default function OvertimePage() {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('branchChanged', handleBranchChange);
     };
-  }, [activeTab]);
+  }, [activeTab, canViewManagerApproval]);
 
   // Update current time every second
   useEffect(() => {
@@ -489,21 +525,38 @@ export default function OvertimePage() {
     return `${wholeHours}h ${minutes}m`;
   };
 
+  if (!hasOvertimeTabAccess) {
+    return (
+      <div className="container mx-auto py-6 px-4">
+        <EmptyState
+          icon={Clock}
+          title="No overtime access"
+          description="Your role does not currently have access to Overtime tabs."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-6 px-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
-          <TabsTrigger value="approval" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Manager Approval
-          </TabsTrigger>
-          <TabsTrigger value="myOvertime" className="flex items-center gap-2">
-            <UserCheck className="h-4 w-4" />
-            My Overtime
-          </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as OvertimeTab)} className="w-full">
+        <TabsList className={`grid w-full mb-6 ${canViewManagerApproval && canViewMyOvertime ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {canViewManagerApproval && (
+            <TabsTrigger value="approval" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Manager Approval
+            </TabsTrigger>
+          )}
+          {canViewMyOvertime && (
+            <TabsTrigger value="myOvertime" className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              My Overtime
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Manager Approval Tab */}
+        {canViewManagerApproval && (
         <TabsContent value="approval">
           {/* Summary Row */}
           <div className="mb-6">
@@ -556,7 +609,7 @@ export default function OvertimePage() {
                   placeholder="Search employee"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="sm:w-64 min-w-[200px] flex-1 sm:flex-none"
+                  className="w-full sm:flex-1 sm:min-w-[120px]"
                 />
                 <DateRangePicker
                   date={dateRange}
@@ -565,7 +618,7 @@ export default function OvertimePage() {
                   className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
                 />
                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                  <SelectTrigger className="sm:w-40 min-w-[140px]">
+                  <SelectTrigger className="sm:w-40 min-w-[180px]">
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -749,8 +802,10 @@ export default function OvertimePage() {
           </Card>
           </div>
         </TabsContent>
+        )}
 
         {/* My Overtime Tab */}
+        {canViewMyOvertime && (
         <TabsContent value="myOvertime">
           {/* Summary Row */}
           <div className="mb-6">
@@ -803,7 +858,7 @@ export default function OvertimePage() {
                   placeholder="Search reason"
                   value={mySearchTerm}
                   onChange={(e) => setMySearchTerm(e.target.value)}
-                  className="sm:w-64 min-w-[200px] flex-1 sm:flex-none"
+                  className="w-full sm:flex-1 sm:min-w-[100px]"
                 />
                 <DateRangePicker
                   date={myDateRange}
@@ -812,7 +867,7 @@ export default function OvertimePage() {
                   className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
                 />
                 <Select value={mySelectedStatus} onValueChange={setMySelectedStatus}>
-                  <SelectTrigger className="sm:w-40 min-w-[140px]">
+                  <SelectTrigger className="sm:w-40 min-w-[180px]">
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1008,6 +1063,7 @@ export default function OvertimePage() {
           </Card>
           </div>
         </TabsContent>
+        )}
       </Tabs>
 
       {/* View Details Modal */}
