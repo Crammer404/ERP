@@ -69,6 +69,7 @@ interface TimeClockLog {
   clockOut: string;
   late: string;
   overtime: string;
+  actualHours: string;
   totalWorkHours: string;
   clockInRaw: string | null;
   clockOutRaw: string | null;
@@ -107,6 +108,7 @@ export default function TimeClockPage() {
   const [isModalShaking, setIsModalShaking] = useState(false);
   const [earliestLogDate, setEarliestLogDate] = useState<Date | undefined>();
   const scannerRef = useRef<any>(null);
+  const scannerResetTimeoutRef = useRef<number | null>(null);
   const isProcessingScanRef = useRef(false);
   const prevFilterKeyRef = useRef<string>('');
   const pageCacheRef = useRef<Map<string, CachedPageData>>(new Map());
@@ -222,6 +224,7 @@ export default function TimeClockPage() {
       clockIn: toTime(item.clock_in),
       clockOut: toTime(item.clock_out),
       overtime: `${item.overtime_minutes ?? 0} min`,
+      actualHours: formatHoursAndMinutes(item.actual_hours, item.cleaned_total_work_hours),
       totalWorkHours: formatHoursAndMinutes(item.total_work_hours),
       late: formatLateMinutes(item.late_minutes, item.grace_late_minutes),
       clockInRaw: item.clock_in,
@@ -239,6 +242,55 @@ export default function TimeClockPage() {
 
   const clearLogsCache = () => {
     pageCacheRef.current.clear();
+  };
+
+  const clearScannerResetTimeout = () => {
+    if (scannerResetTimeoutRef.current !== null) {
+      window.clearTimeout(scannerResetTimeoutRef.current);
+      scannerResetTimeoutRef.current = null;
+    }
+  };
+
+  const clearScannerInstance = () => {
+    const scannerInstance = scannerRef.current;
+    if (!scannerInstance) return;
+    scannerRef.current = null;
+    try {
+      const clearResult = scannerInstance.clear();
+      if (clearResult && typeof clearResult.then === 'function') {
+        clearResult.catch(() => {});
+      }
+    } catch {}
+  };
+
+  const getQrFileInput = (): HTMLInputElement | null => {
+    return document.getElementById('html5-qrcode-private-filescan-input') as HTMLInputElement | null;
+  };
+
+  const clearQrFileInput = () => {
+    const fileInput = getQrFileInput();
+    if (!fileInput) return;
+    fileInput.value = '';
+  };
+
+  const isFileScanMode = (): boolean => {
+    const fileInput = getQrFileInput();
+    return Boolean(fileInput && !fileInput.disabled);
+  };
+
+  const resetScanProcessingState = () => {
+    isProcessingScanRef.current = false;
+    setIsProcessingScan(false);
+    clearQrFileInput();
+  };
+
+  const scheduleScanReset = (mounted: boolean) => {
+    clearScannerResetTimeout();
+    scannerResetTimeoutRef.current = window.setTimeout(() => {
+      scannerResetTimeoutRef.current = null;
+      if (!mounted) return;
+      resetScanProcessingState();
+    }, 1200);
   };
 
   const getLogsCacheKey = (page: number, perPage: number): string => {
@@ -394,8 +446,10 @@ export default function TimeClockPage() {
 
   useEffect(() => {
     if (isScannerPanelCollapsed) {
+      clearScannerResetTimeout();
       isProcessingScanRef.current = false;
       setIsProcessingScan(false);
+      clearQrFileInput();
     }
   }, [isScannerPanelCollapsed]);
 
@@ -448,15 +502,14 @@ export default function TimeClockPage() {
               });
             }
           } finally {
-            setTimeout(() => {
-              if (!mounted) return;
-              isProcessingScanRef.current = false;
-              setIsProcessingScan(false);
-            }, 1500);
+            scheduleScanReset(mounted);
           }
         };
 
         const onScanFailure = () => {
+          if (!isFileScanMode()) return;
+          clearScannerResetTimeout();
+          resetScanProcessingState();
         };
 
         scanner.render(onScanSuccess, onScanFailure);
@@ -473,13 +526,9 @@ export default function TimeClockPage() {
 
     return () => {
       mounted = false;
+      clearScannerResetTimeout();
       isProcessingScanRef.current = false;
-      if (scannerRef.current) {
-        try {
-          scannerRef.current.clear();
-        } catch {}
-        scannerRef.current = null;
-      }
+      clearScannerInstance();
     };
   }, [isScanning, isScannerPanelCollapsed]);
 
@@ -600,15 +649,19 @@ export default function TimeClockPage() {
   };
 
   const handleStopScanning = () => {
+    clearScannerResetTimeout();
     setIsScanning(false);
     isProcessingScanRef.current = false;
     setIsProcessingScan(false);
+    clearQrFileInput();
   };
 
   const handleRestartScanning = async () => {
+    clearScannerResetTimeout();
     setIsScanning(false);
     isProcessingScanRef.current = false;
     setIsProcessingScan(false);
+    clearQrFileInput();
     
     await new Promise(resolve => setTimeout(resolve, 300));
     
@@ -645,6 +698,14 @@ export default function TimeClockPage() {
       const res = await clockApi(uid);
       
       if (res?.status === 'error') {
+        const shouldRefreshLogs = Boolean(res?.refresh_logs || res?.dead_time_deleted);
+        if (shouldRefreshLogs) {
+          clearLogsCache();
+          try {
+            await fetchLogs({ force: true });
+          } catch {}
+        }
+
         const msg = res?.message || 'Clock action failed';
         toast({
           title: 'Error',
@@ -663,7 +724,19 @@ export default function TimeClockPage() {
       clearLogsCache();
       await fetchLogs({ force: true });
     } catch (e: any) {
-      const apiErr = e?.response?.data?.message || e?.message || 'Clock action failed';
+      const responseData = e?.response?.data;
+      const shouldRefreshLogs = Boolean(responseData?.refresh_logs || responseData?.dead_time_deleted);
+      if (shouldRefreshLogs) {
+        clearLogsCache();
+        try {
+          await fetchLogs({ force: true });
+        } catch {}
+      }
+
+      const validationErrors = responseData?.errors
+        ? Object.values(responseData.errors).flat().filter(Boolean).join(' ')
+        : '';
+      const apiErr = responseData?.message || validationErrors || e?.message || 'Clock action failed';
       toast({
         title: 'Error',
         description: apiErr,
@@ -906,6 +979,7 @@ export default function TimeClockPage() {
                    <TableHead>Clock Out</TableHead>
                    <TableHead>Late</TableHead>
                    <TableHead>Overtime</TableHead>
+                   <TableHead>Actual Work Hours</TableHead>
                    <TableHead>Total Work Hours</TableHead>
                    {canManageLogs() && <TableHead>Action</TableHead>}
                  </TableRow>
@@ -913,7 +987,7 @@ export default function TimeClockPage() {
                <TableBody className="[&_td]:text-[11px]">
                  {loading ? (
                    <TableRow>
-                     <TableCell colSpan={canManageLogs() ? 10 : 9} className="text-center py-8">
+                    <TableCell colSpan={canManageLogs() ? 11 : 10} className="text-center py-8">
                        <Loader size="sm" />
                      </TableCell>
                    </TableRow>
@@ -936,6 +1010,7 @@ export default function TimeClockPage() {
                        <TableCell>{log.clockOut}</TableCell>
                        <TableCell>{log.late}</TableCell>
                        <TableCell>{log.overtime}</TableCell>
+                       <TableCell>{log.actualHours}</TableCell>
                        <TableCell>{log.totalWorkHours}</TableCell>
                        {canManageLogs() && (
                          <TableCell>
@@ -965,7 +1040,7 @@ export default function TimeClockPage() {
                    ))
                  ) : (
                    <TableRow>
-                     <TableCell colSpan={canManageLogs() ? 10 : 9} className="p-0">
+                    <TableCell colSpan={canManageLogs() ? 11 : 10} className="p-0">
                        {hasDateFilter ? (
                          <EmptyState
                            icon={Clock}

@@ -308,7 +308,7 @@ export function SiteHeader() {
         ? fetchedBranches.find(b => b.id.toString() === preferredBranchId) ?? null
         : null;
 
-      if (preferredBranch) {
+        if (preferredBranch) {
         syncBranchContext(preferredBranch);
       } else if (fetchedBranches.length > 0) {
         syncBranchContext(fetchedBranches[0]);
@@ -335,7 +335,7 @@ export function SiteHeader() {
         ? fetchedBranches.find(b => b.id.toString() === preferredBranchId) ?? null
         : null;
 
-      if (preferredBranch) {
+        if (preferredBranch) {
         syncBranchContext(preferredBranch);
       } else if (fetchedBranches.length > 0) {
         syncBranchContext(fetchedBranches[0]);

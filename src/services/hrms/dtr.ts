@@ -41,6 +41,7 @@ export interface DtrLogResponseItem {
   overtime_minutes?: number | null;
   total_work_hours?: number | null;
   cleaned_total_work_hours?: number | null;
+  actual_hours?: number | null;
   schedule_name?: string | null;
   created_at?: string;
   updated_at?: string;
