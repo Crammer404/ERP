@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { BadgeCheck } from 'lucide-react';
 import { 
   Select,
   SelectContent,
@@ -28,7 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DeleteLogDialog } from './components/delete-log-dialog';
 import {
   Table,
   TableBody,
@@ -55,6 +54,8 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
 import { Badge } from '@/components/ui/badge';
 import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
+import { TimeDisplay } from './components/time-display';
+import { ScanConfirmDialog, ScanConfirmData, ScanErrorDialog } from './components/scan-result-dialog';
 
 interface TimeClockLog {
   id: number;
@@ -87,6 +88,8 @@ interface CachedPageData {
 export default function TimeClockPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedShift, setSelectedShift] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -120,6 +123,10 @@ export default function TimeClockPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [logToDelete, setLogToDelete] = useState<TimeClockLog | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [scanConfirmOpen, setScanConfirmOpen] = useState(false);
+  const [scanConfirmData, setScanConfirmData] = useState<ScanConfirmData | null>(null);
+  const [scanErrorOpen, setScanErrorOpen] = useState(false);
+  const [scanErrorMessage, setScanErrorMessage] = useState('');
 
   const today = new Date();
 
@@ -158,16 +165,16 @@ export default function TimeClockPage() {
       return `${hours}h ${minutes}min`;
     };
 
+    const toNum = (value: any): number | null => {
+      if (value === null || value === undefined) return null;
+      const parsed = typeof value === 'number' ? value : parseFloat(String(value));
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
     const formatLateMinutes = (
       late: number | string | null | undefined,
       grace: number | string | null | undefined
     ): string => {
-      const toNum = (value: any): number | null => {
-        if (value === null || value === undefined) return null;
-        const parsed = typeof value === 'number' ? value : parseFloat(String(value));
-        return Number.isNaN(parsed) ? null : parsed;
-      };
-
       const lateMinutes = toNum(late) ?? 0;
       const graceMinutes = toNum(grace) ?? 0;
 
@@ -175,6 +182,19 @@ export default function TimeClockPage() {
       if (graceMinutes > 0 && lateMinutes <= graceMinutes) return '-';
 
       return `${lateMinutes} min`;
+    };
+
+    const formatOvertimeMinutes = (
+      overtime: number | string | null | undefined,
+      grace: number | string | null | undefined
+    ): string => {
+      const overtimeMin = toNum(overtime) ?? 0;
+      const graceMin = toNum(grace) ?? 0;
+
+      if (overtimeMin <= 0) return '-';
+      if (graceMin > 0 && overtimeMin <= graceMin) return '-';
+
+      return `${overtimeMin} min`;
     };
 
     const computeTotalFromClockTimes = (startStr: string | null, endStr: string | null): string => {
@@ -191,7 +211,7 @@ export default function TimeClockPage() {
     const toTime = (ts: string | null): string => {
       if (!ts) return '-';
       const d = new Date(ts);
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
     };
 
     const toDate = (dateStr: string): string => {
@@ -223,7 +243,7 @@ export default function TimeClockPage() {
       shift: item.shift || '-',
       clockIn: toTime(item.clock_in),
       clockOut: toTime(item.clock_out),
-      overtime: `${item.overtime_minutes ?? 0} min`,
+      overtime: formatOvertimeMinutes(item.overtime_minutes, item.grace_overtime_minutes),
       actualHours: formatHoursAndMinutes(item.actual_hours, item.cleaned_total_work_hours),
       totalWorkHours: formatHoursAndMinutes(item.total_work_hours),
       late: formatLateMinutes(item.late_minutes, item.grace_late_minutes),
@@ -249,6 +269,15 @@ export default function TimeClockPage() {
       window.clearTimeout(scannerResetTimeoutRef.current);
       scannerResetTimeoutRef.current = null;
     }
+  };
+
+  const pauseScanner = () => {
+    const scannerInstance = scannerRef.current;
+    if (!scannerInstance) return;
+    try {
+      // Html5QrcodeScanner.pause(true) pauses scanning AND freezes the video frame
+      scannerInstance.pause(true);
+    } catch {}
   };
 
   const clearScannerInstance = () => {
@@ -297,7 +326,7 @@ export default function TimeClockPage() {
     return [
       page,
       perPage,
-      searchTerm.trim().toLowerCase(),
+      debouncedSearch.trim().toLowerCase(),
       selectedShift,
       toApiDate(dateRange?.from) || '',
       toApiDate(dateRange?.to) || '',
@@ -329,7 +358,15 @@ export default function TimeClockPage() {
       }
 
       setLoading(true);
-      const response: any = await getTimeClockLogs();
+      const search = debouncedSearch.trim();
+      const response: any = await getTimeClockLogs({
+        page,
+        per_page: perPage,
+        search: search || undefined,
+        shift: selectedShift !== 'all' ? selectedShift : undefined,
+        start_date: toApiDate(dateRange?.from),
+        end_date: toApiDate(dateRange?.to),
+      });
 
       const isPaginatedShape = response && !Array.isArray(response) && Array.isArray(response.data);
       const rawLogs: DtrLogResponseItem[] = isPaginatedShape
@@ -431,7 +468,7 @@ export default function TimeClockPage() {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('branchChanged', handleBranchChange);
     };
-  }, [currentPage, itemsPerPage, searchTerm, selectedShift, dateRange?.from?.getTime(), dateRange?.to?.getTime()]);
+  }, [currentPage, itemsPerPage, debouncedSearch, selectedShift, dateRange?.from?.getTime(), dateRange?.to?.getTime()]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -439,6 +476,21 @@ export default function TimeClockPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Debounce search input — only update debouncedSearch after 500ms of no typing
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500);
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchTerm]);
 
   useEffect(() => {
     isProcessingScanRef.current = isProcessingScan;
@@ -478,7 +530,10 @@ export default function TimeClockPage() {
           
           isProcessingScanRef.current = true;
           setIsProcessingScan(true);
+          // Immediately pause scanning to prevent any further decode callbacks
+          pauseScanner();
           
+          let dialogOpened = false;
           try {
             let userId: number | null = null;
             
@@ -493,16 +548,21 @@ export default function TimeClockPage() {
             }
             
             if (userId) {
-              await handleClockWithUserId(userId);
+              dialogOpened = await handleClockWithUserId(userId, true);
             } else {
-              toast({
-                title: 'Invalid QR Code',
-                description: 'QR code does not contain a valid user ID.',
-                variant: 'destructive',
-              });
+              // Show error dialog for invalid QR codes too
+              pauseScanner();
+              clearScannerResetTimeout();
+              clearScannerInstance();
+              setIsScanning(false);
+              setScanErrorMessage('QR code does not contain a valid user ID.');
+              setScanErrorOpen(true);
+              dialogOpened = true;
             }
           } finally {
-            scheduleScanReset(mounted);
+            if (!dialogOpened) {
+              scheduleScanReset(mounted);
+            }
           }
         };
 
@@ -534,7 +594,7 @@ export default function TimeClockPage() {
 
   const hasDateFilter = Boolean(dateRange?.from || dateRange?.to);
   const filterKey = [
-    searchTerm.trim().toLowerCase(),
+    debouncedSearch.trim().toLowerCase(),
     selectedShift,
     toApiDate(dateRange?.from) || '',
     toApiDate(dateRange?.to) || '',
@@ -568,6 +628,11 @@ export default function TimeClockPage() {
 
     clearLogsCache();
     setSearchTerm('');
+    setDebouncedSearch('');
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
     setDateRange(undefined);
     setSelectedShift('all');
     setCurrentPage(1);
@@ -684,14 +749,14 @@ export default function TimeClockPage() {
     });
   };
 
-  const handleClockWithUserId = async (uid: number) => {
+  const handleClockWithUserId = async (uid: number, fromScanner = false): Promise<boolean> => {
     if (!uid || uid <= 0) {
       toast({
         title: 'Invalid User ID',
         description: 'Please provide a valid user ID.',
         variant: 'destructive',
       });
-      return;
+      return false;
     }
     setClocking(true);
     try {
@@ -707,22 +772,50 @@ export default function TimeClockPage() {
         }
 
         const msg = res?.message || 'Clock action failed';
+        if (fromScanner) {
+          pauseScanner();
+          clearScannerResetTimeout();
+          clearScannerInstance();
+          setIsScanning(false);
+          setScanErrorMessage(msg);
+          setScanErrorOpen(true);
+          return true;
+        }
         toast({
           title: 'Error',
           description: msg,
           variant: 'destructive',
         });
-        return;
+        return false;
       }
-      
+
+      clearLogsCache();
+      await fetchLogs({ force: true });
+
+      if (fromScanner) {
+        const now = new Date();
+        setScanConfirmData({
+          employeeName: res?.employee_name || `User #${uid}`,
+          action: res?.action || (res?.clock_in ? 'Time In' : 'Time Out'),
+          time: res?.time || now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        });
+        // Immediately pause scanning (freezes camera frame, stops decoding)
+        pauseScanner();
+        // Then fully tear down the scanner and camera
+        clearScannerResetTimeout();
+        clearScannerInstance();
+        setIsScanning(false);
+        setScanConfirmOpen(true);
+        return true;
+      }
+
       const msg = res?.message || 'Clock action completed';
       toast({
         title: 'Success',
         description: msg,
         variant: 'default',
       });
-      clearLogsCache();
-      await fetchLogs({ force: true });
+      return false;
     } catch (e: any) {
       const responseData = e?.response?.data;
       const shouldRefreshLogs = Boolean(responseData?.refresh_logs || responseData?.dead_time_deleted);
@@ -737,11 +830,21 @@ export default function TimeClockPage() {
         ? Object.values(responseData.errors).flat().filter(Boolean).join(' ')
         : '';
       const apiErr = responseData?.message || validationErrors || e?.message || 'Clock action failed';
+      if (fromScanner) {
+        pauseScanner();
+        clearScannerResetTimeout();
+        clearScannerInstance();
+        setIsScanning(false);
+        setScanErrorMessage(apiErr);
+        setScanErrorOpen(true);
+        return true;
+      }
       toast({
         title: 'Error',
         description: apiErr,
         variant: 'destructive',
       });
+      return false;
     } finally {
       setClocking(false);
     }
@@ -750,6 +853,22 @@ export default function TimeClockPage() {
   const handleClock = async () => {
     const uid = parseInt(userIdInput, 10);
     await handleClockWithUserId(uid);
+  };
+
+  const handleScanConfirmClose = () => {
+    setScanConfirmOpen(false);
+    setScanConfirmData(null);
+    resetScanProcessingState();
+    // Restart the scanner (camera on) after the dialog closes
+    setIsScanning(true);
+  };
+
+  const handleScanErrorClose = () => {
+    setScanErrorOpen(false);
+    setScanErrorMessage('');
+    resetScanProcessingState();
+    // Restart the scanner (camera on) after the error dialog closes
+    setIsScanning(true);
   };
 
   const handleModalOutsideClick = () => {
@@ -824,6 +943,7 @@ export default function TimeClockPage() {
       setDeleting(false);
     }
   };
+
 
   return (
     <div className="container mx-auto py-6 px-4 overflow-x-hidden">
@@ -948,7 +1068,7 @@ export default function TimeClockPage() {
               onClick={handleRefresh}
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              Clear Filters
             </Button>
             {/* Add Log Button */}
             {canManageLogs() && (
@@ -1006,8 +1126,8 @@ export default function TimeClockPage() {
                            {log.shift}
                          </span>
                        </TableCell>
-                       <TableCell>{log.clockIn}</TableCell>
-                       <TableCell>{log.clockOut}</TableCell>
+                       <TableCell><TimeDisplay value={log.clockIn} /></TableCell>
+                       <TableCell><TimeDisplay value={log.clockOut} /></TableCell>
                        <TableCell>{log.late}</TableCell>
                        <TableCell>{log.overtime}</TableCell>
                        <TableCell>{log.actualHours}</TableCell>
@@ -1210,18 +1330,29 @@ export default function TimeClockPage() {
 
       {/* Delete Confirmation Dialog */}
       {canManageLogs() && (
-        <ConfirmDialog
+        <DeleteLogDialog
           open={deleteConfirmOpen}
           onOpenChange={setDeleteConfirmOpen}
-          title="Delete Time Log"
-          description={`Are you sure you want to delete the time log for ${logToDelete?.employee} on ${logToDelete?.date}? This action cannot be undone.`}
-          confirmText="Delete"
-          cancelText="Cancel"
+          employeeName={logToDelete?.employee}
+          date={logToDelete?.date}
           onConfirm={confirmDelete}
-          variant="destructive"
           loading={deleting}
         />
       )}
+
+      {/* Scan Confirmation Dialog */}
+      <ScanConfirmDialog
+        open={scanConfirmOpen}
+        data={scanConfirmData}
+        onClose={handleScanConfirmClose}
+      />
+
+      {/* Scan Error Dialog */}
+      <ScanErrorDialog
+        open={scanErrorOpen}
+        message={scanErrorMessage}
+        onClose={handleScanErrorClose}
+      />
     </div>
   );
 }

@@ -40,6 +40,8 @@ import { Download, RefreshCw, Clock, MoreVertical, Eye, CheckCircle, XCircle } f
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { OvertimeRequestRecord } from '@/services/hrms/dtr';
+import { ShiftFilter } from '../../../../../components/ui/shift-filter';
+import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
 
 type ManagerApprovalTabProps = {
   approvalRecords: OvertimeRequestRecord[];
@@ -47,6 +49,7 @@ type ManagerApprovalTabProps = {
   loading: boolean;
   exporting: boolean;
   searchTerm: string;
+  selectedShift: string;
   dateRange: DateRange | undefined;
   selectedStatus: string;
   currentPage: number;
@@ -54,6 +57,7 @@ type ManagerApprovalTabProps = {
   itemsPerPage: number;
   onExport: () => void;
   onSearchChange: (value: string) => void;
+  onShiftChange: (value: string) => void;
   onDateRangeChange: (value: DateRange | undefined) => void;
   onStatusChange: (value: string) => void;
   onRefresh: () => void;
@@ -72,6 +76,7 @@ export function ManagerApprovalTab({
   loading,
   exporting,
   searchTerm,
+  selectedShift,
   dateRange,
   selectedStatus,
   currentPage,
@@ -79,6 +84,7 @@ export function ManagerApprovalTab({
   itemsPerPage,
   onExport,
   onSearchChange,
+  onShiftChange,
   onDateRangeChange,
   onStatusChange,
   onRefresh,
@@ -146,10 +152,11 @@ export function ManagerApprovalTab({
                 date={dateRange}
                 onDateChange={onDateRangeChange}
                 placeholder="Select Date Range"
-                className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
+                className="w-full sm:flex-1 sm:min-w-[120px]"
               />
+              <ShiftFilter value={selectedShift} onChange={onShiftChange} />
               <Select value={selectedStatus} onValueChange={onStatusChange}>
-                <SelectTrigger className="sm:w-40 min-w-[180px]">
+                <SelectTrigger className="w-full sm:flex-1 sm:min-w-[120px]">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -165,15 +172,15 @@ export function ManagerApprovalTab({
                 onClick={onRefresh}
               >
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Clear
+                Clear Filters
               </Button>
             </div>
           </CardHeader>
 
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
+            <div className="rounded-md border w-full overflow-x-auto">
+              <Table className="min-w-[900px]">
+                <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Employee</TableHead>
@@ -186,7 +193,7 @@ export function ManagerApprovalTab({
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_td]:text-[11px]">
                   {loading ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8">

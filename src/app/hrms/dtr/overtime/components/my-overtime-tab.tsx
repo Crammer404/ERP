@@ -35,11 +35,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download, RefreshCw, Clock, MoreVertical, Eye, Plus } from 'lucide-react';
+import { Download, RefreshCw, Clock, MoreVertical, Eye, Send } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { MyOvertimeRecord } from '@/services/hrms/dtr';
+import { ShiftFilter } from '../../../../../components/ui/shift-filter';
+import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
+import { TimeDisplay } from '../../time-clock/components/time-display';
 
 type MyOvertimeTabProps = {
   myOvertimeRecords: MyOvertimeRecord[];
@@ -48,6 +51,7 @@ type MyOvertimeTabProps = {
   myLoading: boolean;
   exporting: boolean;
   mySearchTerm: string;
+  mySelectedShift: string;
   myDateRange: DateRange | undefined;
   mySelectedStatus: string;
   myCurrentPage: number;
@@ -55,6 +59,7 @@ type MyOvertimeTabProps = {
   myItemsPerPage: number;
   onExport: () => void;
   onSearchChange: (value: string) => void;
+  onShiftChange: (value: string) => void;
   onDateRangeChange: (value: DateRange | undefined) => void;
   onStatusChange: (value: string) => void;
   onRefresh: () => void;
@@ -73,7 +78,7 @@ const formatTime = (timeStr: string | null) => {
 
   try {
     const date = new Date(timeStr);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   } catch {
     return timeStr;
   }
@@ -95,6 +100,7 @@ export function MyOvertimeTab({
   myLoading,
   exporting,
   mySearchTerm,
+  mySelectedShift,
   myDateRange,
   mySelectedStatus,
   myCurrentPage,
@@ -102,6 +108,7 @@ export function MyOvertimeTab({
   myItemsPerPage,
   onExport,
   onSearchChange,
+  onShiftChange,
   onDateRangeChange,
   onStatusChange,
   onRefresh,
@@ -158,20 +165,21 @@ export function MyOvertimeTab({
                 <Download className="h-4 w-4 mr-2" />
                 {exporting ? 'Exporting...' : 'Export'}
               </Button>
-              <Input
+              {/* <Input
                 placeholder="Search reason"
                 value={mySearchTerm}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="w-full sm:flex-1 sm:min-w-[100px]"
-              />
+              /> */}
+              <ShiftFilter value={mySelectedShift} onChange={onShiftChange} />
               <DateRangePicker
                 date={myDateRange}
                 onDateChange={onDateRangeChange}
                 placeholder="Select Date Range"
-                className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
+                className="w-full sm:flex-1 sm:min-w-[120px]"
               />
               <Select value={mySelectedStatus} onValueChange={onStatusChange}>
-                <SelectTrigger className="sm:w-40 min-w-[180px]">
+                <SelectTrigger className="w-full sm:flex-1 sm:min-w-[120px]">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -188,15 +196,15 @@ export function MyOvertimeTab({
                 onClick={onRefresh}
               >
                 <RefreshCw className={`h-4 w-4 ${myLoading ? 'animate-spin' : ''}`} />
-                Clear
+                Clear Filters
               </Button>
             </div>
           </CardHeader>
 
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
+            <div className="rounded-md border w-full overflow-x-auto">
+              <Table className="min-w-[900px]">
+                <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Shift</TableHead>
@@ -208,7 +216,7 @@ export function MyOvertimeTab({
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_td]:text-[11px]">
                   {myLoading ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-8">
@@ -219,9 +227,13 @@ export function MyOvertimeTab({
                     myPaginatedRecords.map((record) => (
                       <TableRow key={record.id}>
                         <TableCell>{formatDate(record.date)}</TableCell>
-                        <TableCell>{record.shift}</TableCell>
-                        <TableCell>{formatTime(record.clock_in)}</TableCell>
-                        <TableCell>{formatTime(record.clock_out)}</TableCell>
+                        <TableCell>
+                          <span className={SHIFT_COLOR_CLASSES[record.shift] || ''}>
+                            {record.shift}
+                          </span>
+                        </TableCell>
+                        <TableCell><TimeDisplay value={formatTime(record.clock_in)} /></TableCell>
+                        <TableCell><TimeDisplay value={formatTime(record.clock_out)} /></TableCell>
                         <TableCell>{formatOvertimeHoursMinutes(record.overtime_minutes)}</TableCell>
                         <TableCell>{getStatusBadge(record.request_status)}</TableCell>
                         <TableCell>
@@ -243,13 +255,12 @@ export function MyOvertimeTab({
                           <div className="flex items-center justify-center">
                             {record.request_status === 'not_requested' ? (
                               <Button
-                                variant="default"
-                                size="sm"
+                                variant="ghost"
+                                size="icon"
                                 onClick={() => onRequestOvertime(record)}
-                                className="bg-blue-600 hover:bg-blue-700"
+                                className="h-8 w-8 text-primary hover:text-primary/80"
                               >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Request
+                                <Send className="h-5 w-5" />
                               </Button>
                             ) : (
                               <DropdownMenu>

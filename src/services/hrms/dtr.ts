@@ -83,8 +83,23 @@ export interface UserScheduleDetails {
   logs?: UserScheduleLogItem[];
 }
 
-export const getTimeClockLogs = async (): Promise<DtrLogResponseItem[]> => {
-  return await api("/hrms/dtr/logs", { method: "GET" });
+export const getTimeClockLogs = async (params?: {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  shift?: string;
+  start_date?: string;
+  end_date?: string;
+}): Promise<any> => {
+  const query = new URLSearchParams();
+  if (params?.page) query.append("page", String(params.page));
+  if (params?.per_page) query.append("per_page", String(params.per_page));
+  if (params?.search) query.append("search", params.search);
+  if (params?.shift && params.shift !== "all") query.append("shift", params.shift);
+  if (params?.start_date) query.append("start_date", params.start_date);
+  if (params?.end_date) query.append("end_date", params.end_date);
+  const qs = query.toString();
+  return await api(`/hrms/dtr/logs${qs ? `?${qs}` : ""}`, { method: "GET" });
 };
 
 export const getUserScheduleDetails = async (

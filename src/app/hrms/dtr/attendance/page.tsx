@@ -45,6 +45,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useToast } from '@/hooks/use-toast';
 import { exportAttendance, getAttendanceLogs, DtrLogResponseItem } from '@/services/hrms/dtr';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
+import { TimeDisplay } from '../time-clock/components/time-display';
 
 // Data type used by the table
 interface AttendanceRecord {
@@ -58,6 +61,7 @@ interface AttendanceRecord {
   late: string;
   overtime: string;
   totalWorkHours: string;
+  actualWorkHours: string;
 }
 
 export default function AttendancePage() {
@@ -83,7 +87,7 @@ export default function AttendancePage() {
     const toTime = (ts: string | null): string => {
       if (!ts) return '-';
       const d = new Date(ts);
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
     };
 
     const toDate = (dateStr: string): string => {
@@ -132,23 +136,36 @@ export default function AttendancePage() {
       return `${hours}h ${minutes}min`;
     };
 
+    const toNum2 = (value: any): number | null => {
+      if (value === null || value === undefined) return null;
+      const parsed = typeof value === 'number' ? value : parseFloat(String(value));
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
     const formatLateMinutes = (
       late: number | string | null | undefined,
       grace: number | string | null | undefined
     ): string => {
-      const toNum = (value: any): number | null => {
-        if (value === null || value === undefined) return null;
-        const parsed = typeof value === 'number' ? value : parseFloat(String(value));
-        return Number.isNaN(parsed) ? null : parsed;
-      };
-
-      const lateMinutes = toNum(late) ?? 0;
-      const graceMinutes = toNum(grace) ?? 0;
+      const lateMinutes = toNum2(late) ?? 0;
+      const graceMinutes = toNum2(grace) ?? 0;
 
       if (lateMinutes <= 0) return '-';
       if (graceMinutes > 0 && lateMinutes <= graceMinutes) return '-';
 
       return `${lateMinutes} min`;
+    };
+
+    const formatOvertimeMinutes = (
+      overtime: number | string | null | undefined,
+      grace: number | string | null | undefined
+    ): string => {
+      const overtimeMin = toNum2(overtime) ?? 0;
+      const graceMin = toNum2(grace) ?? 0;
+
+      if (overtimeMin <= 0) return '-';
+      if (graceMin > 0 && overtimeMin <= graceMin) return '-';
+
+      return `${overtimeMin} min`;
     };
 
     const nestedFirst = (item.user as any)?.user_info?.first_name;
@@ -170,8 +187,9 @@ export default function AttendancePage() {
       clockIn: toTime(item.clock_in),
       clockOut: toTime(item.clock_out),
       late: formatLateMinutes(item.late_minutes, item.grace_late_minutes),
-      overtime: `${item.overtime_minutes ?? 0} min`,
+      overtime: formatOvertimeMinutes(item.overtime_minutes, item.grace_overtime_minutes),
       totalWorkHours: formatHoursAndMinutes(item.total_work_hours),
+      actualWorkHours: formatHoursAndMinutes(item.actual_hours, item.cleaned_total_work_hours),
     };
   };
 
@@ -352,6 +370,7 @@ export default function AttendancePage() {
     };
   }, []);
 
+
   return (
     <div className="container mx-auto py-6 px-4">
       <div className="flex flex-col lg:flex-row gap-6">
@@ -454,9 +473,9 @@ export default function AttendancePage() {
 
             <CardContent className={cn(isTableEmpty && 'flex flex-1 min-h-0 flex-col')}>
               {/* Table */}
-              <div className={cn('rounded-md border', isTableEmpty && 'flex-1 min-h-[280px] flex flex-col')}>
-                <Table className={cn(isTableEmpty && 'shrink-0')}>
-                  <TableHeader>
+              <div className={cn('rounded-md border w-full overflow-x-auto', isTableEmpty && 'flex-1 min-h-[280px] flex flex-col')}>
+                <Table className={cn('min-w-[900px]', isTableEmpty && 'shrink-0')}>
+                  <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Employee</TableHead>
@@ -466,14 +485,15 @@ export default function AttendancePage() {
                       <TableHead>Clock Out</TableHead>
                       <TableHead>Late</TableHead>
                       <TableHead>Overtime</TableHead>
+                      <TableHead>Actual Work Hours</TableHead>
                       <TableHead>Total Work Hours</TableHead>
                     </TableRow>
                   </TableHeader>
                   {!isTableEmpty && (
-                    <TableBody>
+                    <TableBody className="[&_td]:text-[11px]">
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
+                        <TableCell colSpan={10} className="text-center py-8">
                           <Loader size="sm" />
                         </TableCell>
                       </TableRow>
@@ -482,12 +502,21 @@ export default function AttendancePage() {
                         <TableRow key={record.id}>
                           <TableCell>{record.date}</TableCell>
                           <TableCell className="font-medium">{record.employee}</TableCell>
-                          <TableCell>{record.branch}</TableCell>
-                          <TableCell>{record.shift}</TableCell>
-                          <TableCell>{record.clockIn}</TableCell>
-                          <TableCell>{record.clockOut}</TableCell>
+                          <TableCell>
+                            <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 text-[10px] font-medium rounded-md px-2 py-0.5">
+                              {record.branch}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className={SHIFT_COLOR_CLASSES[record.shift] || ''}>
+                              {record.shift}
+                            </span>
+                          </TableCell>
+                          <TableCell><TimeDisplay value={record.clockIn} /></TableCell>
+                          <TableCell><TimeDisplay value={record.clockOut} /></TableCell>
                           <TableCell>{record.late}</TableCell>
                           <TableCell>{record.overtime}</TableCell>
+                          <TableCell>{record.actualWorkHours}</TableCell>
                           <TableCell>{record.totalWorkHours}</TableCell>
                         </TableRow>
                       ))

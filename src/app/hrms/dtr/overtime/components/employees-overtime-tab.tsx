@@ -2,7 +2,6 @@ import { ReactNode } from 'react';
 import { DateRange } from 'react-day-picker';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
   Select,
@@ -35,12 +34,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download, RefreshCw, Clock, MoreVertical, Eye, Plus, UserCheck } from 'lucide-react';
+import { Download, RefreshCw, Clock, MoreVertical, Eye, Send, UserCheck } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Employee } from '@/services/management/managementService';
 import { MyOvertimeRecord } from '@/services/hrms/dtr';
+import { ShiftFilter } from '../../../../../components/ui/shift-filter';
+import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
+import { TimeDisplay } from '../../time-clock/components/time-display';
 
 type EmployeesOvertimeTabProps = {
   employeeOvertimeRecords: MyOvertimeRecord[];
@@ -50,7 +52,7 @@ type EmployeesOvertimeTabProps = {
   employees: Employee[];
   employeesLoading: boolean;
   selectedEmployeeId: string;
-  employeeSearchTerm: string;
+  employeeSelectedShift: string;
   employeeDateRange: DateRange | undefined;
   employeeSelectedStatus: string;
   employeeCurrentPage: number;
@@ -58,7 +60,7 @@ type EmployeesOvertimeTabProps = {
   employeeItemsPerPage: number;
   exporting: boolean;
   onExport: () => void;
-  onEmployeeSearchChange: (value: string) => void;
+  onEmployeeShiftChange: (value: string) => void;
   onEmployeeDateRangeChange: (value: DateRange | undefined) => void;
   onSelectedEmployeeChange: (value: string) => void;
   onEmployeeStatusChange: (value: string) => void;
@@ -79,7 +81,7 @@ const formatTime = (timeStr: string | null) => {
 
   try {
     const date = new Date(timeStr);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   } catch {
     return timeStr;
   }
@@ -102,7 +104,7 @@ export function EmployeesOvertimeTab({
   employees,
   employeesLoading,
   selectedEmployeeId,
-  employeeSearchTerm,
+  employeeSelectedShift,
   employeeDateRange,
   employeeSelectedStatus,
   employeeCurrentPage,
@@ -110,7 +112,7 @@ export function EmployeesOvertimeTab({
   employeeItemsPerPage,
   exporting,
   onExport,
-  onEmployeeSearchChange,
+  onEmployeeShiftChange,
   onEmployeeDateRangeChange,
   onSelectedEmployeeChange,
   onEmployeeStatusChange,
@@ -169,20 +171,8 @@ export function EmployeesOvertimeTab({
                 <Download className="h-4 w-4 mr-2" />
                 {exporting ? 'Exporting...' : 'Export'}
               </Button>
-              <Input
-                placeholder="Search reason"
-                value={employeeSearchTerm}
-                onChange={(e) => onEmployeeSearchChange(e.target.value)}
-                className="w-full sm:flex-1 sm:min-w-[100px]"
-              />
-              <DateRangePicker
-                date={employeeDateRange}
-                onDateChange={onEmployeeDateRangeChange}
-                placeholder="Select Date Range"
-                className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
-              />
               <Select value={selectedEmployeeId} onValueChange={onSelectedEmployeeChange}>
-                <SelectTrigger className="sm:w-56 min-w-[220px]">
+                <SelectTrigger className="w-full sm:flex-1 sm:min-w-[120px]">
                   <SelectValue placeholder={employeesLoading ? 'Loading employees...' : 'Select employee'} />
                 </SelectTrigger>
                 <SelectContent>
@@ -199,8 +189,15 @@ export function EmployeesOvertimeTab({
                   )}
                 </SelectContent>
               </Select>
+              <ShiftFilter value={employeeSelectedShift} onChange={onEmployeeShiftChange} />
+              <DateRangePicker
+                date={employeeDateRange}
+                onDateChange={onEmployeeDateRangeChange}
+                placeholder="Select Date Range"
+                className="w-full sm:flex-1 sm:min-w-[120px]"
+              />
               <Select value={employeeSelectedStatus} onValueChange={onEmployeeStatusChange}>
-                <SelectTrigger className="sm:w-40 min-w-[180px]">
+                <SelectTrigger className="w-full sm:flex-1 sm:min-w-[120px]">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -217,15 +214,15 @@ export function EmployeesOvertimeTab({
                 onClick={onEmployeeRefresh}
               >
                 <RefreshCw className={`h-4 w-4 ${employeeOvertimeLoading ? 'animate-spin' : ''}`} />
-                Clear
+                Clear Filters
               </Button>
             </div>
           </CardHeader>
 
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
+            <div className="rounded-md border w-full overflow-x-auto">
+              <Table className="min-w-[900px]">
+                <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Shift</TableHead>
@@ -237,7 +234,7 @@ export function EmployeesOvertimeTab({
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_td]:text-[11px]">
                   {!selectedEmployeeId ? (
                     <TableRow>
                       <TableCell colSpan={8} className="p-0">
@@ -258,9 +255,13 @@ export function EmployeesOvertimeTab({
                     employeePaginatedRecords.map((record) => (
                       <TableRow key={record.id}>
                         <TableCell>{formatDate(record.date)}</TableCell>
-                        <TableCell>{record.shift}</TableCell>
-                        <TableCell>{formatTime(record.clock_in)}</TableCell>
-                        <TableCell>{formatTime(record.clock_out)}</TableCell>
+                        <TableCell>
+                          <span className={SHIFT_COLOR_CLASSES[record.shift] || ''}>
+                            {record.shift}
+                          </span>
+                        </TableCell>
+                        <TableCell><TimeDisplay value={formatTime(record.clock_in)} /></TableCell>
+                        <TableCell><TimeDisplay value={formatTime(record.clock_out)} /></TableCell>
                         <TableCell>{formatOvertimeHoursMinutes(record.overtime_minutes)}</TableCell>
                         <TableCell>{getStatusBadge(record.request_status)}</TableCell>
                         <TableCell>
@@ -282,13 +283,12 @@ export function EmployeesOvertimeTab({
                           <div className="flex items-center justify-center">
                             {record.request_status === 'not_requested' ? (
                               <Button
-                                variant="default"
-                                size="sm"
+                                variant="ghost"
+                                size="icon"
                                 onClick={() => onRequestOvertime(record)}
-                                className="bg-blue-600 hover:bg-blue-700"
+                                className="h-8 w-8 text-primary hover:text-primary/80"
                               >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Request
+                                <Send className="h-5 w-5" />
                               </Button>
                             ) : (
                               <DropdownMenu>

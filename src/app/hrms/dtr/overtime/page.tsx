@@ -51,6 +51,7 @@ export default function OvertimePage() {
   
   // Manager Approval Tab States
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedShift, setSelectedShift] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,11 +59,12 @@ export default function OvertimePage() {
   
   // My Overtime Tab States
   const [mySearchTerm, setMySearchTerm] = useState('');
+  const [mySelectedShift, setMySelectedShift] = useState('all');
   const [myDateRange, setMyDateRange] = useState<DateRange | undefined>();
   const [mySelectedStatus, setMySelectedStatus] = useState('all');
   const [myCurrentPage, setMyCurrentPage] = useState(1);
   const [myItemsPerPage, setMyItemsPerPage] = useState(10);
-  const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
+  const [employeeSelectedShift, setEmployeeSelectedShift] = useState('all');
   const [employeeDateRange, setEmployeeDateRange] = useState<DateRange | undefined>();
   const [employeeSelectedStatus, setEmployeeSelectedStatus] = useState('all');
   const [employeeCurrentPage, setEmployeeCurrentPage] = useState(1);
@@ -326,10 +328,14 @@ export default function OvertimePage() {
 
   const filterOvertimeRecords = (
     records: MyOvertimeRecord[],
-    term: string,
-    status: string,
-    range: DateRange | undefined
+    opts: {
+      term?: string;
+      status?: string;
+      shift?: string;
+      range?: DateRange | undefined;
+    }
   ) => {
+    const { term = '', status = 'all', shift = 'all', range } = opts;
     return records.filter((record) => {
       const normalizedTerm = term.toLowerCase();
       const matchesSearch =
@@ -337,6 +343,7 @@ export default function OvertimePage() {
         record.date.includes(term) ||
         (record.request_reason?.toLowerCase().includes(normalizedTerm) ?? false);
       const matchesStatus = status === 'all' || record.request_status === status;
+      const matchesShift = shift === 'all' || record.shift === shift;
 
       let matchesDateRange = true;
       if (range?.from || range?.to) {
@@ -353,21 +360,17 @@ export default function OvertimePage() {
         }
       }
 
-      return matchesSearch && matchesStatus && matchesDateRange;
+      return matchesSearch && matchesStatus && matchesShift && matchesDateRange;
     });
   };
 
   const filteredMyOvertime = filterOvertimeRecords(
     myOvertimeRecords,
-    mySearchTerm,
-    mySelectedStatus,
-    myDateRange
+    { term: mySearchTerm, shift: mySelectedShift, status: mySelectedStatus, range: myDateRange }
   );
   const filteredEmployeeOvertime = filterOvertimeRecords(
     employeeOvertimeRecords,
-    employeeSearchTerm,
-    employeeSelectedStatus,
-    employeeDateRange
+    { status: employeeSelectedStatus, shift: employeeSelectedShift, range: employeeDateRange }
   );
 
   // Pagination for Manager Approval Tab
@@ -406,6 +409,7 @@ export default function OvertimePage() {
 
   const handleRefresh = () => {
     setSearchTerm('');
+    setSelectedShift('all');
     setDateRange(undefined);
     setSelectedStatus('all');
     setCurrentPage(1);
@@ -414,6 +418,7 @@ export default function OvertimePage() {
 
   const handleMyRefresh = () => {
     setMySearchTerm('');
+    setMySelectedShift('all');
     setMyDateRange(undefined);
     setMySelectedStatus('all');
     setMyCurrentPage(1);
@@ -421,7 +426,7 @@ export default function OvertimePage() {
   };
 
   const handleEmployeeRefresh = () => {
-    setEmployeeSearchTerm('');
+    setEmployeeSelectedShift('all');
     setEmployeeDateRange(undefined);
     setEmployeeSelectedStatus('all');
     setEmployeeCurrentPage(1);
@@ -716,6 +721,7 @@ export default function OvertimePage() {
             loading={loading}
             exporting={exporting}
             searchTerm={searchTerm}
+            selectedShift={selectedShift}
             dateRange={dateRange}
             selectedStatus={selectedStatus}
             currentPage={currentPage}
@@ -723,6 +729,7 @@ export default function OvertimePage() {
             itemsPerPage={itemsPerPage}
             onExport={handleExport}
             onSearchChange={setSearchTerm}
+            onShiftChange={setSelectedShift}
             onDateRangeChange={setDateRange}
             onStatusChange={setSelectedStatus}
             onRefresh={handleRefresh}
@@ -745,7 +752,7 @@ export default function OvertimePage() {
             employees={employees}
             employeesLoading={employeesLoading}
             selectedEmployeeId={selectedEmployeeId}
-            employeeSearchTerm={employeeSearchTerm}
+            employeeSelectedShift={employeeSelectedShift}
             employeeDateRange={employeeDateRange}
             employeeSelectedStatus={employeeSelectedStatus}
             employeeCurrentPage={employeeCurrentPage}
@@ -753,7 +760,7 @@ export default function OvertimePage() {
             employeeItemsPerPage={employeeItemsPerPage}
             exporting={exporting}
             onExport={handleExport}
-            onEmployeeSearchChange={setEmployeeSearchTerm}
+            onEmployeeShiftChange={setEmployeeSelectedShift}
             onEmployeeDateRangeChange={setEmployeeDateRange}
             onSelectedEmployeeChange={(value) => {
               setSelectedEmployeeId(value);
@@ -779,6 +786,7 @@ export default function OvertimePage() {
             myLoading={myLoading}
             exporting={exporting}
             mySearchTerm={mySearchTerm}
+            mySelectedShift={mySelectedShift}
             myDateRange={myDateRange}
             mySelectedStatus={mySelectedStatus}
             myCurrentPage={myCurrentPage}
@@ -786,6 +794,7 @@ export default function OvertimePage() {
             myItemsPerPage={myItemsPerPage}
             onExport={handleExport}
             onSearchChange={setMySearchTerm}
+            onShiftChange={setMySelectedShift}
             onDateRangeChange={setMyDateRange}
             onStatusChange={setMySelectedStatus}
             onRefresh={handleMyRefresh}
