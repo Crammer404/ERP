@@ -277,6 +277,12 @@ export const getMyOvertime = async (): Promise<MyOvertimeRecord[]> => {
   return await api("/hrms/dtr/overtime/my", { method: "GET" });
 };
 
+export const getEmployeeOvertime = async (employeeId: number): Promise<MyOvertimeRecord[]> => {
+  const queryParams = new URLSearchParams();
+  queryParams.append('employee_id', employeeId.toString());
+  return await api(`/hrms/dtr/overtime/employee?${queryParams.toString()}`, { method: "GET" });
+};
+
 export const getOvertimeRequests = async (params?: {
   status?: string;
   search?: string;
@@ -303,6 +309,18 @@ export const requestOvertime = async (data: {
   reason?: string;
 }): Promise<{ message: string; data: any }> => {
   return await api("/hrms/dtr/overtime", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+};
+
+export const requestEmployeeOvertime = async (data: {
+  employee_id: number;
+  dtr_log_id: number;
+  reason?: string;
+}): Promise<{ message: string; data: any }> => {
+  return await api("/hrms/dtr/overtime/employee/request", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

@@ -2,21 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { DateRange } from 'react-day-picker';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { BadgeCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue 
-} from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -25,44 +13,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
-import { PaginationInfos } from '@/components/ui/pagination-info';
 import { useAuth } from '@/components/providers/auth-provider';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { 
-  Download, 
-  User, 
-  RefreshCw, 
   Clock, 
   CheckCircle, 
   XCircle, 
-  Eye,
-  Plus,
   UserCheck,
-  Users,
-  MoreVertical
+  Users
 } from 'lucide-react';
-import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
@@ -70,20 +28,25 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { 
   getMyOvertime, 
+  getEmployeeOvertime,
   getOvertimeRequests, 
   requestOvertime, 
+  requestEmployeeOvertime,
   approveOvertime, 
   rejectOvertime,
   MyOvertimeRecord,
   OvertimeRequestRecord
 } from '@/services/hrms/dtr';
+import { managementService, Employee } from '@/services/management/managementService';
+import { ManagerApprovalTab } from './components/manager-approval-tab';
+import { EmployeesOvertimeTab } from './components/employees-overtime-tab';
+import { MyOvertimeTab } from './components/my-overtime-tab';
 
-type OvertimeTab = 'approval' | 'myOvertime';
+type OvertimeTab = 'approval' | 'employeesOvertime' | 'myOvertime';
 
 export default function OvertimePage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState<OvertimeTab>('approval');
   
   // Manager Approval Tab States
@@ -99,18 +62,29 @@ export default function OvertimePage() {
   const [mySelectedStatus, setMySelectedStatus] = useState('all');
   const [myCurrentPage, setMyCurrentPage] = useState(1);
   const [myItemsPerPage, setMyItemsPerPage] = useState(10);
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
+  const [employeeDateRange, setEmployeeDateRange] = useState<DateRange | undefined>();
+  const [employeeSelectedStatus, setEmployeeSelectedStatus] = useState('all');
+  const [employeeCurrentPage, setEmployeeCurrentPage] = useState(1);
+  const [employeeItemsPerPage, setEmployeeItemsPerPage] = useState(10);
   
   // Shared States
   const [approvalRecords, setApprovalRecords] = useState<OvertimeRequestRecord[]>([]);
   const [myOvertimeRecords, setMyOvertimeRecords] = useState<MyOvertimeRecord[]>([]);
+  const [employeeOvertimeRecords, setEmployeeOvertimeRecords] = useState<MyOvertimeRecord[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [loading, setLoading] = useState(false);
   const [myLoading, setMyLoading] = useState(false);
+  const [employeeOvertimeLoading, setEmployeeOvertimeLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<OvertimeRequestRecord | null>(null);
   const [selectedMyRecord, setSelectedMyRecord] = useState<MyOvertimeRecord | null>(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [myViewModalOpen, setMyViewModalOpen] = useState(false);
   const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestTarget, setRequestTarget] = useState<'my' | 'employee'>('my');
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [actionNotes, setActionNotes] = useState('');
@@ -118,6 +92,7 @@ export default function OvertimePage() {
 
   // New overtime request form
   const [newRequest, setNewRequest] = useState({
+    employee_id: 0,
     dtr_log_id: 0,
     reason: '',
   });
@@ -138,23 +113,32 @@ export default function OvertimePage() {
   }, [user?.permissions]);
 
   const canViewManagerApproval = Boolean(overtimePermissions?.update);
+  const canViewEmployeesOvertime = canViewManagerApproval;
   const canViewMyOvertime = Boolean(overtimePermissions?.create);
-  const hasOvertimeTabAccess = canViewManagerApproval || canViewMyOvertime;
+  const availableTabs = useMemo<OvertimeTab[]>(() => {
+    const tabs: OvertimeTab[] = [];
+    if (canViewManagerApproval) {
+      tabs.push('approval');
+    }
+    if (canViewEmployeesOvertime) {
+      tabs.push('employeesOvertime');
+    }
+    if (canViewMyOvertime) {
+      tabs.push('myOvertime');
+    }
+    return tabs;
+  }, [canViewEmployeesOvertime, canViewManagerApproval, canViewMyOvertime]);
+  const hasOvertimeTabAccess = availableTabs.length > 0;
 
   useEffect(() => {
     if (!hasOvertimeTabAccess) {
       return;
     }
 
-    if (activeTab === 'approval' && !canViewManagerApproval && canViewMyOvertime) {
-      setActiveTab('myOvertime');
-      return;
+    if (!availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0]);
     }
-
-    if (activeTab === 'myOvertime' && !canViewMyOvertime && canViewManagerApproval) {
-      setActiveTab('approval');
-    }
-  }, [activeTab, canViewManagerApproval, canViewMyOvertime, hasOvertimeTabAccess]);
+  }, [activeTab, availableTabs, hasOvertimeTabAccess]);
 
   const fetchApprovalRecords = async () => {
     setLoading(true);
@@ -200,11 +184,67 @@ export default function OvertimePage() {
     }
   };
 
+  const fetchEmployeeOptions = async () => {
+    setEmployeesLoading(true);
+    try {
+      const data = await managementService.fetchBranchEmployees();
+      setEmployees(data);
+      setSelectedEmployeeId((current) => {
+        if (data.some((employee) => employee.id.toString() === current)) {
+          return current;
+        }
+        setEmployeeOvertimeRecords([]);
+        return '';
+      });
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || 'Failed to load employees';
+      toast({
+        title: 'Error',
+        description: errorMsg,
+        variant: 'destructive',
+      });
+      setEmployees([]);
+      setSelectedEmployeeId('');
+      setEmployeeOvertimeRecords([]);
+    } finally {
+      setEmployeesLoading(false);
+    }
+  };
+
+  const fetchEmployeeOvertimeRecords = async (employeeId: number) => {
+    setEmployeeOvertimeLoading(true);
+    try {
+      const data = await getEmployeeOvertime(employeeId);
+      setEmployeeOvertimeRecords(data);
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || 'Failed to load employee overtime records';
+      toast({
+        title: 'Error',
+        description: errorMsg,
+        variant: 'destructive',
+      });
+      setEmployeeOvertimeRecords([]);
+    } finally {
+      setEmployeeOvertimeLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!canViewEmployeesOvertime) {
+      return;
+    }
+
+    fetchEmployeeOptions();
+  }, [canViewEmployeesOvertime]);
+
   // Initial load
   useEffect(() => {
     if (activeTab === 'approval' && canViewManagerApproval) {
       fetchApprovalRecords();
-    } else if (activeTab === 'myOvertime' && canViewMyOvertime) {
+      return;
+    }
+
+    if (activeTab === 'myOvertime' && canViewMyOvertime) {
       fetchMyOvertimeRecords();
     }
   }, [activeTab, canViewManagerApproval, canViewMyOvertime]);
@@ -215,6 +255,19 @@ export default function OvertimePage() {
       fetchApprovalRecords();
     }
   }, [activeTab, canViewManagerApproval, selectedStatus, searchTerm, dateRange]);
+
+  useEffect(() => {
+    if (activeTab !== 'employeesOvertime' || !canViewEmployeesOvertime) {
+      return;
+    }
+
+    if (!selectedEmployeeId) {
+      setEmployeeOvertimeRecords([]);
+      return;
+    }
+
+    fetchEmployeeOvertimeRecords(Number(selectedEmployeeId));
+  }, [activeTab, canViewEmployeesOvertime, selectedEmployeeId]);
 
   // Listen for branch context changes (for Manager Approval tab)
   useEffect(() => {
@@ -242,38 +295,80 @@ export default function OvertimePage() {
     };
   }, [activeTab, canViewManagerApproval]);
 
-  // Update current time every second
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!canViewEmployeesOvertime) return;
 
-  // Filter records for My Overtime Tab (client-side filtering for search/date/status)
-  const filteredMyOvertime = myOvertimeRecords.filter(record => {
-    const matchesSearch = !mySearchTerm || record.date.includes(mySearchTerm) || 
-      (record.request_reason?.toLowerCase().includes(mySearchTerm.toLowerCase()));
-    const matchesStatus = mySelectedStatus === 'all' || record.request_status === mySelectedStatus;
-    
-    // Date range filter
-    let matchesDateRange = true;
-    if (myDateRange?.from || myDateRange?.to) {
-      try {
-        const recordDate = new Date(record.date);
-        if (myDateRange.from && recordDate < myDateRange.from) {
-          matchesDateRange = false;
-        }
-        if (myDateRange.to && recordDate > myDateRange.to) {
-          matchesDateRange = false;
-        }
-      } catch (e) {
-        matchesDateRange = false;
+    const refreshEmployeesOvertime = () => {
+      setSelectedEmployeeId('');
+      setEmployeeOvertimeRecords([]);
+      setEmployeesLoading(true);
+      fetchEmployeeOptions();
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'branch_context') {
+        refreshEmployeesOvertime();
       }
-    }
-    
-    return matchesSearch && matchesStatus && matchesDateRange;
-  });
+    };
+
+    const handleBranchChange = () => {
+      refreshEmployeesOvertime();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('branchChanged', handleBranchChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('branchChanged', handleBranchChange);
+    };
+  }, [canViewEmployeesOvertime]);
+
+  const filterOvertimeRecords = (
+    records: MyOvertimeRecord[],
+    term: string,
+    status: string,
+    range: DateRange | undefined
+  ) => {
+    return records.filter((record) => {
+      const normalizedTerm = term.toLowerCase();
+      const matchesSearch =
+        !term ||
+        record.date.includes(term) ||
+        (record.request_reason?.toLowerCase().includes(normalizedTerm) ?? false);
+      const matchesStatus = status === 'all' || record.request_status === status;
+
+      let matchesDateRange = true;
+      if (range?.from || range?.to) {
+        try {
+          const recordDate = new Date(record.date);
+          if (range.from && recordDate < range.from) {
+            matchesDateRange = false;
+          }
+          if (range.to && recordDate > range.to) {
+            matchesDateRange = false;
+          }
+        } catch {
+          matchesDateRange = false;
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesDateRange;
+    });
+  };
+
+  const filteredMyOvertime = filterOvertimeRecords(
+    myOvertimeRecords,
+    mySearchTerm,
+    mySelectedStatus,
+    myDateRange
+  );
+  const filteredEmployeeOvertime = filterOvertimeRecords(
+    employeeOvertimeRecords,
+    employeeSearchTerm,
+    employeeSelectedStatus,
+    employeeDateRange
+  );
 
   // Pagination for Manager Approval Tab
   const totalPages = Math.ceil(approvalRecords.length / itemsPerPage);
@@ -288,6 +383,11 @@ export default function OvertimePage() {
     (myCurrentPage - 1) * myItemsPerPage,
     myCurrentPage * myItemsPerPage
   );
+  const employeeTotalPages = Math.ceil(filteredEmployeeOvertime.length / employeeItemsPerPage);
+  const employeePaginatedRecords = filteredEmployeeOvertime.slice(
+    (employeeCurrentPage - 1) * employeeItemsPerPage,
+    employeeCurrentPage * employeeItemsPerPage
+  );
 
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(parseInt(value));
@@ -297,6 +397,11 @@ export default function OvertimePage() {
   const handleMyItemsPerPageChange = (value: string) => {
     setMyItemsPerPage(parseInt(value));
     setMyCurrentPage(1);
+  };
+
+  const handleEmployeeItemsPerPageChange = (value: string) => {
+    setEmployeeItemsPerPage(parseInt(value));
+    setEmployeeCurrentPage(1);
   };
 
   const handleRefresh = () => {
@@ -313,6 +418,18 @@ export default function OvertimePage() {
     setMySelectedStatus('all');
     setMyCurrentPage(1);
     fetchMyOvertimeRecords();
+  };
+
+  const handleEmployeeRefresh = () => {
+    setEmployeeSearchTerm('');
+    setEmployeeDateRange(undefined);
+    setEmployeeSelectedStatus('all');
+    setEmployeeCurrentPage(1);
+    if (selectedEmployeeId) {
+      fetchEmployeeOvertimeRecords(Number(selectedEmployeeId));
+    } else {
+      setEmployeeOvertimeRecords([]);
+    }
   };
 
   const handleExport = async () => {
@@ -432,10 +549,27 @@ export default function OvertimePage() {
     }
 
     try {
-      await requestOvertime({
-        dtr_log_id: newRequest.dtr_log_id,
-        reason: newRequest.reason || undefined,
-      });
+      if (requestTarget === 'employee') {
+        if (!newRequest.employee_id) {
+          toast({
+            title: 'Validation Error',
+            description: 'Please select an employee',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        await requestEmployeeOvertime({
+          employee_id: newRequest.employee_id,
+          dtr_log_id: newRequest.dtr_log_id,
+          reason: newRequest.reason || undefined,
+        });
+      } else {
+        await requestOvertime({
+          dtr_log_id: newRequest.dtr_log_id,
+          reason: newRequest.reason || undefined,
+        });
+      }
       
       toast({
         title: 'Request Submitted',
@@ -444,8 +578,13 @@ export default function OvertimePage() {
       });
       
       setRequestModalOpen(false);
-      setNewRequest({ dtr_log_id: 0, reason: '' });
-      fetchMyOvertimeRecords();
+      setNewRequest({ employee_id: 0, dtr_log_id: 0, reason: '' });
+      if (requestTarget === 'employee' && selectedEmployeeId) {
+        fetchEmployeeOvertimeRecords(Number(selectedEmployeeId));
+      } else {
+        fetchMyOvertimeRecords();
+      }
+      setRequestTarget('my');
     } catch (error: any) {
       const errorMsg = error?.response?.data?.message || error?.message || 'Failed to submit overtime request';
       toast({
@@ -456,7 +595,11 @@ export default function OvertimePage() {
     }
   };
 
-  const handleRequestFromRecord = (record: MyOvertimeRecord) => {
+  const handleRequestFromRecord = (
+    record: MyOvertimeRecord,
+    target: 'my' | 'employee',
+    employeeId?: number
+  ) => {
     if (record.request_status !== 'not_requested') {
       toast({
         title: 'Already Requested',
@@ -465,31 +608,33 @@ export default function OvertimePage() {
       });
       return;
     }
+    if (target === 'employee' && !employeeId) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please select an employee',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setRequestTarget(target);
     setSelectedMyRecord(record);
-    setNewRequest({ dtr_log_id: record.id, reason: '' });
+    setNewRequest({
+      employee_id: target === 'employee' ? Number(employeeId) : 0,
+      dtr_log_id: record.id,
+      reason: '',
+    });
     setRequestModalOpen(true);
   };
 
-  const formatDateTime = (date: Date) => {
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    });
-  };
+  const getEmployeeDisplayName = (employee: Employee) => {
+    if (employee.user_info) {
+      const fullName = `${employee.user_info.first_name || ''} ${employee.user_info.last_name || ''}`.trim();
+      if (fullName) {
+        return fullName;
+      }
+    }
 
-  const getUserDisplayName = () => {
-    if (!user) return 'Loading...';
-    return user.name || user.email || 'User';
-  };
-
-  const getUserRole = () => {
-    if (!user) return '';
-    return user.role_name || '(Employee)';
+    return employee.name || employee.email;
   };
 
   const getStatusBadge = (status: string) => {
@@ -537,14 +682,23 @@ export default function OvertimePage() {
     );
   }
 
+  const tabsGridClass =
+    availableTabs.length === 3 ? 'grid-cols-3' : availableTabs.length === 2 ? 'grid-cols-2' : 'grid-cols-1';
+
   return (
     <div className="container mx-auto py-6 px-4">
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as OvertimeTab)} className="w-full">
-        <TabsList className={`grid w-full mb-6 ${canViewManagerApproval && canViewMyOvertime ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <TabsList className={`grid w-full mb-6 ${tabsGridClass}`}>
           {canViewManagerApproval && (
             <TabsTrigger value="approval" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Manager Approval
+            </TabsTrigger>
+          )}
+          {canViewEmployeesOvertime && (
+            <TabsTrigger value="employeesOvertime" className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              Employees Overtime
             </TabsTrigger>
           )}
           {canViewMyOvertime && (
@@ -555,514 +709,93 @@ export default function OvertimePage() {
           )}
         </TabsList>
 
-        {/* Manager Approval Tab */}
         {canViewManagerApproval && (
-        <TabsContent value="approval">
-          {/* Summary Row */}
-          <div className="mb-6">
-            <Card>
-              <CardContent className="py-4">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Total Requests:</span>
-                    <span className="font-semibold">{approvalRecords.length}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Approved:</span>
-                    <span className="font-semibold text-green-600">
-                      {approvalRecords.filter(r => r.status === 'approved').length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Pending:</span>
-                    <span className="font-semibold text-yellow-600">
-                      {approvalRecords.filter(r => r.status === 'pending').length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Rejected:</span>
-                    <span className="font-semibold text-red-600">
-                      {approvalRecords.filter(r => r.status === 'rejected').length}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Content Section */}
-          <div className="w-full">
-              <Card>
-            <CardHeader>
-              {/* Filters */}
-              <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4">
-                <Button 
-                  variant="default" 
-                  className="bg-green-600 hover:bg-green-700 shrink-0"
-                  onClick={handleExport}
-                  disabled={exporting}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  {exporting ? 'Exporting...' : 'Export'}
-                </Button>
-                <Input
-                  placeholder="Search employee"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full sm:flex-1 sm:min-w-[120px]"
-                />
-                <DateRangePicker
-                  date={dateRange}
-                  onDateChange={setDateRange}
-                  placeholder="Select Date Range"
-                  className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
-                />
-                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                  <SelectTrigger className="sm:w-40 min-w-[180px]">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none shrink-0"
-                  variant="default" 
-                  onClick={handleRefresh}
-                >
-                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                  Clear
-                </Button>
-              </div>
-            </CardHeader>
-
-            <CardContent>
-              {/* Table */}
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Branch</TableHead>
-                      <TableHead>Requested Hours</TableHead>
-                      <TableHead>Actual Hours</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Pay Type</TableHead>
-                      <TableHead className="text-center">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          <Loader size="sm" />
-                        </TableCell>
-                      </TableRow>
-                    ) : paginatedRecords.length > 0 ? (
-                      paginatedRecords.map((record) => (
-                        <TableRow key={record.id}>
-                          <TableCell>{record.date_formatted}</TableCell>
-                          <TableCell className="font-medium">{record.employee}</TableCell>
-                          <TableCell>{record.branch}</TableCell>
-                          <TableCell>{formatOvertimeFromHours(record.requested_hours)}</TableCell>
-                          <TableCell>{record.actual_hours > 0 ? formatOvertimeFromHours(record.actual_hours) : '-'}</TableCell>
-                          <TableCell className="max-w-[200px] truncate">{record.reason || '-'}</TableCell>
-                          <TableCell>{getStatusBadge(record.status)}</TableCell>
-                          <TableCell>
-                            {record.status === 'approved' ? (
-                              record.pay_type === 'regular' ? (
-                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                  Regular Hours
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                                  Overtime Pay
-                                </Badge>
-                              )
-                            ) : (
-                              <span className="text-muted-foreground text-sm">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-center">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handleViewDetails(record)}>
-                                    <Eye className="h-4 w-4 mr-2" />
-                                    View Details
-                                  </DropdownMenuItem>
-                                  {record.status === 'pending' && (
-                                    <>
-                                      <DropdownMenuItem 
-                                        onClick={() => handleApprove(record)}
-                                        className="text-green-600 focus:text-green-600"
-                                      >
-                                        <CheckCircle className="h-4 w-4 mr-2" />
-                                        Approve
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem 
-                                        onClick={() => handleReject(record)}
-                                        className="text-red-600 focus:text-red-600"
-                                      >
-                                        <XCircle className="h-4 w-4 mr-2" />
-                                        Reject
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={9} className="p-0">
-                          <EmptyState
-                            icon={Clock}
-                            title="No overtime records found"
-                            description="There are no overtime records yet. Records will appear here once overtime requests are submitted."
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Pagination */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
-                <PaginationInfos.Standard
-                  from={(currentPage - 1) * itemsPerPage + 1}
-                  to={Math.min(currentPage * itemsPerPage, approvalRecords.length)}
-                  total={approvalRecords.length}
-                  itemsPerPage={itemsPerPage}
-                  onItemsPerPageChange={handleItemsPerPageChange}
-                />
-
-                {totalPages > 1 && (
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                          className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-
-                      {Array.from({ length: Math.min(totalPages, 3) }, (_, i) => {
-                        let pageNum;
-                        if (totalPages <= 3) {
-                          pageNum = i + 1;
-                        } else if (currentPage === 1) {
-                          pageNum = i + 1;
-                        } else if (currentPage === totalPages) {
-                          pageNum = totalPages - 2 + i;
-                        } else {
-                          pageNum = currentPage - 1 + i;
-                        }
-                        return (
-                          <PaginationItem key={pageNum}>
-                            <PaginationLink
-                              onClick={() => setCurrentPage(pageNum)}
-                              isActive={currentPage === pageNum}
-                              className="cursor-pointer"
-                            >
-                              {pageNum}
-                            </PaginationLink>
-                          </PaginationItem>
-                        );
-                      })}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                          className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          </div>
-        </TabsContent>
+          <ManagerApprovalTab
+            approvalRecords={approvalRecords}
+            paginatedRecords={paginatedRecords}
+            loading={loading}
+            exporting={exporting}
+            searchTerm={searchTerm}
+            dateRange={dateRange}
+            selectedStatus={selectedStatus}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            onExport={handleExport}
+            onSearchChange={setSearchTerm}
+            onDateRangeChange={setDateRange}
+            onStatusChange={setSelectedStatus}
+            onRefresh={handleRefresh}
+            onItemsPerPageChange={handleItemsPerPageChange}
+            onPageChange={setCurrentPage}
+            onViewDetails={handleViewDetails}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            getStatusBadge={getStatusBadge}
+            formatOvertimeFromHours={formatOvertimeFromHours}
+          />
         )}
 
-        {/* My Overtime Tab */}
+        {canViewEmployeesOvertime && (
+          <EmployeesOvertimeTab
+            employeeOvertimeRecords={employeeOvertimeRecords}
+            filteredEmployeeOvertime={filteredEmployeeOvertime}
+            employeePaginatedRecords={employeePaginatedRecords}
+            employeeOvertimeLoading={employeeOvertimeLoading}
+            employees={employees}
+            employeesLoading={employeesLoading}
+            selectedEmployeeId={selectedEmployeeId}
+            employeeSearchTerm={employeeSearchTerm}
+            employeeDateRange={employeeDateRange}
+            employeeSelectedStatus={employeeSelectedStatus}
+            employeeCurrentPage={employeeCurrentPage}
+            employeeTotalPages={employeeTotalPages}
+            employeeItemsPerPage={employeeItemsPerPage}
+            exporting={exporting}
+            onExport={handleExport}
+            onEmployeeSearchChange={setEmployeeSearchTerm}
+            onEmployeeDateRangeChange={setEmployeeDateRange}
+            onSelectedEmployeeChange={(value) => {
+              setSelectedEmployeeId(value);
+              setEmployeeCurrentPage(1);
+            }}
+            onEmployeeStatusChange={setEmployeeSelectedStatus}
+            onEmployeeRefresh={handleEmployeeRefresh}
+            onEmployeeItemsPerPageChange={handleEmployeeItemsPerPageChange}
+            onEmployeePageChange={setEmployeeCurrentPage}
+            onRequestOvertime={(record) => handleRequestFromRecord(record, 'employee', Number(selectedEmployeeId))}
+            onViewDetails={handleViewMyDetails}
+            getStatusBadge={getStatusBadge}
+            formatOvertimeHoursMinutes={formatOvertimeHoursMinutes}
+            getEmployeeDisplayName={getEmployeeDisplayName}
+          />
+        )}
+
         {canViewMyOvertime && (
-        <TabsContent value="myOvertime">
-          {/* Summary Row */}
-          <div className="mb-6">
-            <Card>
-              <CardContent className="py-4">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Total Overtime Logs:</span>
-                    <span className="font-semibold">{myOvertimeRecords.length}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Approved:</span>
-                    <span className="font-semibold text-green-600">
-                      {myOvertimeRecords.filter(r => r.request_status === 'approved').length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Pending:</span>
-                    <span className="font-semibold text-yellow-600">
-                      {myOvertimeRecords.filter(r => r.request_status === 'pending').length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Not Requested:</span>
-                    <span className="font-semibold text-gray-600">
-                      {myOvertimeRecords.filter(r => r.request_status === 'not_requested').length}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Content Section */}
-          <div className="w-full">
-              <Card>
-            <CardHeader>
-              {/* Filters */}
-              <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4">
-                <Button 
-                  variant="default" 
-                  className="bg-green-600 hover:bg-green-700 shrink-0"
-                  onClick={handleExport}
-                  disabled={exporting}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  {exporting ? 'Exporting...' : 'Export'}
-                </Button>
-                <Input
-                  placeholder="Search reason"
-                  value={mySearchTerm}
-                  onChange={(e) => setMySearchTerm(e.target.value)}
-                  className="w-full sm:flex-1 sm:min-w-[100px]"
-                />
-                <DateRangePicker
-                  date={myDateRange}
-                  onDateChange={setMyDateRange}
-                  placeholder="Select Date Range"
-                  className="sm:w-auto min-w-[200px] flex-1 sm:flex-none"
-                />
-                <Select value={mySelectedStatus} onValueChange={setMySelectedStatus}>
-                  <SelectTrigger className="sm:w-40 min-w-[180px]">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="not_requested">Not Requested</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none shrink-0"
-                  variant="default" 
-                  onClick={handleMyRefresh}
-                >
-                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                  Clear
-                </Button>
-              </div>
-            </CardHeader>
-
-            <CardContent>
-              {/* Table */}
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Shift</TableHead>
-                      <TableHead>Clock In</TableHead>
-                      <TableHead>Clock Out</TableHead>
-                      <TableHead>Overtime Hours</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Pay Type</TableHead>
-                      <TableHead className="text-center">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {myLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8">
-                          <Loader size="sm" />
-                        </TableCell>
-                      </TableRow>
-                    ) : myPaginatedRecords.length > 0 ? (
-                      myPaginatedRecords.map((record) => {
-                        const formatTime = (timeStr: string | null) => {
-                          if (!timeStr) return '-';
-                          try {
-                            const date = new Date(timeStr);
-                            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                          } catch {
-                            return timeStr;
-                          }
-                        };
-                        const formatDate = (dateStr: string) => {
-                          try {
-                            const date = new Date(dateStr);
-                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                          } catch {
-                            return dateStr;
-                          }
-                        };
-                        return (
-                        <TableRow key={record.id}>
-                            <TableCell>{formatDate(record.date)}</TableCell>
-                            <TableCell>{record.shift}</TableCell>
-                            <TableCell>{formatTime(record.clock_in)}</TableCell>
-                            <TableCell>{formatTime(record.clock_out)}</TableCell>
-                            <TableCell>{formatOvertimeHoursMinutes(record.overtime_minutes)}</TableCell>
-                            <TableCell>{getStatusBadge(record.request_status)}</TableCell>
-                            <TableCell>
-                              {record.request_status === 'approved' && record.pay_type ? (
-                                record.pay_type === 'regular' ? (
-                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                    Regular Hours
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                                    Overtime Pay
-                                  </Badge>
-                                )
-                              ) : (
-                                <span className="text-muted-foreground text-sm">-</span>
-                              )}
-                            </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-center">
-                              {record.request_status === 'not_requested' ? (
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => handleRequestFromRecord(record)}
-                                  className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                  <Plus className="h-4 w-4 mr-1" />
-                                  Request
-                                </Button>
-                              ) : (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8"
-                                    >
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => handleViewMyDetails(record)}>
-                                      <Eye className="h-4 w-4 mr-2" />
-                                      View Details
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                        );
-                      })
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={8} className="p-0">
-                          <EmptyState
-                            icon={Clock}
-                            title="No overtime records found"
-                            description="You don't have any timelogs with overtime hours yet. Overtime hours will appear here once you clock out after your shift ends."
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Pagination */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
-                <PaginationInfos.Standard
-                  from={(myCurrentPage - 1) * myItemsPerPage + 1}
-                  to={Math.min(myCurrentPage * myItemsPerPage, filteredMyOvertime.length)}
-                  total={filteredMyOvertime.length}
-                  itemsPerPage={myItemsPerPage}
-                  onItemsPerPageChange={handleMyItemsPerPageChange}
-                />
-
-                {myTotalPages > 1 && (
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setMyCurrentPage(Math.max(1, myCurrentPage - 1))}
-                          className={myCurrentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-
-                      {Array.from({ length: Math.min(myTotalPages, 3) }, (_, i) => {
-                        let pageNum;
-                        if (myTotalPages <= 3) {
-                          pageNum = i + 1;
-                        } else if (myCurrentPage === 1) {
-                          pageNum = i + 1;
-                        } else if (myCurrentPage === myTotalPages) {
-                          pageNum = myTotalPages - 2 + i;
-                        } else {
-                          pageNum = myCurrentPage - 1 + i;
-                        }
-                        return (
-                          <PaginationItem key={pageNum}>
-                            <PaginationLink
-                              onClick={() => setMyCurrentPage(pageNum)}
-                              isActive={myCurrentPage === pageNum}
-                              className="cursor-pointer"
-                            >
-                              {pageNum}
-                            </PaginationLink>
-                          </PaginationItem>
-                        );
-                      })}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setMyCurrentPage(Math.min(myTotalPages, myCurrentPage + 1))}
-                          className={myCurrentPage === myTotalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          </div>
-        </TabsContent>
+          <MyOvertimeTab
+            myOvertimeRecords={myOvertimeRecords}
+            filteredMyOvertime={filteredMyOvertime}
+            myPaginatedRecords={myPaginatedRecords}
+            myLoading={myLoading}
+            exporting={exporting}
+            mySearchTerm={mySearchTerm}
+            myDateRange={myDateRange}
+            mySelectedStatus={mySelectedStatus}
+            myCurrentPage={myCurrentPage}
+            myTotalPages={myTotalPages}
+            myItemsPerPage={myItemsPerPage}
+            onExport={handleExport}
+            onSearchChange={setMySearchTerm}
+            onDateRangeChange={setMyDateRange}
+            onStatusChange={setMySelectedStatus}
+            onRefresh={handleMyRefresh}
+            onItemsPerPageChange={handleMyItemsPerPageChange}
+            onPageChange={setMyCurrentPage}
+            onRequestOvertime={(record) => handleRequestFromRecord(record, 'my')}
+            onViewDetails={handleViewMyDetails}
+            getStatusBadge={getStatusBadge}
+            formatOvertimeHoursMinutes={formatOvertimeHoursMinutes}
+          />
         )}
       </Tabs>
 
@@ -1159,9 +892,9 @@ export default function OvertimePage() {
       <Dialog open={myViewModalOpen} onOpenChange={setMyViewModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>My Overtime Details</DialogTitle>
+            <DialogTitle>Overtime Details</DialogTitle>
             <DialogDescription>
-              View detailed information about your overtime record
+              View detailed information about this overtime record
             </DialogDescription>
           </DialogHeader>
           
