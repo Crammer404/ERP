@@ -357,6 +357,9 @@ export const ROUTES = {
     SALES: '/pos/sales',
   },
   HRMS: {
+    DTR: {
+      OVERTIME: '/hrms/dtr/overtime',
+    },
     PAYROLL: {
       GENERATE: '/hrms/payroll/generate',
       CONFIG: '/hrms/payroll/config',

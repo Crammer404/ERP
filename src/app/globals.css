@@ -121,6 +121,11 @@
   animation: bounce-delay-3 1.4s ease-in-out infinite 0.4s;
 }
 
+@keyframes shrinkWidth {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
 /* Hide scrollbars visually but keep scrolling functional */
 .scrollbar-hide {
   -ms-overflow-style: none; /* IE and Edge */

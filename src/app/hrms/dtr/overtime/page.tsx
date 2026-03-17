@@ -14,10 +14,10 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/components/providers/auth-provider';
-import { 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Clock,
+  CheckCircle,
+  XCircle,
   UserCheck,
   Users
 } from 'lucide-react';
@@ -43,6 +43,264 @@ import { EmployeesOvertimeTab } from './components/employees-overtime-tab';
 import { MyOvertimeTab } from './components/my-overtime-tab';
 
 type OvertimeTab = 'approval' | 'employeesOvertime' | 'myOvertime';
+type OvertimeDetailsMode = 'manager' | 'employee';
+
+type OvertimeDetailsDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: OvertimeDetailsMode;
+  managerRecord?: OvertimeRequestRecord | null;
+  employeeRecord?: MyOvertimeRecord | null;
+  getStatusBadge: (status: string) => React.ReactNode;
+  formatOvertimeFromHours: (hours: number | null | undefined) => string;
+  formatOvertimeHoursMinutes: (minutes: number | null | undefined) => string;
+};
+
+function OvertimeDetailsDialog({
+  open,
+  onOpenChange,
+  mode,
+  managerRecord,
+  employeeRecord,
+  getStatusBadge,
+  formatOvertimeFromHours,
+  formatOvertimeHoursMinutes,
+}: OvertimeDetailsDialogProps) {
+  const isManager = mode === 'manager';
+  const record = isManager ? managerRecord : employeeRecord;
+
+  if (!record) {
+    return null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {isManager ? 'Overtime Request Details' : 'Overtime Details'}
+          </DialogTitle>
+          <DialogDescription>
+            {isManager
+              ? 'View detailed information about this overtime request'
+              : 'View detailed information about this overtime record'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            {isManager ? (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Employee
+                  </label>
+                  <p className="text-sm font-semibold">
+                    {managerRecord?.employee}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Branch
+                  </label>
+                  <p className="text-sm">{managerRecord?.branch}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Date
+                  </label>
+                  <p className="text-sm">{managerRecord?.date_formatted}</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Date
+                  </label>
+                  <p className="text-sm font-semibold">
+                    {new Date(employeeRecord!.date).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Shift
+                  </label>
+                  <p className="text-sm">{employeeRecord!.shift}</p>
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">
+                Status
+              </label>
+              <div className="mt-1">
+                {getStatusBadge(
+                  isManager
+                    ? managerRecord!.status
+                    : employeeRecord!.request_status
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">
+                Overtime Hours
+              </label>
+              <p className="text-sm">
+                {isManager
+                  ? formatOvertimeFromHours(managerRecord!.requested_hours)
+                  : formatOvertimeHoursMinutes(employeeRecord!.overtime_minutes)}
+              </p>
+            </div>
+
+            {!isManager && (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Clock In
+                  </label>
+                  <p className="text-sm">
+                    {employeeRecord!.clock_in
+                      ? new Date(
+                          employeeRecord!.clock_in
+                        ).toLocaleTimeString('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      : '-'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Clock Out
+                  </label>
+                  <p className="text-sm">
+                    {employeeRecord!.clock_out
+                      ? new Date(
+                          employeeRecord!.clock_out
+                        ).toLocaleTimeString('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      : '-'}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {(isManager
+              ? managerRecord!.status === 'approved'
+              : employeeRecord!.request_status === 'approved' &&
+                !!employeeRecord!.pay_type) && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">
+                  Pay Type
+                </label>
+                <div className="mt-1">
+                  {(isManager ? managerRecord!.pay_type : employeeRecord!.pay_type) ===
+                  'regular' ? (
+                    <Badge
+                      variant="outline"
+                      className="bg-blue-50 text-blue-700 border-blue-200"
+                    >
+                      Regular Hours
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="bg-orange-50 text-orange-700 border-orange-200"
+                    >
+                      Overtime Pay
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Reason
+            </label>
+            <p className="text-sm mt-1">
+              {isManager
+                ? managerRecord!.reason || '-'
+                : employeeRecord!.request_reason || '-'}
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Requested At
+            </label>
+            <p className="text-sm">
+              {isManager
+                ? managerRecord!.requested_at || '-'
+                : employeeRecord!.requested_at
+                  ? new Date(employeeRecord!.requested_at).toLocaleString(
+                      'en-US',
+                      {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true,
+                      }
+                    )
+                  : '-'}
+            </p>
+          </div>
+
+          {isManager && managerRecord!.reviewed_by && (
+            <>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">
+                  Reviewed By
+                </label>
+                <p className="text-sm">{managerRecord!.reviewed_by}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">
+                  Reviewed At
+                </label>
+                <p className="text-sm">{managerRecord!.reviewed_at || '-'}</p>
+              </div>
+            </>
+          )}
+
+          {isManager ? (
+            managerRecord!.notes && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">
+                  Manager Notes
+                </label>
+                <p className="text-sm mt-1">{managerRecord!.notes}</p>
+              </div>
+            )
+          ) : employeeRecord!.request_notes ? (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">
+                Manager's Reason
+              </label>
+              <p className="text-sm mt-1">{employeeRecord!.request_notes}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function OvertimePage() {
   const { user } = useAuth();
@@ -87,10 +345,14 @@ export default function OvertimePage() {
   const [myViewModalOpen, setMyViewModalOpen] = useState(false);
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [requestTarget, setRequestTarget] = useState<'my' | 'employee'>('my');
+  const [isAppeal, setIsAppeal] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [actionNotes, setActionNotes] = useState('');
   const [payType, setPayType] = useState<'overtime' | 'regular'>('overtime');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [approveSubmitting, setApproveSubmitting] = useState(false);
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
 
   // New overtime request form
   const [newRequest, setNewRequest] = useState({
@@ -485,6 +747,7 @@ export default function OvertimePage() {
     if (!selectedRecord) return;
     
     try {
+      setApproveSubmitting(true);
       await approveOvertime(selectedRecord.id, payType, actionNotes || undefined);
       
       toast({
@@ -505,6 +768,8 @@ export default function OvertimePage() {
         description: errorMsg,
         variant: 'destructive',
       });
+    } finally {
+      setApproveSubmitting(false);
     }
   };
 
@@ -521,6 +786,7 @@ export default function OvertimePage() {
     }
     
     try {
+      setRejectSubmitting(true);
       await rejectOvertime(selectedRecord.id, actionNotes);
       
       toast({
@@ -540,6 +806,8 @@ export default function OvertimePage() {
         description: errorMsg,
         variant: 'destructive',
       });
+    } finally {
+      setRejectSubmitting(false);
     }
   };
 
@@ -554,6 +822,7 @@ export default function OvertimePage() {
     }
 
     try {
+      setRequestSubmitting(true);
       if (requestTarget === 'employee') {
         if (!newRequest.employee_id) {
           toast({
@@ -597,6 +866,8 @@ export default function OvertimePage() {
         description: errorMsg,
         variant: 'destructive',
       });
+    } finally {
+      setRequestSubmitting(false);
     }
   };
 
@@ -605,11 +876,23 @@ export default function OvertimePage() {
     target: 'my' | 'employee',
     employeeId?: number
   ) => {
-    if (record.request_status !== 'not_requested') {
+    const appealAttempts = record.appeal_attempts ?? 0;
+
+    // Allow appeals for rejected overtime up to max attempts
+    if (record.request_status !== 'not_requested' && record.request_status !== 'rejected') {
       toast({
         title: 'Already Requested',
         description: 'This overtime has already been requested',
         variant: 'default',
+      });
+      return;
+    }
+
+    if (record.request_status === 'rejected' && appealAttempts >= 3) {
+      toast({
+        title: 'Appeal Limit Reached',
+        description: 'You have reached the maximum number of appeal attempts for this overtime entry. You can only view its details now.',
+        variant: 'destructive',
       });
       return;
     }
@@ -622,6 +905,7 @@ export default function OvertimePage() {
       return;
     }
     setRequestTarget(target);
+    setIsAppeal(record.request_status === 'rejected');
     setSelectedMyRecord(record);
     setNewRequest({
       employee_id: target === 'employee' ? Number(employeeId) : 0,
@@ -808,206 +1092,37 @@ export default function OvertimePage() {
         )}
       </Tabs>
 
-      {/* View Details Modal */}
-      <Dialog open={viewModalOpen} onOpenChange={setViewModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Overtime Request Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about this overtime request
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedRecord && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Employee</label>
-                  <p className="text-sm font-semibold">{selectedRecord.employee}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Branch</label>
-                  <p className="text-sm">{selectedRecord.branch}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Date</label>
-                  <p className="text-sm">{selectedRecord.date_formatted}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Status</label>
-                  <div className="mt-1">{getStatusBadge(selectedRecord.status)}</div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Requested Hours</label>
-                  <p className="text-sm">{formatOvertimeFromHours(selectedRecord.requested_hours)}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Actual Hours</label>
-                  <p className="text-sm">{selectedRecord.actual_hours > 0 ? formatOvertimeFromHours(selectedRecord.actual_hours) : '-'}</p>
-                </div>
-                {selectedRecord.status === 'approved' && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Pay Type</label>
-                    <div className="mt-1">
-                      {selectedRecord.pay_type === 'regular' ? (
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                          Regular Hours
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                          Overtime Pay
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Reason</label>
-                <p className="text-sm mt-1">{selectedRecord.reason || '-'}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Requested At</label>
-                <p className="text-sm">{selectedRecord.requested_at || '-'}</p>
-              </div>
-              {selectedRecord.reviewed_by && (
-                <>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Reviewed By</label>
-                    <p className="text-sm">{selectedRecord.reviewed_by}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Reviewed At</label>
-                    <p className="text-sm">{selectedRecord.reviewed_at || '-'}</p>
-                  </div>
-                </>
-              )}
-              {selectedRecord.notes && (
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Notes</label>
-                  <p className="text-sm mt-1">{selectedRecord.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
+      {/* Unified Manager View Details Modal */}
+      <OvertimeDetailsDialog
+        open={viewModalOpen}
+        onOpenChange={setViewModalOpen}
+        mode="manager"
+        managerRecord={selectedRecord}
+        getStatusBadge={getStatusBadge}
+        formatOvertimeFromHours={formatOvertimeFromHours}
+        formatOvertimeHoursMinutes={formatOvertimeHoursMinutes}
+      />
 
-          <DialogFooter>
-            <Button onClick={() => setViewModalOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* View My Overtime Details Modal */}
-      <Dialog open={myViewModalOpen} onOpenChange={setMyViewModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Overtime Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about this overtime record
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedMyRecord && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Date</label>
-                  <p className="text-sm font-semibold">
-                    {new Date(selectedMyRecord.date).toLocaleDateString('en-US', { 
-                      month: 'short', 
-                      day: 'numeric', 
-                      year: 'numeric' 
-                    })}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Shift</label>
-                  <p className="text-sm">{selectedMyRecord.shift}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Clock In</label>
-                  <p className="text-sm">
-                    {selectedMyRecord.clock_in 
-                      ? new Date(selectedMyRecord.clock_in).toLocaleTimeString('en-US', { 
-                          hour: 'numeric', 
-                          minute: '2-digit' 
-                        })
-                      : '-'}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Clock Out</label>
-                  <p className="text-sm">
-                    {selectedMyRecord.clock_out 
-                      ? new Date(selectedMyRecord.clock_out).toLocaleTimeString('en-US', { 
-                          hour: 'numeric', 
-                          minute: '2-digit' 
-                        })
-                      : '-'}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Overtime Hours</label>
-                  <p className="text-sm">{formatOvertimeHoursMinutes(selectedMyRecord.overtime_minutes)}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Status</label>
-                  <div className="mt-1">{getStatusBadge(selectedMyRecord.request_status)}</div>
-                </div>
-                {selectedMyRecord.request_status === 'approved' && selectedMyRecord.pay_type && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Pay Type</label>
-                    <div className="mt-1">
-                      {selectedMyRecord.pay_type === 'regular' ? (
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                          Regular Hours
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                          Overtime Pay
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {selectedMyRecord.request_reason && (
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Reason</label>
-                  <p className="text-sm mt-1">{selectedMyRecord.request_reason}</p>
-                </div>
-              )}
-              {selectedMyRecord.requested_at && (
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Requested At</label>
-                  <p className="text-sm">
-                    {new Date(selectedMyRecord.requested_at).toLocaleString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true
-                    })}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button onClick={() => setMyViewModalOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Unified Employee View Details Modal */}
+      <OvertimeDetailsDialog
+        open={myViewModalOpen}
+        onOpenChange={setMyViewModalOpen}
+        mode="employee"
+        employeeRecord={selectedMyRecord}
+        getStatusBadge={getStatusBadge}
+        formatOvertimeFromHours={formatOvertimeFromHours}
+        formatOvertimeHoursMinutes={formatOvertimeHoursMinutes}
+      />
 
       {/* Request Overtime Modal */}
       <Dialog open={requestModalOpen} onOpenChange={setRequestModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Request Overtime</DialogTitle>
+            <DialogTitle>{isAppeal ? 'Appeal Rejected Overtime' : 'Request Overtime'}</DialogTitle>
             <DialogDescription>
-              Submit a new overtime request for approval
+              {isAppeal
+                ? 'Submit an appeal for your rejected overtime request. This will be reviewed again by your manager.'
+                : 'Submit a new overtime request for approval'}
             </DialogDescription>
           </DialogHeader>
           
@@ -1017,26 +1132,49 @@ export default function OvertimePage() {
                 <p className="text-sm"><strong>Date:</strong> {new Date(selectedMyRecord.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                 <p className="text-sm"><strong>Shift:</strong> {selectedMyRecord.shift}</p>
                 <p className="text-sm"><strong>Overtime Hours:</strong> {formatOvertimeHoursMinutes(selectedMyRecord.overtime_minutes)}</p>
+                <p className="text-sm"><strong>Manager's Reason:</strong> {selectedMyRecord.request_notes}</p>
             </div>
             <div>
-                <label className="text-sm font-medium">Reason (Optional)</label>
+              <label className="text-sm font-medium">Reason (Optional)</label>
               <Textarea
                 value={newRequest.reason}
-                onChange={(e) => setNewRequest({ ...newRequest, reason: e.target.value })}
-                  placeholder="Explain the reason for overtime (optional)"
+                onChange={(e) => setNewRequest({ ...newRequest, reason: e.target.value.slice(0, 1000) })}
+                placeholder="Briefly explain the reason for this overtime (maximum 1000 characters)."
                 className="mt-1"
                 rows={4}
+                maxLength={1000}
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {newRequest.reason.length}/1000 characters
+              </p>
             </div>
           </div>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRequestModalOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setRequestModalOpen(false)}
+              disabled={requestSubmitting}
+            >
               Cancel
             </Button>
-            <Button onClick={handleRequestOvertime} className="bg-blue-600 hover:bg-blue-700">
-              Submit Request
+            <Button
+              onClick={handleRequestOvertime}
+              className={
+                isAppeal
+                  ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+              }
+              disabled={requestSubmitting}
+            >
+              {requestSubmitting
+                ? isAppeal
+                  ? 'Submitting Appeal...'
+                  : 'Submitting...'
+                : isAppeal
+                  ? 'Appeal'
+                  : 'Submit'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1084,22 +1222,34 @@ export default function OvertimePage() {
                 <label className="text-sm font-medium">Notes (Optional)</label>
                 <Textarea
                   value={actionNotes}
-                  onChange={(e) => setActionNotes(e.target.value)}
-                  placeholder="Add any notes..."
+                  onChange={(e) => setActionNotes(e.target.value.slice(0, 1000))}
+                  placeholder="Optionally add a short explanation or clarification (maximum 1000 characters)."
                   className="mt-1"
                   rows={3}
+                  maxLength={1000}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {actionNotes.length}/1000 characters
+                </p>
               </div>
             </div>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setApproveModalOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setApproveModalOpen(false)}
+              disabled={approveSubmitting}
+            >
               Cancel
             </Button>
-            <Button onClick={confirmApprove} className="bg-green-600 hover:bg-green-700">
+            <Button
+              onClick={confirmApprove}
+              className="bg-green-600 hover:bg-green-700"
+              disabled={approveSubmitting}
+            >
               <CheckCircle className="h-4 w-4 mr-2" />
-              Approve
+              {approveSubmitting ? 'Approving...' : 'Approve'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1127,26 +1277,34 @@ export default function OvertimePage() {
                 <label className="text-sm font-medium">Rejection Reason *</label>
                 <Textarea
                   value={actionNotes}
-                  onChange={(e) => setActionNotes(e.target.value)}
-                  placeholder="Explain why this request is being rejected..."
+                  onChange={(e) => setActionNotes(e.target.value.slice(0, 1000))}
+                  placeholder="Clearly explain why this request is being rejected (maximum 1000 characters)."
                   className="mt-1"
                   rows={3}
+                  maxLength={1000}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {actionNotes.length}/1000 characters
+                </p>
               </div>
             </div>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectModalOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setRejectModalOpen(false)}
+              disabled={rejectSubmitting}
+            >
               Cancel
             </Button>
             <Button 
               onClick={confirmReject} 
               className="bg-red-600 hover:bg-red-700"
-              disabled={!actionNotes.trim()}
+              disabled={!actionNotes.trim() || rejectSubmitting}
             >
               <XCircle className="h-4 w-4 mr-2" />
-              Reject
+              {rejectSubmitting ? 'Rejecting...' : 'Reject'}
             </Button>
           </DialogFooter>
         </DialogContent>

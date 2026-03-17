@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { DateRange } from 'react-day-picker';
 import {
   Dialog,
@@ -29,6 +30,8 @@ import { type CheckedState } from '@radix-ui/react-checkbox';
 import { userService, UserEntity } from '@/app/management/users/services/userService';
 import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
 import { Loader } from '@/components/ui/loader';
+import { getOvertimeRequests } from '@/services/hrms/dtr';
+import { ROUTES } from '@/config/api.config';
 
 export interface GeneratePayrollUser {
   id: number;
@@ -72,6 +75,7 @@ const GeneratePayrollDialog = ({
   payrollTypes = DEFAULT_PAYROLL_TYPES,
   triggerLabel = 'Generate Payroll',
 }: GeneratePayrollDialogProps) => {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const defaultPayrollType = useMemo(
     () => payrollTypes[0] ?? 'Monthly',
@@ -86,6 +90,7 @@ const GeneratePayrollDialog = ({
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showPendingOvertimeDialog, setShowPendingOvertimeDialog] = useState(false);
 
   useEffect(() => {
     if (users) {
@@ -228,10 +233,46 @@ const GeneratePayrollDialog = ({
       return; // Don't close if validation fails
     }
 
+    const hasNoPendingOvertime = await (async () => {
+      if (!dateRange?.from || !dateRange?.to || selectedUserIds.length === 0) {
+        return true;
+      }
+
+      try {
+        const params: {
+          status: string;
+          start_date: string;
+          end_date: string;
+        } = {
+          status: 'pending',
+          start_date: dateRange.from.toISOString().split('T')[0],
+          end_date: dateRange.to.toISOString().split('T')[0],
+        };
+
+        const pendingRecords = await getOvertimeRequests(params);
+        const selectedUserSet = new Set(selectedUserIds);
+        const blocking = pendingRecords.filter((record) =>
+          selectedUserSet.has(record.employee_id)
+        );
+
+        if (blocking.length > 0) {
+          setShowPendingOvertimeDialog(true);
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Failed to check pending overtime before payroll generation:', error);
+        return true;
+      }
+    })();
+
+    if (!hasNoPendingOvertime) {
+      return;
+    }
+
     try {
       setIsGenerating(true);
-      
-      // Call the parent handler - it will handle the async operation
       if (onGenerate) {
         await onGenerate({
           payrollType,
@@ -239,12 +280,9 @@ const GeneratePayrollDialog = ({
           userIds: selectedUserIds,
           includeStatutoryDeductions: includeStatutory,
         });
-        
-        // Only close if successful (no error thrown)
         handleClose();
       }
     } catch (error) {
-      // Error is handled by parent, but we keep dialog open so user can see error
       console.error('Error generating payroll:', error);
     } finally {
       setIsGenerating(false);
@@ -414,6 +452,30 @@ const GeneratePayrollDialog = ({
             {isGenerating ? 'Generating...' : 'Confirm'}
           </Button>
         </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPendingOvertimeDialog} onOpenChange={setShowPendingOvertimeDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pending Overtime Requests</DialogTitle>
+            <DialogDescription>
+              There are pending overtime requests for the selected employees in this date range.
+              Please approve or reject all overtime before generating payroll.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowPendingOvertimeDialog(false);
+                setOpen(false);
+                router.push(ROUTES.HRMS.DTR.OVERTIME);
+              }}
+            >
+              Go to Overtime
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

@@ -281,12 +281,14 @@ export function EmployeesOvertimeTab({
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-center">
-                            {record.request_status === 'not_requested' ? (
+                            {record.request_status === 'not_requested' ||
+                            (record.request_status === 'rejected' && (record.appeal_attempts ?? 0) < 3) ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => onRequestOvertime(record)}
                                 className="h-8 w-8 text-primary hover:text-primary/80"
+                                title={record.request_status === 'rejected' ? 'Appeal overtime request' : 'Request overtime'}
                               >
                                 <Send className="h-5 w-5" />
                               </Button>

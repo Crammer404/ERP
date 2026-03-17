@@ -46,7 +46,7 @@ import {
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { Download, Smartphone, X, Clock, RefreshCw, Edit, CirclePlus, MoreVertical, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog } from '@/services/hrms/dtr';
+import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog, reopenForOvertime } from '@/services/hrms/dtr';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -55,7 +55,7 @@ import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
 import { Badge } from '@/components/ui/badge';
 import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
 import { TimeDisplay } from './components/time-display';
-import { ScanConfirmDialog, ScanConfirmData, ScanErrorDialog } from './components/scan-result-dialog';
+import { ScanConfirmDialog, ScanConfirmData, ScanErrorDialog, OvertimeConfirmDialog, OvertimePromptData } from './components/scan-result-dialog';
 
 interface TimeClockLog {
   id: number;
@@ -127,6 +127,9 @@ export default function TimeClockPage() {
   const [scanConfirmData, setScanConfirmData] = useState<ScanConfirmData | null>(null);
   const [scanErrorOpen, setScanErrorOpen] = useState(false);
   const [scanErrorMessage, setScanErrorMessage] = useState('');
+  const [overtimeConfirmOpen, setOvertimeConfirmOpen] = useState(false);
+  const [overtimeConfirmData, setOvertimeConfirmData] = useState<OvertimePromptData | null>(null);
+  const [overtimeConfirming, setOvertimeConfirming] = useState(false);
 
   const today = new Date();
 
@@ -761,6 +764,30 @@ export default function TimeClockPage() {
     setClocking(true);
     try {
       const res = await clockApi(uid);
+
+      // Handle overtime prompt — the backend detected a completed shift for today
+      if (res?.status === 'overtime_prompt') {
+        const promptData: OvertimePromptData = {
+          employeeName: res.employee_name || `User #${uid}`,
+          logId: res.log_id,
+          userId: uid,
+          shift: res.shift || '-',
+          clockIn: res.clock_in || '-',
+          clockOut: res.clock_out || '-',
+          date: res.date || new Date().toISOString().slice(0, 10),
+        };
+
+        if (fromScanner) {
+          pauseScanner();
+          clearScannerResetTimeout();
+          clearScannerInstance();
+          setIsScanning(false);
+        }
+
+        setOvertimeConfirmData(promptData);
+        setOvertimeConfirmOpen(true);
+        return true; // dialog opened
+      }
       
       if (res?.status === 'error') {
         const shouldRefreshLogs = Boolean(res?.refresh_logs || res?.dead_time_deleted);
@@ -796,7 +823,7 @@ export default function TimeClockPage() {
         const now = new Date();
         setScanConfirmData({
           employeeName: res?.employee_name || `User #${uid}`,
-          action: res?.action || (res?.clock_in ? 'Time In' : 'Time Out'),
+          action: res?.action || (res?.clock_in ? 'Clock In' : 'Clock Out'),
           time: res?.time || now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
         });
         // Immediately pause scanning (freezes camera frame, stops decoding)
@@ -868,6 +895,54 @@ export default function TimeClockPage() {
     setScanErrorMessage('');
     resetScanProcessingState();
     // Restart the scanner (camera on) after the error dialog closes
+    setIsScanning(true);
+  };
+
+  const handleOvertimeConfirm = async () => {
+    if (!overtimeConfirmData) return;
+    setOvertimeConfirming(true);
+    try {
+      const res = await reopenForOvertime({
+        user_id: overtimeConfirmData.userId,
+        log_id: overtimeConfirmData.logId,
+      });
+
+      if (res?.status === 'error') {
+        toast({
+          title: 'Error',
+          description: res?.message || 'Failed to reopen shift for overtime.',
+          variant: 'destructive',
+        });
+      } else {
+        // Show the success scan-confirm dialog with the reopened shift info
+        setScanConfirmData({
+          employeeName: res?.employee_name || overtimeConfirmData.employeeName,
+          action: res?.action || 'Clock In (Overtime)',
+          time: res?.time || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }),
+        });
+        clearLogsCache();
+        await fetchLogs({ force: true });
+        setScanConfirmOpen(true);
+      }
+    } catch (e: any) {
+      const apiErr = e?.response?.data?.message || e?.message || 'Failed to reopen shift for overtime.';
+      toast({
+        title: 'Error',
+        description: apiErr,
+        variant: 'destructive',
+      });
+    } finally {
+      setOvertimeConfirming(false);
+      setOvertimeConfirmOpen(false);
+      setOvertimeConfirmData(null);
+    }
+  };
+
+  const handleOvertimeCancel = () => {
+    setOvertimeConfirmOpen(false);
+    setOvertimeConfirmData(null);
+    resetScanProcessingState();
+    // Restart the scanner after cancellation
     setIsScanning(true);
   };
 
@@ -1352,6 +1427,15 @@ export default function TimeClockPage() {
         open={scanErrorOpen}
         message={scanErrorMessage}
         onClose={handleScanErrorClose}
+      />
+
+      {/* Overtime Confirmation Dialog */}
+      <OvertimeConfirmDialog
+        open={overtimeConfirmOpen}
+        data={overtimeConfirmData}
+        confirming={overtimeConfirming}
+        onConfirm={handleOvertimeConfirm}
+        onCancel={handleOvertimeCancel}
       />
     </div>
   );

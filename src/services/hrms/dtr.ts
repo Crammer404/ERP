@@ -189,6 +189,17 @@ export const clock = async (userId: number) => {
   });
 };
 
+export const reopenForOvertime = async (data: {
+  user_id: number;
+  log_id: number;
+}): Promise<any> => {
+  return await api("/hrms/dtr/clock/reopen-overtime", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+};
+
 export const exportTimesheet = async (startDate?: string, endDate?: string): Promise<void> => {
   try {
     const params = new URLSearchParams();
@@ -262,7 +273,9 @@ export interface MyOvertimeRecord {
   request_id?: number;
   request_status: 'not_requested' | 'pending' | 'approved' | 'rejected';
   request_reason?: string;
+  request_notes?: string;
   requested_at?: string;
+  appeal_attempts?: number;
   pay_type?: 'overtime' | 'regular' | null;
 }
 
