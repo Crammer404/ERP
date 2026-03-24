@@ -1,6 +1,6 @@
 'use client';
-
-import { useState, useEffect } from 'react';
+ 
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,17 +12,65 @@ import {
   SelectTrigger,
   SelectValue 
 } from '@/components/ui/select';
-import { Info } from 'lucide-react';
+import { Info, Loader2 } from 'lucide-react';
 import { configService, type ComputationData } from './services/config-service';
 import { positionService } from '../positions/services/position-service';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
+import type { DropResult } from '@hello-pangea/dnd';
+import { PayrollItemsCard } from './components/payroll-items-card';
+import { SectionInfoDialog } from './components/section-info-dialog';
+import { PayrollItemFormDialog } from './components/payroll-item-form-dialog';
+import { AddGroupDialog } from './components/add-group-dialog';
+import { DeletePayrollItemDialog } from './components/delete-payroll-item-dialog';
+import type {
+  EditRateDraft,
+  NewRateDraft,
+  RateFormErrors,
+  RateItem,
+  SectionInfoKey,
+} from './components/types';
 
 export default function ComputationPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [computationData, setComputationData] = useState<ComputationData | null>(null);
+
+  // Payroll Variable Rates (data-driven)
+  const [ratesSaving, setRatesSaving] = useState(false);
+  const [rateItems, setRateItems] = useState<RateItem[]>([]);
+  const [rateGroupOrder, setRateGroupOrder] = useState<string[]>([]);
+  const [addRateOpen, setAddRateOpen] = useState(false);
+  const [newRate, setNewRate] = useState<NewRateDraft>({
+    code: '',
+    label: '',
+    value: '',
+    is_rate: 1,
+    group: '',
+    category: 'earnings',
+  });
+
+  const [editRateOpen, setEditRateOpen] = useState(false);
+  const [editRate, setEditRate] = useState<EditRateDraft | null>(null);
+  const [deleteRateTarget, setDeleteRateTarget] = useState<{ code: string; label: string; group: string } | null>(null);
+  const [customRateGroups, setCustomRateGroups] = useState<string[]>([]);
+  const [addGroupModalOpen, setAddGroupModalOpen] = useState(false);
+  const [tempGroupName, setTempGroupName] = useState('');
+  const [tempGroupError, setTempGroupError] = useState('');
+  const [rateFormErrors, setRateFormErrors] = useState<RateFormErrors>({});
+  const [infoModalSection, setInfoModalSection] = useState<SectionInfoKey | null>(null);
+
+  const clearRateFormError = (...fields: Array<keyof RateFormErrors>) => {
+    setRateFormErrors((prev) => {
+      if (fields.every((field) => !prev[field])) return prev;
+      const next = { ...prev };
+      fields.forEach((field) => {
+        delete next[field];
+      });
+      return next;
+    });
+  };
   
   // Basic Pay State
   const [positionId, setPositionId] = useState<number | null>(null);
@@ -47,11 +95,8 @@ export default function ComputationPage() {
 
   // Deductions Percentages State
   const [sssPercent, setSssPercent] = useState('0.00');
-  const [sssFixed, setSssFixed] = useState('0.00');
   const [philHealthPercent, setPhilHealthPercent] = useState('0.00');
-  const [philHealthFixed, setPhilHealthFixed] = useState('0.00');
   const [pagibigPercent, setPagibigPercent] = useState('0.00');
-  const [pagibigFixed, setPagibigFixed] = useState('0.00');
 
   // Actual Deductions State
   const [incomeTax, setIncomeTax] = useState('0.00');
@@ -64,10 +109,42 @@ export default function ComputationPage() {
   const [totalDeduction, setTotalDeduction] = useState('0.00');
   const [netPay, setNetPay] = useState('0.00');
 
+  type BasicPayEditableField = 'monthly' | 'daily' | 'semiMonthly' | 'hourly';
+
   // Fetch computation data on mount
   useEffect(() => {
     fetchComputationData();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('payroll_config_rate_group_order');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+        setRateGroupOrder(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const persistRateGroupOrder = (order: string[]) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('payroll_config_rate_group_order', JSON.stringify(order));
+    } catch {
+      // ignore
+    }
+  };
+
+  const reconcileOrder = (keys: string[], saved: string[]): string[] => {
+    const keySet = new Set(keys);
+    const base = saved.filter((k) => keySet.has(k));
+    const missing = keys.filter((k) => !base.includes(k));
+    return [...base, ...missing];
+  };
 
   const getActiveBranchIdFromContext = (): number | null => {
     if (typeof window === 'undefined') return null;
@@ -87,50 +164,41 @@ export default function ComputationPage() {
       setLoading(true);
       const data = await configService.getComputationData();
       setComputationData(data);
+
+      // Populate rate items from payroll_config.
+      const dbRates = data.components
+        .filter((c) => c.group)
+        .map((c) => ({
+          id: c.id,
+          group: String(c.group || 'work_rate'),
+          category: (c.category as 'earnings' | 'deductions' | undefined) ?? undefined,
+          code: String(c.code || ''),
+          label: String(c.label || c.code || ''),
+          value: typeof c.value === 'number' ? c.value : parseFloat(String(c.value || '0')) || 0,
+          is_rate: (c.is_rate ? 1 : 0) as 0 | 1,
+        }))
+        .filter((c) => c.code.trim() !== '')
+        .sort((a, b) => a.label.localeCompare(b.label));
+      setRateItems(dbRates);
+
+      // Keep group column order stable across refreshes (append new groups at the end)
+      const groupKeys = Array.from(new Set(dbRates.map((r) => r.group || 'work_rate')));
+      setRateGroupOrder((prev) => reconcileOrder(groupKeys, prev));
       
-      // Set rates from components
-      const rates = data.components.filter(c => c.group === 'rates');
-      rates.forEach(rate => {
-        const value = String(rate.value);
-        switch(rate.code) {
-          case 'nightpay':
-            setNightDiffPay(value);
-            break;
-          case 'restpay':
-            setRestDayPay(value);
-            break;
-          case 'holiday':
-            setHolidayPay(value);
-            break;
-          case 'ot_regular':
-            setRegularOT(value);
-            break;
-          case 'ot_restday':
-            setRestDayOT(value);
-            break;
-          case 'ot_holiday':
-            setHolidayOT(value);
-            break;
-          case 'sss':
-            setSssPercent(value);
-            break;
-          case 'f_sss':
-            setSssFixed(value);
-            break;
-          case 'philhealth':
-            setPhilHealthPercent(value);
-            break;
-          case 'f_philhealth':
-            setPhilHealthFixed(value);
-            break;
-          case 'pagibig':
-            setPagibigPercent(value);
-            break;
-          case 'f_pagibig':
-            setPagibigFixed(value);
-            break;
-        }
-      });
+      // Set statutory/rate values by code (category/group independent).
+      const getComponentValue = (code: string, fallback: string) => {
+        const match = data.components.find((c) => c.code === code);
+        return match ? String(match.value) : fallback;
+      };
+      setNightDiffPay(getComponentValue('nightpay', '1.10'));
+      setRestDayPay(getComponentValue('restpay', '1.30'));
+      setHolidayPay(getComponentValue('holiday', '2.00'));
+      setRegularOT(getComponentValue('ot_regular', '1.25'));
+      setRestDayOT(getComponentValue('ot_restday', '1.69'));
+      setHolidayOT(getComponentValue('ot_holiday', '2.60'));
+      setSssPercent(getComponentValue('sss', '0.00'));
+      setPhilHealthPercent(getComponentValue('philhealth', '0.00'));
+      setPagibigPercent(getComponentValue('pagibig', '0.00'));
 
       // Set default branch from active branch context (localStorage) if available, else first branch
       const activeBranchId = getActiveBranchIdFromContext();
@@ -166,6 +234,338 @@ export default function ComputationPage() {
     }
   };
 
+  const getCurrencySymbol = (): string => computationData?.currency_symbol || '₱';
+  const isStatutoryRateCode = (code: string): boolean => ['sss', 'philhealth', 'pagibig'].includes(code);
+  const deductionCodes = new Set(['sss', 'philhealth', 'pagibig']);
+  const getComponentByCode = (code: string) => computationData?.components?.find((c) => c.code === code);
+
+  const inferCategory = (
+    input: Partial<{ category?: string; group?: string; code?: string; is_rate?: number }>,
+  ): 'earnings' | 'deductions' => {
+    const explicit = String(input.category || '').toLowerCase();
+    if (explicit === 'deductions') {
+      return 'deductions';
+    }
+    if (explicit === 'earnings' || explicit === 'allowance' || explicit === 'rate') {
+      return 'earnings';
+    }
+
+    const code = String(input.code || '').toLowerCase();
+    if (deductionCodes.has(code)) return 'deductions';
+
+    const group = String(input.group || '').toLowerCase();
+    if (group.includes('deduct')) return 'deductions';
+    return 'earnings';
+  };
+
+  const formatRatePreview = (item: { code: string; value: number; is_rate: 0 | 1 }): string => {
+    if (item.is_rate === 0) {
+      return `${getCurrencySymbol()} ${item.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (fixed)`;
+    }
+    // Rate: show % for statutory, otherwise show multiplier (x)
+    if (isStatutoryRateCode(item.code)) {
+      return `${(item.value * 100).toFixed(2)}%`;
+    }
+    const multiplier = item.value;
+    const premiumPercent = (multiplier - 1) * 100;
+    if (premiumPercent <= 0) {
+      return `${multiplier}x`;
+    }
+    return `${multiplier}x (${premiumPercent.toFixed(0)}% premium)`;
+  };
+
+  const normalizeCode = (value: string): string =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+  const handleSaveRates = async () => {
+    try {
+      setRatesSaving(true);
+      const payload = {
+        rates: rateItems.map((r) => ({
+          code: r.code,
+          label: r.label,
+          value: Number.isFinite(r.value) ? r.value : 0,
+          is_rate: r.is_rate,
+          group: r.group,
+          category: inferCategory(r),
+        })),
+      };
+      await configService.updateRate(payload);
+      toast({
+        title: 'Success',
+        description: 'Payroll variable rates updated successfully',
+        variant: 'default',
+      });
+      await fetchComputationData();
+    } catch (error: any) {
+      console.error('Error updating payroll rates:', error);
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to update payroll rates',
+        variant: 'destructive',
+      });
+    } finally {
+      setRatesSaving(false);
+    }
+  };
+
+  const handleAddRate = async () => {
+    const label = newRate.label.trim();
+    const code = normalizeCode(label);
+    const valueNum = parseFloat(newRate.value);
+    const group = newRate.group || rateGroupOrder[0] || 'work_rate';
+    const category = newRate.category;
+    const nextErrors: RateFormErrors = {};
+
+    if (!label) nextErrors.label = 'Item name is required.';
+    if (!group) nextErrors.group = 'Item group is required.';
+    if (!category) nextErrors.category = 'Category is required.';
+    if (newRate.is_rate !== 0 && newRate.is_rate !== 1) nextErrors.is_rate = 'Variable type is required.';
+    if (!newRate.value.trim()) {
+      nextErrors.value = 'Value is required.';
+    } else if (!Number.isFinite(valueNum)) {
+      nextErrors.value = 'Value must be a valid number.';
+    }
+    if (label && rateItems.some((r) => r.code === code)) {
+      nextErrors.code = `Item name creates a duplicate code "${code}".`;
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setRateFormErrors(nextErrors);
+      return;
+    }
+    setRateFormErrors({});
+
+    try {
+      setRatesSaving(true);
+      await configService.updateRate({
+        rates: [{ code, label, value: valueNum, is_rate: newRate.is_rate, group, category }],
+      });
+      toast({ title: 'Success', description: 'Payroll item added', variant: 'default' });
+      setNewRate({ code: '', label: '', value: '', is_rate: 1, group: '', category: 'earnings' });
+      setAddRateOpen(false);
+      await fetchComputationData();
+    } catch (error: any) {
+      console.error('Error adding payroll item:', error);
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to add payroll item',
+        variant: 'destructive',
+      });
+    } finally {
+      setRatesSaving(false);
+    }
+  };
+
+  const openAddRate = (preset?: Partial<{ is_rate: 0 | 1 }>) => {
+    const defaultGroup = rateGroupOrder[0] || 'work_rate';
+    setNewRate((p) => ({
+      ...p,
+      is_rate: preset?.is_rate ?? p.is_rate,
+      group: p.group || defaultGroup,
+      category: p.category || inferCategory({ group: p.group || defaultGroup, is_rate: p.is_rate }),
+    }));
+    setRateFormErrors({});
+    setAddRateOpen(true);
+  };
+
+  const closeRateFormDialog = () => {
+    setAddRateOpen(false);
+    setEditRateOpen(false);
+    setEditRate(null);
+    setCustomRateGroups([]);
+    setAddGroupModalOpen(false);
+    setTempGroupName('');
+    setTempGroupError('');
+    setRateFormErrors({});
+  };
+
+  const closeAddGroupDialog = () => {
+    setAddGroupModalOpen(false);
+    setTempGroupName('');
+    setTempGroupError('');
+  };
+
+  const isRateFlagFromDb = (code: string): boolean => {
+    const comp = getComponentByCode(code);
+    // Default to true (rate) to keep legacy behavior when not set
+    return Boolean(comp?.is_rate ?? true);
+  };
+
+  const formatGroupLabel = (groupKey: string): string =>
+    groupKey
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const rateGroupOptions = useMemo(() => {
+    const keys = Array.from(new Set([...rateItems.map((r) => r.group || 'work_rate'), ...customRateGroups]));
+    return reconcileOrder(keys, rateGroupOrder);
+  }, [rateItems, rateGroupOrder, customRateGroups]);
+
+  const addTemporaryGroupType = () => {
+    const normalized = normalizeCode(tempGroupName);
+    if (!normalized) {
+      setTempGroupError('Group name is required.');
+      return;
+    }
+    if (rateGroupOptions.includes(normalized)) {
+      setTempGroupError('Group already exists.');
+      return;
+    }
+
+    if (!rateGroupOptions.includes(normalized)) {
+      setCustomRateGroups((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
+      setRateGroupOrder((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
+    }
+
+    if (editRate) {
+      setEditRate({ ...editRate, group: normalized });
+    } else {
+      setNewRate((prev) => ({ ...prev, group: normalized }));
+    }
+    clearRateFormError('group');
+
+    setTempGroupName('');
+    setTempGroupError('');
+    setAddGroupModalOpen(false);
+  };
+
+  const handleRateGroupDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    const from = result.source.index;
+    const to = result.destination.index;
+    if (from === to) return;
+
+    setRateGroupOrder((prev) => {
+      const next = Array.from(prev);
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      persistRateGroupOrder(next);
+      return next;
+    });
+  };
+
+  const getRateRowFromDb = (
+    code: string,
+    group: string,
+  ): { code: string; label: string; value: number; is_rate: 0 | 1; group?: string; category?: 'earnings' | 'deductions' } => {
+    const comp = computationData?.components?.find((c) => c.group === group && c.code === code);
+    return {
+      code,
+      label: String(comp?.label || code),
+      value: typeof comp?.value === 'number' ? comp.value : parseFloat(String(comp?.value || '0')) || 0,
+      is_rate: (comp?.is_rate ? 1 : 0) as 0 | 1,
+      group: comp?.group || group,
+      category: inferCategory({
+        category: comp?.category,
+        group: comp?.group || group,
+        code,
+        is_rate: (comp?.is_rate ? 1 : 0) as 0 | 1,
+      }),
+    };
+  };
+
+  const openEditRate = (code: string, group: string) => {
+    const row = getRateRowFromDb(code, group);
+    setEditRate({
+      code: row.code,
+      label: row.label,
+      value: String(row.value),
+      is_rate: row.is_rate,
+      group: row.group,
+      category: row.category,
+      original_group: row.group,
+    });
+    setRateFormErrors({});
+    setEditRateOpen(true);
+  };
+
+  const submitEditRate = async () => {
+    if (!editRate) return;
+    const label = editRate.label.trim();
+    const valueNum = parseFloat(editRate.value);
+    const targetGroup = editRate.group || 'work_rate';
+    const nextErrors: RateFormErrors = {};
+
+    if (!label) nextErrors.label = 'Item name is required.';
+    if (!targetGroup) nextErrors.group = 'Item group is required.';
+    if (!editRate.category) nextErrors.category = 'Category is required.';
+    if (editRate.is_rate !== 0 && editRate.is_rate !== 1) nextErrors.is_rate = 'Variable type is required.';
+    if (!editRate.value.trim()) {
+      nextErrors.value = 'Value is required.';
+    } else if (!Number.isFinite(valueNum)) {
+      nextErrors.value = 'Value must be a valid number.';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setRateFormErrors(nextErrors);
+      return;
+    }
+    setRateFormErrors({});
+
+    try {
+      setRatesSaving(true);
+      const originalGroup = editRate.original_group || targetGroup;
+      const category = editRate.category || inferCategory({
+        category: editRate.category,
+        code: editRate.code,
+        group: targetGroup,
+        is_rate: editRate.is_rate,
+      });
+      await configService.updateRate({
+        rates: [
+          {
+            code: editRate.code,
+            label,
+            value: valueNum,
+            is_rate: editRate.is_rate,
+            group: targetGroup,
+            category,
+          },
+        ],
+        ...(originalGroup !== targetGroup
+          ? { delete_items: [{ code: editRate.code, group: originalGroup, category }] }
+          : {}),
+      });
+      toast({ title: 'Success', description: 'Rate item updated', variant: 'default' });
+      setEditRateOpen(false);
+      setEditRate(null);
+      await fetchComputationData();
+    } catch (error: any) {
+      console.error('Error updating rate item:', error);
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to update rate item',
+        variant: 'destructive',
+      });
+    } finally {
+      setRatesSaving(false);
+    }
+  };
+
+  const deleteRate = async (code: string, group: string) => {
+    try {
+      setRatesSaving(true);
+      const item = rateItems.find((r) => r.code === code && r.group === group);
+      const category = inferCategory(item ?? { code, group, is_rate: 1 });
+      await configService.updateRate({ delete_items: [{ code, group, category }] });
+      toast({ title: 'Success', description: 'Rate item deleted', variant: 'default' });
+      setDeleteRateTarget(null);
+      await fetchComputationData();
+    } catch (error: any) {
+      console.error('Error deleting rate item:', error);
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to delete rate item',
+        variant: 'destructive',
+      });
+    } finally {
+      setRatesSaving(false);
+    }
+  };
+
   const calculateIncomeTax = (monthlySalary: number): number => {
     const annualSalary = monthlySalary * 12;
     let annualTax = 0;
@@ -193,14 +593,12 @@ export default function ComputationPage() {
     }
 
     const sssRate = parseFloat(sssPercent) || 0.045;
-    const f_sss = parseFloat(sssFixed) || 0;
+    if (!isRateFlagFromDb('sss')) {
+      return Math.round(sssRate * 100) / 100;
+    }
 
     if (monthlySalary < 1000) {
       return 0;
-    }
-
-    if (monthlySalary <= 3250 && f_sss > 0) {
-      return Math.round(f_sss * 100) / 100;
     }
 
     const maxMSC = 30000;
@@ -216,10 +614,8 @@ export default function ComputationPage() {
     }
 
     const philhealthRate = parseFloat(philHealthPercent) || 0.025;
-    const f_philhealth = parseFloat(philHealthFixed) || 0;
-
-    if (monthlySalary < 10000 && f_philhealth > 0) {
-      return Math.round(f_philhealth * 100) / 100;
+    if (!isRateFlagFromDb('philhealth')) {
+      return Math.round(philhealthRate * 100) / 100;
     }
 
     const maxPremiumBase = 100000;
@@ -235,10 +631,8 @@ export default function ComputationPage() {
     }
 
     const pagibigRate = parseFloat(pagibigPercent) || 0;
-    const f_pagibig = parseFloat(pagibigFixed) || 0;
-
-    if (monthlySalary < 1500 && f_pagibig > 0) {
-      return Math.round(f_pagibig * 100) / 100;
+    if (!isRateFlagFromDb('pagibig')) {
+      return Math.round(pagibigRate * 100) / 100;
     }
 
     const maxCompensation = 5000;
@@ -255,12 +649,20 @@ export default function ComputationPage() {
     return Math.round(contribution * 100) / 100;
   };
 
-  const calculateFromMonthly = (monthlyValue: number) => {
+  const calculateFromMonthly = (
+    monthlyValue: number,
+    preserve?: { field: BasicPayEditableField; raw: string },
+  ) => {
     const value = typeof monthlyValue === 'number' && !isNaN(monthlyValue) ? monthlyValue : 0;
-    setMonthly(value.toFixed(2));
-    setSemiMonthly((value / 2).toFixed(2));
-    setDaily((value / 22).toFixed(2)); // Assuming 22 working days
-    setHourly((value / 22 / 8).toFixed(2)); // Assuming 8 hours per day
+    const monthlyText = value.toFixed(2);
+    const semiMonthlyText = (value / 2).toFixed(2);
+    const dailyText = (value / 22).toFixed(2); // Assuming 22 working days
+    const hourlyText = (value / 22 / 8).toFixed(2); // Assuming 8 hours per day
+
+    setMonthly(preserve?.field === 'monthly' ? preserve.raw : monthlyText);
+    setSemiMonthly(preserve?.field === 'semiMonthly' ? preserve.raw : semiMonthlyText);
+    setDaily(preserve?.field === 'daily' ? preserve.raw : dailyText);
+    setHourly(preserve?.field === 'hourly' ? preserve.raw : hourlyText);
     setGrossPay(value.toFixed(2));
     
     // Calculate 13th Month Pay (typically 1/12 of annual salary, or monthly salary)
@@ -300,8 +702,59 @@ export default function ComputationPage() {
   };
 
   const handleMonthlyChange = (value: string) => {
-    const numValue = parseFloat(value) || 0;
-    calculateFromMonthly(numValue);
+    setMonthly(value);
+    if (value.trim() === '') return;
+    const numValue = Number.parseFloat(value);
+    if (Number.isFinite(numValue)) {
+      calculateFromMonthly(numValue, { field: 'monthly', raw: value });
+    }
+  };
+
+  const handleMonthlyBlur = () => {
+    const numValue = Number.parseFloat(monthly);
+    calculateFromMonthly(Number.isFinite(numValue) ? numValue : 0);
+  };
+
+  const handleDailyChange = (value: string) => {
+    setDaily(value);
+    if (value.trim() === '') return;
+    const numValue = Number.parseFloat(value);
+    if (Number.isFinite(numValue)) {
+      calculateFromMonthly(numValue * 22, { field: 'daily', raw: value });
+    }
+  };
+
+  const handleDailyBlur = () => {
+    const numValue = Number.parseFloat(daily);
+    calculateFromMonthly(Number.isFinite(numValue) ? numValue * 22 : 0);
+  };
+
+  const handleSemiMonthlyChange = (value: string) => {
+    setSemiMonthly(value);
+    if (value.trim() === '') return;
+    const numValue = Number.parseFloat(value);
+    if (Number.isFinite(numValue)) {
+      calculateFromMonthly(numValue * 2, { field: 'semiMonthly', raw: value });
+    }
+  };
+
+  const handleSemiMonthlyBlur = () => {
+    const numValue = Number.parseFloat(semiMonthly);
+    calculateFromMonthly(Number.isFinite(numValue) ? numValue * 2 : 0);
+  };
+
+  const handleHourlyChange = (value: string) => {
+    setHourly(value);
+    if (value.trim() === '') return;
+    const numValue = Number.parseFloat(value);
+    if (Number.isFinite(numValue)) {
+      calculateFromMonthly(numValue * 22 * 8, { field: 'hourly', raw: value });
+    }
+  };
+
+  const handleHourlyBlur = () => {
+    const numValue = Number.parseFloat(hourly);
+    calculateFromMonthly(Number.isFinite(numValue) ? numValue * 22 * 8 : 0);
   };
 
   const formatCurrency = (value: string) => {
@@ -339,8 +792,17 @@ export default function ComputationPage() {
 
     try {
       setSaving(true);
+      const monthlyValue = Number.parseFloat(monthly);
+      if (!Number.isFinite(monthlyValue)) {
+        toast({
+          title: 'Error',
+          description: 'Please enter a valid basic pay amount',
+          variant: 'destructive',
+        });
+        return;
+      }
       await positionService.update(positionId, {
-        base_salary: parseFloat(monthly),
+        base_salary: monthlyValue,
         branch_id: branchId,
       });
       
@@ -365,43 +827,34 @@ export default function ComputationPage() {
     }
   };
 
-  const handleEditDeductions = async () => {
-    try {
-      setSaving(true);
-      await configService.updateRate({
-        nightpay: parseFloat(nightDiffPay),
-        restpay: parseFloat(restDayPay),
-        holiday: parseFloat(holidayPay),
-        ot_regular: parseFloat(regularOT),
-        ot_restday: parseFloat(restDayOT),
-        ot_holiday: parseFloat(holidayOT),
-        sss: parseFloat(sssPercent),
-        philhealth: parseFloat(philHealthPercent),
-        pagibig: parseFloat(pagibigPercent),
-        f_sss: parseFloat(sssFixed),
-        f_philhealth: parseFloat(philHealthFixed),
-        f_pagibig: parseFloat(pagibigFixed),
-      });
-      
-      toast({
-        title: 'Success',
-        description: 'Deduction rates updated successfully',
-        variant: 'default',
-      });
-      
-      // Reload data
-      await fetchComputationData();
-    } catch (error: any) {
-      console.error('Error updating deduction rates:', error);
-      toast({
-        title: 'Error',
-        description: error?.message || 'Failed to update deduction rates',
-        variant: 'destructive',
-      });
-    } finally {
-      setSaving(false);
-    }
+  const SECTION_INFO_CONTENT: Record<SectionInfoKey, { title: string; description: string }> = {
+    basePay: {
+      title: 'Base Pay Information',
+      description:
+        'This section sets the base salary for the selected position. You can edit monthly, daily, semi-monthly, or hourly rates, and all values auto-sync. When saved, it is stored as the monthly base pay.',
+    },
+    payrollItems: {
+      title: 'Payroll Items Information',
+      description:
+        'Use this section to manage payroll variables such as earnings, deductions, and contributions. Set each item as Rate or Fixed, organize items by group, and use the menu to edit or delete entries.',
+    },
+    additionalCompensation: {
+      title: 'Additional Compensation Information',
+      description:
+        'This section shows supplemental compensation values derived from the current base salary setup. The displayed 13th Month Pay is computed from the latest salary configuration.',
+    },
+    deductions: {
+      title: 'Deductions Information',
+      description:
+        'This section displays estimated deductions including tax and statutory contributions such as SSS, PhilHealth, and Pagibig. Values update based on your current salary and payroll rate settings.',
+    },
+    totalComputation: {
+      title: 'Total Computation Information',
+      description:
+        'This section summarizes the computed results: Gross Pay, Total Deduction, and Net Pay. It reflects the combined effect of base pay, configured rates, and deduction calculations.',
+    },
   };
+  const activeSectionInfo = infoModalSection ? SECTION_INFO_CONTENT[infoModalSection] : null;
 
   if (loading) {
     return (
@@ -417,10 +870,27 @@ export default function ComputationPage() {
         <Card>
           <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle className="italic font-bold">Basic Pay</CardTitle>
-                {/* <Button size="sm" onClick={handleEditBasicPay} disabled={saving || !positionId || !branchId}>
-                  {isEditingBasicPay ? 'Save' : 'Edit'}
-                </Button> */}
+                <div className="flex items-center gap-2">
+                  <CardTitle className="italic md:text-lg font-semibold">Base Pay</CardTitle>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    onClick={() => setInfoModalSection('basePay')}
+                    aria-label="Base pay information"
+                  >
+                    <Info className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button size="sm" onClick={handleEditBasicPay} disabled={saving || !positionId || !branchId}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : isEditingBasicPay ? 'Save Changes' : 'Edit Base Pay'}
+                </Button>
               </div>
           </CardHeader>
           <CardContent>
@@ -456,6 +926,7 @@ export default function ComputationPage() {
                       type="number" 
                       value={monthly} 
                       onChange={(e) => handleMonthlyChange(e.target.value)}
+                      onBlur={handleMonthlyBlur}
                       step="0.01"
                       min="0"
                       placeholder="Enter monthly salary"
@@ -466,7 +937,19 @@ export default function ComputationPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Daily</Label>
-                  <Input type="text" value={formatCurrency(daily)} readOnly />
+                  {isEditingBasicPay ? (
+                    <Input
+                      type="number"
+                      value={daily}
+                      onChange={(e) => handleDailyChange(e.target.value)}
+                      onBlur={handleDailyBlur}
+                      step="0.01"
+                      min="0"
+                      placeholder="Enter daily rate"
+                    />
+                  ) : (
+                    <Input type="text" value={formatCurrency(daily)} readOnly />
+                  )}
                 </div>
               </div>
 
@@ -478,91 +961,73 @@ export default function ComputationPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Semi-Monthly</Label>
-                  <Input type="text" value={formatCurrency(semiMonthly)} readOnly />
+                  {isEditingBasicPay ? (
+                    <Input
+                      type="number"
+                      value={semiMonthly}
+                      onChange={(e) => handleSemiMonthlyChange(e.target.value)}
+                      onBlur={handleSemiMonthlyBlur}
+                      step="0.01"
+                      min="0"
+                      placeholder="Enter semi-monthly rate"
+                    />
+                  ) : (
+                    <Input type="text" value={formatCurrency(semiMonthly)} readOnly />
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Hourly</Label>
-                  <Input type="text" value={formatCurrency(hourly)} readOnly />
+                  {isEditingBasicPay ? (
+                    <Input
+                      type="number"
+                      value={hourly}
+                      onChange={(e) => handleHourlyChange(e.target.value)}
+                      onBlur={handleHourlyBlur}
+                      step="0.01"
+                      min="0"
+                      placeholder="Enter hourly rate"
+                    />
+                  ) : (
+                    <Input type="text" value={formatCurrency(hourly)} readOnly />
+                  )}
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Payroll Variables Rates Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="italic font-bold">Payroll Variables Rates</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Column 1: Work Pay */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Work Pay</h3>
-                <div className="space-y-2">
-                  <Label>Night Differential Pay</Label>
-                  <Input type="text" value={`${nightDiffPay}x`} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Rest Day Pay</Label>
-                  <Input type="text" value={`${restDayPay}x`} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Holiday Pay</Label>
-                  <Input type="text" value={`${holidayPay}x`} readOnly />
-                </div>
-              </div>
+        <PayrollItemsCard
+          rateItems={rateItems}
+          rateGroupOrder={rateGroupOrder}
+          ratesSaving={ratesSaving}
+          saving={saving}
+          onOpenInfo={() => setInfoModalSection('payrollItems')}
+          onAddItem={() => openAddRate()}
+          onDragEnd={handleRateGroupDragEnd}
+          onEditItem={openEditRate}
+          onDeleteItem={setDeleteRateTarget}
+          formatGroupLabel={formatGroupLabel}
+          formatRatePreview={formatRatePreview}
+          reconcileOrder={reconcileOrder}
+        />
 
-              {/* Column 2: Overtime Pay */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Overtime Pay</h3>
-                <div className="space-y-2">
-                  <Label>Regular Overtime</Label>
-                  <Input type="text" value={`${regularOT}x`} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Rest Day Overtime</Label>
-                  <Input type="text" value={`${restDayOT}x`} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Holiday Overtime</Label>
-                  <Input type="text" value={`${holidayOT}x`} readOnly />
-                </div>
-              </div>
-
-              {/* Column 3: Deductions */}
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-semibold">Deductions</h3>
-                  {/* <Button size="sm" onClick={handleEditDeductions} disabled={saving}>
-                    Edit
-                  </Button> */}
-                </div>
-                <div className="space-y-2">
-                  <Label>Social Security System</Label>
-                  <Input type="text" value={`${((parseFloat(sssPercent) || 0) * 100).toFixed(2)}%`} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>PhilHealth</Label>
-                  <Input type="text" value={`${((parseFloat(philHealthPercent) || 0) * 100).toFixed(2)}%`} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Pagibig</Label>
-                  <Input type="text" value={`${((parseFloat(pagibigPercent) || 0) * 100).toFixed(2)}%`} readOnly />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Bottom 3 Cards in a Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Bottom 3 Cards in a Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Additional Compensation Section */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
-                <CardTitle>Additional Compensation</CardTitle>
-                <Info className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="italic md:text-lg font-semibold">Additional Compensation</CardTitle>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground"
+                  onClick={() => setInfoModalSection('additionalCompensation')}
+                  aria-label="Additional compensation information"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -577,8 +1042,17 @@ export default function ComputationPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
-                <CardTitle>Deductions</CardTitle>
-                <Info className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="italic md:text-lg font-semibold">Deductions</CardTitle>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground"
+                  onClick={() => setInfoModalSection('deductions')}
+                  aria-label="Deductions information"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -608,8 +1082,17 @@ export default function ComputationPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
-                <CardTitle>Total Computation</CardTitle>
-                <Info className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="italic md:text-lg font-semibold">Total Computation</CardTitle>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground"
+                  onClick={() => setInfoModalSection('totalComputation')}
+                  aria-label="Total computation information"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -630,6 +1113,84 @@ export default function ComputationPage() {
             </CardContent>
           </Card>
         </div>
+
+        <SectionInfoDialog
+          open={Boolean(infoModalSection)}
+          title={activeSectionInfo?.title}
+          description={activeSectionInfo?.description}
+          onClose={() => setInfoModalSection(null)}
+        />
+
+        <PayrollItemFormDialog
+          open={addRateOpen || editRateOpen}
+          editRate={editRate}
+          newRate={newRate}
+          rateGroupOptions={rateGroupOptions}
+          formatGroupLabel={formatGroupLabel}
+          rateFormErrors={rateFormErrors}
+          ratesSaving={ratesSaving}
+          onOpenAddGroup={() => setAddGroupModalOpen(true)}
+          onCancel={closeRateFormDialog}
+          onSubmit={editRate ? submitEditRate : handleAddRate}
+          onLabelChange={(value) => {
+            if (editRate) {
+              setEditRate({ ...editRate, label: value });
+            } else {
+              setNewRate((p) => ({ ...p, label: value }));
+            }
+          }}
+          onGroupChange={(value) => {
+            if (editRate) {
+              setEditRate({ ...editRate, group: value });
+            } else {
+              setNewRate((p) => ({ ...p, group: value }));
+            }
+          }}
+          onCategoryChange={(value) => {
+            if (editRate) {
+              setEditRate({ ...editRate, category: value });
+            } else {
+              setNewRate((p) => ({ ...p, category: value }));
+            }
+          }}
+          onTypeChange={(value) => {
+            if (editRate) {
+              setEditRate({ ...editRate, is_rate: value });
+            } else {
+              setNewRate((p) => ({ ...p, is_rate: value }));
+            }
+          }}
+          onValueChange={(value) => {
+            if (editRate) {
+              setEditRate({ ...editRate, value });
+            } else {
+              setNewRate((p) => ({ ...p, value }));
+            }
+          }}
+          clearRateFormError={clearRateFormError}
+        />
+
+        <AddGroupDialog
+          open={addGroupModalOpen}
+          tempGroupName={tempGroupName}
+          tempGroupError={tempGroupError}
+          ratesSaving={ratesSaving}
+          onTempGroupNameChange={(value) => {
+            setTempGroupName(value);
+            if (tempGroupError) setTempGroupError('');
+          }}
+          onSubmit={addTemporaryGroupType}
+          onCancel={closeAddGroupDialog}
+        />
+
+        <DeletePayrollItemDialog
+          target={deleteRateTarget}
+          ratesSaving={ratesSaving}
+          onCancel={() => setDeleteRateTarget(null)}
+          onConfirm={(code, group) => {
+            void deleteRate(code, group);
+          }}
+        />
     </div>
   );
 }

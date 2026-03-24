@@ -133,6 +133,7 @@ export const API_ENDPOINTS = {
       GENERATE: '/hrms/payroll/reports/generate',
       DELETE: '/hrms/payroll/reports/delete',
       VIEW: '/hrms/payroll/reports/view-json/{id}',
+      EXPORT: '/hrms/payroll/reports/export/{id}',
       USERS: '/hrms/payroll/reports/users',
     },
     PAYSLIP: {
@@ -315,6 +316,16 @@ export const API_ENDPOINTS = {
     CREATE: '/settings/currencies',
     UPDATE: '/settings/currencies/{id}',
     DELETE: '/settings/currencies/{id}',
+  },
+  ACCOUNT_MANAGEMENT: {
+    OVERVIEW: '/settings/account/overview',
+    PROFILE: '/settings/account/profile',
+    PASSWORD: '/settings/account/password',
+    SUBSCRIPTION: '/settings/account/subscription',
+    SUBSCRIPTION_PLAN: '/settings/account/subscription/plan',
+    PAYMENT_METHODS: '/settings/account/payment-methods',
+    PAYMENT_METHOD_DEFAULT: '/settings/account/payment-methods/{id}/default',
+    BILLING_HISTORY: '/settings/account/billing-history',
   },
 
   EXPENSES: {

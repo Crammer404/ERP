@@ -4,6 +4,7 @@ import { API_ENDPOINTS } from '@/config/api.config';
 export interface PayrollComponent {
   id?: number;
   group: string;
+  category?: 'earnings' | 'deductions';
   code: string;
   label: string;
   value: string | number;
@@ -46,6 +47,30 @@ export interface UpdatePayRequest {
 }
 
 export interface UpdateRateRequest {
+  /**
+   * Preferred: upsert arbitrary rate items (data-driven UI).
+   * Backend should accept this payload and persist to payroll_config using the provided group.
+   */
+  rates?: Array<{
+    code: string;
+    label: string;
+    value: number;
+    is_rate: 0 | 1;
+    group?: string;
+    category?: 'earnings' | 'deductions';
+  }>;
+  delete_codes?: string[];
+  delete_group?: string;
+  delete_category?: 'earnings' | 'deductions';
+  delete_items?: Array<{
+    code: string;
+    group?: string;
+    category?: 'earnings' | 'deductions';
+  }>;
+
+  /**
+   * Legacy: keep backwards compatibility with existing backend payload shape.
+   */
   nightpay?: number;
   restpay?: number;
   holiday?: number;
@@ -55,9 +80,6 @@ export interface UpdateRateRequest {
   sss?: number;
   philhealth?: number;
   pagibig?: number;
-  f_sss?: number;
-  f_philhealth?: number;
-  f_pagibig?: number;
 }
 
 export interface UpdateCompenOrDeducRequest {
@@ -67,7 +89,8 @@ export interface UpdateCompenOrDeducRequest {
 
 export interface DeleteComponentRequest {
   code: string;
-  group: 'earnings' | 'deductions';
+  group?: string;
+  category?: 'earnings' | 'deductions';
 }
 
 const normalizeComputationData = (payload: any): ComputationData => {

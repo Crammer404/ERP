@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardR
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { OtpVerificationModal } from '@/components/ui/otp-verification-modal'
 import { useToast } from '@/hooks/use-toast'
-import { onboardingService } from '@/services/onboarding/onboardingService'
+import { onboardingService } from '@/app/onboarding/services/onboarding-service'
 import { 
   isValidEmail, 
   isValidPassword, 

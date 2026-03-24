@@ -25,7 +25,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { FileText } from 'lucide-react';
+import { FileText, Search } from 'lucide-react';
 import { type CheckedState } from '@radix-ui/react-checkbox';
 import { userService, UserEntity } from '@/app/management/users/services/userService';
 import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
@@ -69,6 +69,15 @@ const formatRange = (range?: DateRange) => {
   })}`;
 };
 
+// Use local timezone when converting picked dates to YYYY-MM-DD.
+// `toISOString()` converts to UTC and can shift the calendar day by -1/+1 depending on timezone.
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const GeneratePayrollDialog = ({
   onGenerate,
   users,
@@ -87,6 +96,7 @@ const GeneratePayrollDialog = ({
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [includeStatutory, setIncludeStatutory] = useState(true);
   const [availableUsers, setAvailableUsers] = useState<GeneratePayrollUser[]>(users ?? []);
+  const [employeeSearch, setEmployeeSearch] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -106,7 +116,42 @@ const GeneratePayrollDialog = ({
       try {
         setLoadingUsers(true);
         setUsersError(null);
-        const { users: fetchedUsers } = await userService.getAll(1, 200);
+
+        // Fetch ALL employees for the active branch.
+        // The backend users listing endpoint is paginated, so grabbing only page 1/per_page=200 truncates the list.
+        const PER_PAGE = 200;
+        const MAX_PAGES = 50; // safety guard
+
+        let page = 1;
+        const fetchedUsers: UserEntity[] = [];
+
+        while (page <= MAX_PAGES) {
+          const { users: pageUsers, pagination } = await userService.getAll(page, PER_PAGE);
+          fetchedUsers.push(...(pageUsers || []));
+
+          const hasMore = Boolean(pagination?.has_more_pages);
+          const lastPage = pagination?.last_page ?? 1;
+
+          if (hasMore) {
+            page += 1;
+            continue;
+          }
+
+          // If backend pagination metadata is present, respect it.
+          if (Number.isFinite(lastPage) && page < lastPage) {
+            page += 1;
+            continue;
+          }
+
+          // Fallback: if we received a full page, try one more.
+          if ((pageUsers || []).length === PER_PAGE) {
+            page += 1;
+            continue;
+          }
+
+          break;
+        }
+
         const positions: PayrollPosition[] = await positionService.getAll();
         const positionsById = positions.reduce<Record<number, string>>((acc, position) => {
           acc[position.id] = position.name;
@@ -156,24 +201,49 @@ const GeneratePayrollDialog = ({
     );
   }, [availableUsers]);
 
-  const allSelected = useMemo(() => {
-    return (
-      selectedUserIds.length === availableUsers.length &&
-      availableUsers.length > 0
-    );
-  }, [selectedUserIds, availableUsers.length]);
+  const filteredUsers = useMemo(() => {
+    const q = employeeSearch.trim().toLowerCase();
+    if (!q) return availableUsers;
 
-  const selectAllState: CheckedState = allSelected
-    ? true
-    : selectedUserIds.length === 0
-    ? false
-    : 'indeterminate';
+    return availableUsers.filter((u) => {
+      const idStr = String(u.id);
+      return (
+        idStr.includes(q) ||
+        u.name.toLowerCase().includes(q) ||
+        (u.role ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [availableUsers, employeeSearch]);
+
+  const visibleUserIds = useMemo(() => filteredUsers.map((u) => u.id), [filteredUsers]);
+  const visibleSelectedCount = useMemo(
+    () => visibleUserIds.filter((id) => selectedUserIds.includes(id)).length,
+    [visibleUserIds, selectedUserIds]
+  );
+
+  const selectAllState: CheckedState =
+    visibleUserIds.length === 0
+      ? false
+      : visibleSelectedCount === 0
+        ? false
+        : visibleSelectedCount === visibleUserIds.length
+          ? true
+          : 'indeterminate';
 
   const handleToggleAll = (checked: boolean) => {
+    if (visibleUserIds.length === 0) return;
+
     if (checked) {
-      setSelectedUserIds(availableUsers.map((u) => u.id));
+      // Add all visible employees (respect any existing selections outside the filter).
+      setSelectedUserIds((prev) => {
+        const next = new Set(prev);
+        visibleUserIds.forEach((id) => next.add(id));
+        return Array.from(next);
+      });
     } else {
-      setSelectedUserIds([]);
+      // Remove only the visible employees.
+      const visibleSet = new Set(visibleUserIds);
+      setSelectedUserIds((prev) => prev.filter((id) => !visibleSet.has(id)));
     }
   };
 
@@ -191,6 +261,7 @@ const GeneratePayrollDialog = ({
     setDateRange(undefined);
     setSelectedUserIds([]);
     setIncludeStatutory(true);
+    setEmployeeSearch('');
   };
 
   useEffect(() => {
@@ -245,8 +316,8 @@ const GeneratePayrollDialog = ({
           end_date: string;
         } = {
           status: 'pending',
-          start_date: dateRange.from.toISOString().split('T')[0],
-          end_date: dateRange.to.toISOString().split('T')[0],
+          start_date: formatLocalDate(dateRange.from),
+          end_date: formatLocalDate(dateRange.to),
         };
 
         const pendingRecords = await getOvertimeRequests(params);
@@ -370,9 +441,15 @@ const GeneratePayrollDialog = ({
 
               {/* Right column - employee selection */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label>Select Employees</Label>
-                  <div className="flex items-center space-x-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <Label>Select Employees</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {filteredUsers.length} shown of {availableUsers.length} • {selectedUserIds.length} selected
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-2 flex-shrink-0 pt-1">
                     <Checkbox
                       id="select-all-users"
                       checked={selectAllState}
@@ -384,6 +461,16 @@ const GeneratePayrollDialog = ({
                       Select All
                     </Label>
                   </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={employeeSearch}
+                    onChange={(e) => setEmployeeSearch(e.target.value)}
+                    placeholder="Search employees..."
+                    className="pl-10"
+                  />
                 </div>
 
                 <ScrollArea className="h-72 rounded-md border p-4">
@@ -398,8 +485,12 @@ const GeneratePayrollDialog = ({
                       <p className="text-sm text-muted-foreground">
                         No users found for this branch.
                       </p>
+                    ) : filteredUsers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No employees match your search.
+                      </p>
                     ) : (
-                      availableUsers.map((user) => {
+                      filteredUsers.map((user) => {
                         const checked = selectedUserIds.includes(user.id);
                         return (
                           <div
@@ -474,8 +565,8 @@ const GeneratePayrollDialog = ({
               }}
             >
               Go to Overtime
-            </Button>
-          </DialogFooter>
+          </Button>
+        </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

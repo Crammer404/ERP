@@ -48,26 +48,17 @@ export function OnboardingProgress({ steps, currentStep, onStepClick }: Onboardi
     <>
       {/* Desktop Vertical Layout */}
       <div className="hidden md:block">
-        <div className="relative">
-           {/* Connecting lines - positioned relative to the container, stops at last step */}
-           <div className="absolute left-5 top-5 w-0.5 bg-gray-300 dark:bg-gray-600 z-0" 
-                style={{ height: `${(steps.length - 1) * 64}px` }} />
-           
-           {/* Progress line - shows completed steps (including current step) */}
-           <div className="absolute left-5 top-5 w-0.5 bg-blue-500 dark:bg-blue-400 z-10" 
-                style={{ height: `${Math.max(0, (currentStep - 1) * 64)}px` }} />
-
-          {/* Steps */}
-          <div className="space-y-6 relative z-20">
-            {steps.map((step, index) => {
+        <div className="space-y-6">
+          {steps.map((step) => {
               const isCompleted = step.id < currentStep
               const isCurrent = step.id === currentStep
-              const isUpcoming = step.id > currentStep
+              const hasNextStep = step.id < steps.length
+              const isConnectorCompleted = step.id < currentStep
 
               return (
                 <div 
                   key={step.id} 
-                  className="flex items-center cursor-pointer transition-all duration-200"
+                  className="flex items-center cursor-pointer transition-all duration-200 relative"
                   onClick={() => isCompleted && onStepClick?.(step.id)}
                 >
                   {/* Step Circle */}
@@ -84,6 +75,13 @@ export function OnboardingProgress({ steps, currentStep, onStepClick }: Onboardi
                   >
                     {getStepIcon(step.id, isCompleted)}
                   </div>
+                  {hasNextStep && (
+                    <div className="absolute left-5 top-10 h-6 -translate-x-1/2 w-0.5 bg-gray-300 dark:bg-gray-600 z-0">
+                      <div
+                        className={`w-full h-full ${isConnectorCompleted ? 'bg-blue-500 dark:bg-blue-400' : 'bg-transparent'}`}
+                      />
+                    </div>
+                  )}
 
                   {/* Step Text */}
                   <div className="ml-4 flex-1">
@@ -101,8 +99,7 @@ export function OnboardingProgress({ steps, currentStep, onStepClick }: Onboardi
                   </div>
                 </div>
               )
-            })}
-          </div>
+          })}
         </div>
       </div>
 

@@ -27,8 +27,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Printer, Trash2, Search, RefreshCw } from 'lucide-react';
-import GeneratePayrollDialog from './component/generate-payroll';
+import { MoreVertical, Printer, Trash2, Search, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import GeneratePayrollDialog from './components/generate-payroll';
 import { generateService, type PayrollReport as ServicePayrollReport } from './services/generate-service';
 import { useToast } from '@/hooks/use-toast';
 import { EmptyStates } from '@/components/ui/empty-state';
@@ -82,6 +82,15 @@ const mapBackendToFrontend = (backend: ServicePayrollReport): PayrollReport => {
   };
 };
 
+// Use local timezone when converting picked dates to YYYY-MM-DD.
+// `toISOString()` converts to UTC and can shift the calendar day by -1/+1 depending on timezone.
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function GeneratePayrollPage() {
   // Initialize with empty array - NO dummy data
   const [reports, setReports] = useState<PayrollReport[]>([]);
@@ -93,6 +102,7 @@ export default function GeneratePayrollPage() {
   const [deleteTarget, setDeleteTarget] = useState<PayrollReport | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
+  const [exportingId, setExportingId] = useState<number | null>(null);
   const { toast } = useToast();
   const [payslipsToPrint, setPayslipsToPrint] = useState<PayslipTemplateData[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -157,6 +167,31 @@ export default function GeneratePayrollPage() {
   useEffect(() => {
     // Always fetch from API, never use dummy data
     fetchReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep reports in sync with active tenant/branch selector changes
+  useEffect(() => {
+    const handleContextChange = () => {
+      setCurrentPage(1);
+      fetchReports();
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'branch_context' || e.key === 'tenant_context') {
+        handleContextChange();
+      }
+    };
+
+    window.addEventListener('branchChanged', handleContextChange);
+    window.addEventListener('tenantChanged', handleContextChange);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('branchChanged', handleContextChange);
+      window.removeEventListener('tenantChanged', handleContextChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -293,6 +328,26 @@ export default function GeneratePayrollPage() {
     setDeleteTarget(report);
   };
 
+  const handleExportExcel = async (report: PayrollReport) => {
+    try {
+      setExportingId(report.id);
+      await generateService.exportPayslipsExcel(report.id);
+      toast({
+        title: 'Success',
+        description: 'Payslips exported to Excel successfully.',
+      });
+    } catch (err: any) {
+      console.error('Failed to export payslips:', err);
+      toast({
+        title: 'Error',
+        description: err?.message || 'Failed to export payslips.',
+        variant: 'destructive',
+      });
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   const handleCloseDeleteModal = () => {
     setDeleteTarget(null);
     setDeleteErrors({});
@@ -356,8 +411,8 @@ export default function GeneratePayrollPage() {
     try {
       const generatePayload = {
         user_ids: payload.userIds,
-        start_date: payload.payrollRange.from.toISOString().split('T')[0],
-        end_date: payload.payrollRange.to.toISOString().split('T')[0],
+        start_date: formatLocalDate(payload.payrollRange.from),
+        end_date: formatLocalDate(payload.payrollRange.to),
         payroll_type: payload.payrollType,
         statutory_include: payload.includeStatutoryDeductions ? 1 : 0,
       };
@@ -534,6 +589,13 @@ export default function GeneratePayrollPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => handleExportExcel(report)}
+                                disabled={exportingId !== null}
+                              >
+                                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                                {exportingId === report.id ? 'Exporting...' : 'Export Excel'}
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handlePrint(report)}>
                                 <Printer className="mr-2 h-4 w-4" />
                                 Print

@@ -37,7 +37,7 @@ import {
 
 import { useSidebar } from '../providers/sidebar-provider';
 import { ThemeToggle } from './theme-toggle';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { useAuth } from '../providers/auth-provider';
 import { cn } from '@/lib/utils';
@@ -118,7 +118,18 @@ export function SiteHeader() {
   const isEmployee = roleSlug === 'employee';
   const isBranchManager = roleSlug === 'branch_manager';
   const canSwitchTenant = tenants.length > 1;
-  const showTenantSelector = !isEmployee && !isBranchManager && (canSwitchTenant || !!selectedTenant);
+  const showTenantSelector = !isEmployee && !isBranchManager && canSwitchTenant;
+  const canReadPos = useMemo(() => {
+    if (!user?.permissions) {
+      return false;
+    }
+
+    return Object.values(user.permissions).some((groupData: any) =>
+      (groupData?.modules || []).some((module: any) =>
+        module?.module_path === ROUTES.POS.SALES && Boolean(module?.permissions?.read)
+      )
+    );
+  }, [user?.permissions]);
   
   // Load tenant options for the current user.
   useEffect(() => {
@@ -176,6 +187,10 @@ export function SiteHeader() {
 
   // Load stock notifications
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     loadStockNotifications();
 
     // Listen for all stock-related events
@@ -193,7 +208,7 @@ export function SiteHeader() {
       window.removeEventListener('productUpdated', handleStockEvent);
       window.removeEventListener('stockLevelChanged', handleStockEvent);
     };
-  }, []);
+  }, [user]);
 
   const loadStockNotifications = async () => {
     try {
@@ -486,12 +501,14 @@ export function SiteHeader() {
                   )}
                 </div>
                 
-                <Button asChild className="px-8 flex items-center">
+                {canReadPos && (
+                  <Button asChild className="px-8 flex items-center">
                     <Link href={ROUTES.POS.SALES} className="flex items-center">
-                        <ShoppingCart className="mr-2 h-4 w-4" />
-                        POS
+                      <ShoppingCart className="mr-2 h-4 w-4" />
+                      POS
                     </Link>
-                </Button>
+                  </Button>
+                )}
             </div>
 
             {/* Right Column - User Controls */}

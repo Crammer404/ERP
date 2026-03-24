@@ -1,5 +1,5 @@
 import { api } from '@/services';
-import { API_ENDPOINTS } from '@/config/api.config';
+import { API_CONFIG, API_ENDPOINTS } from '@/config/api.config';
 
 export interface PayrollReport {
   id: number;
@@ -108,6 +108,83 @@ export const generateService = {
 
   async getEmployeePayslips(): Promise<ViewPayslipsResponse> {
     return await api(API_ENDPOINTS.PAYROLL.PAYSLIP.EMPLOYEE_PAYSLIPS);
+  },
+
+  async exportPayslipsExcel(id: number): Promise<void> {
+    const endpoint = API_ENDPOINTS.PAYROLL.REPORTS.EXPORT.replace('{id}', id.toString());
+    let tenantId = '';
+    let branchId = '';
+    const authToken = localStorage.getItem('token');
+    try {
+      tenantId = String(JSON.parse(localStorage.getItem('tenant_context') || '{}')?.id || '');
+      branchId = String(JSON.parse(localStorage.getItem('branch_context') || '{}')?.id || '');
+    } catch {
+      tenantId = '';
+      branchId = '';
+    }
+
+    const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        'X-Tenant-ID': tenantId,
+        'X-Branch-ID': branchId,
+      },
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to export payslips.';
+      try {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await response.json();
+          errorMessage = data?.message || errorMessage;
+        } else {
+          const text = await response.text();
+          if (text) errorMessage = text;
+        }
+      } catch {
+        // no-op
+      }
+      throw new Error(errorMessage);
+    }
+
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    const isBinarySpreadsheet =
+      contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+      contentType.includes('application/octet-stream');
+    const isHtmlOrJson = contentType.includes('text/html') || contentType.includes('application/json');
+
+    if (isHtmlOrJson && !isBinarySpreadsheet) {
+      let details = 'Server returned a non-Excel response.';
+      try {
+        const text = await response.text();
+        if (text) details = text.slice(0, 300);
+      } catch {
+        // no-op
+      }
+      throw new Error(`Export did not return a valid Excel file. ${details}`);
+    }
+
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `Payroll_Payslips_${id}.xlsx`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+      if (filenameMatch?.[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   },
 };
 

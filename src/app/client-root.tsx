@@ -45,6 +45,7 @@ export function ClientRoot({ children }: { children: React.ReactNode }) {
 
   const isAuthPage =
     currentPathname.startsWith('/login') ||
+    currentPathname.startsWith('/onboarding') ||
     currentPathname.startsWith('/register') ||
     currentPathname.startsWith('/forgot-password');
 

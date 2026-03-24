@@ -423,6 +423,27 @@ export function ManualLogModal({
         });
       }
 
+      // In edit mode, always bind the selected log to the active schedule definition
+      // so submit updates the same record instead of creating a new one.
+      if (mode === 'edit' && log) {
+        const selectedShiftKey = shiftNameToKey(log.shift);
+        const selectedShiftExists = selectedShiftKey
+          ? definitions.some((definition) => definition.key === selectedShiftKey)
+          : false;
+
+        const bindKey = selectedShiftExists
+          ? (selectedShiftKey as ShiftKey)
+          : (definitions[0]?.key ?? null);
+
+        if (bindKey) {
+          nextShiftFields[bindKey] = {
+            logId: log.id,
+            clockIn: isoToTimePickerFormat(log.clockInRaw),
+            clockOut: isoToTimePickerFormat(log.clockOutRaw),
+          };
+        }
+      }
+
       setScheduleDetails(details);
       setShiftDefinitions(definitions);
       setShiftFields(nextShiftFields);
@@ -560,6 +581,51 @@ export function ManualLogModal({
       errors.shiftLogs = 'Please enter at least one shift time log.';
     }
 
+    let operationsToProcess: Array<{
+      key: ShiftKey;
+      definition: ShiftDefinition;
+      logId: number | null;
+      clockIn24: string;
+      clockOut24: string;
+      action: 'create' | 'update';
+    }> = [];
+
+    if (mode === 'edit') {
+      const selectedLogId = log?.id ?? null;
+      if (!selectedLogId) {
+        errors.shiftLogs = 'Selected log is missing.';
+      } else {
+        const selectedOperation = operations.find(
+          (operation) => operation.logId === selectedLogId,
+        );
+        if (!selectedOperation) {
+          errors.shiftLogs = 'No editable shift found for the selected log.';
+        } else {
+          operationsToProcess.push({
+            ...selectedOperation,
+            action: 'update',
+          });
+        }
+
+        const createOperations = operations
+          .filter((operation) => operation.logId === null)
+          .map((operation) => ({ ...operation, action: 'create' as const }));
+
+        operationsToProcess.push(...createOperations);
+      }
+    } else {
+      operationsToProcess = operations.map((operation) => ({
+        ...operation,
+        action: operation.logId ? 'update' : 'create',
+      }));
+    }
+
+    if (!errors.shiftLogs && operationsToProcess.length === 0) {
+      errors.shiftLogs = mode === 'edit'
+        ? 'No editable or creatable shift found.'
+        : 'No shift operation found to save.';
+    }
+
     if (Object.keys(errors).length > 0) {
       setLogFormErrors(errors);
       toast({
@@ -572,7 +638,7 @@ export function ManualLogModal({
 
     setSavingLog(true);
     try {
-      for (const operation of operations) {
+      for (const operation of operationsToProcess) {
         const clockInDateTime = buildIsoDateTime(logFormData.date, operation.clockIn24);
         const clockOutBaseDate = resolveClockOutDate(
           logFormData.date,
@@ -588,7 +654,10 @@ export function ManualLogModal({
           shift: shiftKeyToName(operation.key),
         };
 
-        if (operation.logId) {
+        if (operation.action === 'update') {
+          if (!operation.logId) {
+            throw new Error(`Missing log id for ${operation.definition.label} shift update.`);
+          }
           const updateResult = await updateManualLog(operation.logId, payload);
           if (updateResult.status === 'error') {
             throw new Error(updateResult.message || `Failed to update ${operation.definition.label} shift.`);

@@ -1,6 +1,5 @@
-import { api, setToken } from '../api';
+import { api, setToken } from '../../../services/api';
 import { API_ENDPOINTS } from '@/config/api.config';
-import type { User } from '@/lib/types';
 
 export interface OnboardingData {
   // User Account Information
