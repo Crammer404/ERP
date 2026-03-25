@@ -26,12 +26,14 @@ import { UserAvatarStack, UserData } from '@/components/ui/user-avatar-stack';
 import { RoleFormModal } from './components/role-form-modal';
 import { RoleUsersModal } from './components/role-users-modal';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
+import { tenantService } from '@/app/management/tenants/services/tenantService';
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('role-list');
   const [searchTerm, setSearchTerm] = useState('');
+  const storedTenantId = tenantContextService.getStoredTenantContext()?.id;
 
   // Get permissions for roles module
   const { canRead, canCreate, canUpdate, canDelete } = useModulePermissions('roles');
@@ -42,10 +44,12 @@ export default function RolesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  const filteredRoles = roles.filter(role => 
-    role.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    role.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredRoles = roles.filter((role) => {
+    return (
+      role.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      role.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
 
   const handleItemsPerPageChange = (newItemsPerPage: string) => {
     const perPage = parseInt(newItemsPerPage);
@@ -82,15 +86,22 @@ export default function RolesPage() {
   const [moduleSubmenus, setModuleSubmenus] = useState<ModuleSubmenuWithPermissions[]>([]);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
 
+  const [currentTenantOwner, setCurrentTenantOwner] = useState<UserData | null>(null)
+
   const getRoleUsers = (role: Role): UserData[] => {
     if (!role.users || !Array.isArray(role.users)) {
       return [];
     }
+    const isOwnerRole = (role.slug ?? '').toLowerCase() === 'owner';
+    if (isOwnerRole) {
+      return currentTenantOwner ? [currentTenantOwner] : [];
+    }
+
     const branchContext = tenantContextService.getStoredBranchContext();
     const branchId = branchContext?.id;
     const filteredUsers = branchId
       ? role.users.filter((user) =>
-          !user.branches || user.branches.some((branch) => branch.id === branchId)
+          !user.branches || user.branches.some((branch) => branch.id === branchId),
         )
       : role.users;
     return filteredUsers.map((user) => ({
@@ -125,6 +136,34 @@ export default function RolesPage() {
   useEffect(() => {
     fetchRoles();
   }, []);
+
+  useEffect(() => {
+    const loadTenantOwner = async () => {
+      const tenantId = storedTenantId
+      if (!tenantId) {
+        setCurrentTenantOwner(null)
+        return
+      }
+
+      try {
+        const tenant = await tenantService.getById(tenantId)
+        const owner = tenant.owner
+        setCurrentTenantOwner(
+          owner
+            ? {
+                id: owner.id,
+                name: owner.name ?? owner.email,
+                email: owner.email,
+              }
+            : null,
+        )
+      } catch {
+        setCurrentTenantOwner(null)
+      }
+    }
+
+    loadTenantOwner()
+  }, [storedTenantId])
 
   useEffect(() => {
     setCurrentPage(1);
@@ -175,10 +214,32 @@ export default function RolesPage() {
 
   const openManageUsersModal = async (role: Role) => {
     setSelectedRole(role);
-    setRoleUsers(getRoleUsers(role));
     setManageUsersModalOpen(true);
     setLoadingUsersModal(true);
     try {
+      if ((role.slug ?? '').toLowerCase() === 'owner') {
+        const tenantId = tenantContextService.getStoredTenantContext()?.id;
+        if (tenantId) {
+          const tenant = await tenantService.getById(tenantId);
+          const owner = tenant.owner;
+          setRoleUsers(
+            owner
+              ? [
+                  {
+                    id: owner.id,
+                    name: owner.name ?? owner.email,
+                    email: owner.email,
+                  },
+                ]
+              : [],
+          );
+        } else {
+          setRoleUsers(getRoleUsers(role));
+        }
+      } else {
+        setRoleUsers(getRoleUsers(role));
+      }
+
       const response = await userService.getAll(1, 1000, '');
       const users = response.users || [];
       const mapped: UserData[] = users.map((user: any) => {
@@ -1156,6 +1217,9 @@ export default function RolesPage() {
         onChangeUserRole={handleChangeUserRole}
         onChangeSelectedUserId={setSelectedUserIdToAdd}
         onAssignUser={handleAssignUserToRole}
+        onTransferOwnershipCompleted={async () => {
+          await fetchRoles();
+        }}
       />
     </div>
   );

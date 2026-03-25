@@ -12,7 +12,7 @@ import { CreateAccountStep, CreateAccountStepRef } from './components/create-acc
 import { CompleteStep } from './components/complete-step'
 import { BgTheme } from '@/components/ui/bg-theme'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, ArrowLeft, CheckCircle, Mail } from 'lucide-react'
+import { ArrowRight, ArrowLeft, CheckCircle, Mail, Loader2 } from 'lucide-react'
 import { onboardingService } from '@/app/onboarding/services/onboarding-service'
 import { Loader } from '@/components/ui/loader'
 import { useRouter } from 'next/navigation'
@@ -54,6 +54,7 @@ const initialOnboardingData = {
   agreeToTerms: false,
   agreeToMarketing: false,
   emailVerified: false,
+  otpLockExpiresAt: null as number | null,
   branchName: ''
 }
 
@@ -70,6 +71,8 @@ export default function OnboardingPage() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
+  const [submissionProgress, setSubmissionProgress] = useState(0)
+  const [submissionStage, setSubmissionStage] = useState('Creating your account...')
   const [emailValidationError, setEmailValidationError] = useState<string>('')
   const [storeNameValidationError, setStoreNameValidationError] = useState<string>('')
   const [isRequestingOtp, setIsRequestingOtp] = useState(false)
@@ -96,7 +99,21 @@ export default function OnboardingPage() {
        navigationEntries?.[0]?.type === 'reload')
     
     if (isPageReload) {
-      // Hard refresh detected - clear all data and start fresh
+      const savedData = sessionStorage.getItem(STORAGE_KEY)
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData)
+          const otpLockExpiresAt = Number(parsed.otpLockExpiresAt || 0)
+          const hasActiveOtpLock = !parsed.emailVerified && otpLockExpiresAt > Date.now()
+          if (hasActiveOtpLock) {
+            setOnboardingData(parsed)
+            setIsLoaded(true)
+            return
+          }
+        } catch (error) {
+          console.error('Error loading onboarding data on reload:', error)
+        }
+      }
       sessionStorage.removeItem(STORAGE_KEY)
       sessionStorage.removeItem(SESSION_KEY)
       setIsLoaded(true)
@@ -131,6 +148,37 @@ export default function OnboardingPage() {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(onboardingData))
     }
   }, [onboardingData, isLoaded])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (onboardingData.currentStep !== 2) return
+    if (onboardingData.emailVerified) return
+    const otpLockExpiresAt = Number(onboardingData.otpLockExpiresAt || 0)
+    if (otpLockExpiresAt <= Date.now()) return
+
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href)
+    }
+
+    window.history.pushState(null, '', window.location.href)
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [onboardingData.currentStep, onboardingData.emailVerified, onboardingData.otpLockExpiresAt])
+
+  useEffect(() => {
+    if (!isSubmitting) return
+
+    setSubmissionProgress(0)
+    setSubmissionStage('Creating your account...')
+
+    const intervalId = window.setInterval(() => {
+      setSubmissionProgress((prev) => (prev < 90 ? prev + 1 : prev))
+    }, 120)
+
+    return () => window.clearInterval(intervalId)
+  }, [isSubmitting])
 
   const updateCurrentStep = (step: number) => {
     setOnboardingData(prev => ({ ...prev, currentStep: step, viewingStep: step }))
@@ -225,6 +273,9 @@ export default function OnboardingPage() {
   const getButtonText = () => {
     if (currentStep === 1) return 'Get Started'
     if (currentStep === 2) {
+      if (!onboardingData.emailVerified && isRequestingOtp) {
+        return 'Verifying...'
+      }
       // Show "Verify" if email is not verified, "Create Account" if verified
       if (!onboardingData.emailVerified) {
         return 'Verify'
@@ -322,6 +373,8 @@ export default function OnboardingPage() {
   const handleCompleteOnboarding = async () => {
     setIsSubmitting(true)
     setSubmissionError(null)
+    setSubmissionProgress(0)
+    setSubmissionStage('Creating your account...')
 
     try {
       // Prepare FormData for multipart/form-data submission
@@ -368,6 +421,7 @@ export default function OnboardingPage() {
       console.log('Submitting onboarding data with FormData')
       
       // Submit to API with FormData
+      setSubmissionStage('Finalizing your setup...')
       const response = await onboardingService.complete(formData as any)
       
       console.log('Onboarding completed successfully:', response)
@@ -378,6 +432,7 @@ export default function OnboardingPage() {
       // Branding settings are now included in the main onboarding transaction
 
       // Fetch full user data with permissions from /me endpoint
+      setSubmissionStage('Signing you in...')
       const userData = await authService.refreshUserData()
       
       if (!userData) {
@@ -387,6 +442,8 @@ export default function OnboardingPage() {
       console.log('User data loaded with permissions:', userData)
       
       // Set user in auth context with full data including permissions
+      setSubmissionProgress(100)
+      setSubmissionStage('Redirecting...')
       login(userData)
       
       // Clear onboarding data
@@ -415,6 +472,8 @@ export default function OnboardingPage() {
         variant: 'destructive',
       })
       setIsSubmitting(false)
+      setSubmissionProgress(0)
+      setSubmissionStage('Creating your account...')
     }
   }
 
@@ -436,6 +495,35 @@ export default function OnboardingPage() {
       <BgTheme variant="auto" showBlobs={false} className="min-h-screen">
         <div className="flex items-center justify-center h-screen">
           <Loader size="lg" />
+        </div>
+      </BgTheme>
+    )
+  }
+
+  if (isSubmitting) {
+    return (
+      <BgTheme variant="auto" showBlobs={false} className="min-h-screen">
+        <div className="fixed inset-0 flex items-center justify-center px-4">
+          <div className="w-full max-w-md bg-white/80 dark:bg-gray-900/80 border border-gray-200/50 dark:border-gray-700/50 rounded-xl p-8 shadow-lg">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <Loader size="lg" />
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {submissionStage}
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Please wait, do not go back.
+                </p>
+              </div>
+
+              <div className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 dark:bg-blue-400 transition-all duration-150"
+                  style={{ width: `${submissionProgress}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </BgTheme>
     )
@@ -497,7 +585,9 @@ export default function OnboardingPage() {
                 } text-white px-5 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {getButtonText()}
-                {currentStep === steps.length ? (
+                {currentStep === 2 && !onboardingData.emailVerified && isRequestingOtp ? (
+                  <Loader2 className="ml-2 w-3.5 h-3.5 animate-spin" />
+                ) : currentStep === steps.length ? (
                   <CheckCircle className="ml-2 w-3.5 h-3.5" />
                 ) : currentStep === 2 && !onboardingData.emailVerified ? (
                   <Mail className="ml-2 w-3.5 h-3.5" />

@@ -339,6 +339,25 @@ export const tenantService = {
     return response;
   },
 
+  async previewTransferOwner(targetUserId: number): Promise<any> {
+    return await api(API_ENDPOINTS.TENANTS.TRANSFER_OWNER_PREVIEW, {
+      method: 'POST',
+      body: JSON.stringify({
+        target_user_id: targetUserId,
+      }),
+    });
+  },
+
+  async confirmTransferOwner(targetUserId: number, password: string): Promise<any> {
+    return await api(API_ENDPOINTS.TENANTS.TRANSFER_OWNER_CONFIRM, {
+      method: 'POST',
+      body: JSON.stringify({
+        target_user_id: targetUserId,
+        password,
+      }),
+    });
+  },
+
   async getSettings(id: number): Promise<TenantSettings> {
     return await api(API_ENDPOINTS.TENANTS.SETTINGS.replace('{id}', id.toString()));
   },

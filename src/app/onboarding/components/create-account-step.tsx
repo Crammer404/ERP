@@ -56,6 +56,15 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
   const emailVerified = data.emailVerified ?? false
   const emailInputRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => {
+    const otpLockExpiresAt = Number(data.otpLockExpiresAt || 0)
+    if (emailVerified || otpLockExpiresAt <= Date.now()) {
+      return
+    }
+    setIsOtpModalOpen(true)
+    setResendCountdown(Math.ceil((otpLockExpiresAt - Date.now()) / 1000))
+  }, [data.otpLockExpiresAt, emailVerified])
+
   const checkEmailAvailability = useCallback(async (email: string) => {
     if (!isValidEmail(email)) {
       setEmailError('')
@@ -129,6 +138,13 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
     return () => clearInterval(timer)
   }, [isOtpModalOpen, resendCountdown])
 
+  useEffect(() => {
+    if (!data.otpLockExpiresAt) return
+    if (emailVerified) return
+    if (resendCountdown > 0) return
+    onUpdate({ otpLockExpiresAt: null })
+  }, [resendCountdown, data.otpLockExpiresAt, emailVerified, onUpdate])
+
   const handleInputChange = (field: string, value: string | boolean) => {
     let finalValue: string | boolean = value
     if (typeof value === 'string') {
@@ -148,7 +164,7 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
     }
     const newData = { ...formData, [field]: finalValue }
     setFormData(newData)
-    const payload = field === 'email' ? { ...newData, emailVerified: false } : newData
+    const payload = field === 'email' ? { ...newData, emailVerified: false, otpLockExpiresAt: null } : newData
     if (field === 'email') {
       setIsOtpModalOpen(false)
       setIsRequestingOtp(false)
@@ -159,6 +175,14 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
   }
 
   const handleRequestOtp = useCallback(async (isResend = false) => {
+    const otpLockExpiresAt = Number(data.otpLockExpiresAt || 0)
+    if (!isResend && otpLockExpiresAt > Date.now()) {
+      setIsOtpModalOpen(true)
+      setResendCountdown(Math.ceil((otpLockExpiresAt - Date.now()) / 1000))
+      setOtpError('')
+      return
+    }
+
     // Get email from multiple sources to ensure we have the latest value
     // 1. Try formData.email (most up-to-date local state)
     // 2. Try data.email (from parent state)
@@ -236,6 +260,11 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
       setIsOtpModalOpen(true)
       setResendCountdown(180)
       setOtpError('')
+      onUpdate({
+        email: email,
+        emailVerified: false,
+        otpLockExpiresAt: Date.now() + 180000,
+      })
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || 'Failed to send OTP'
       toast({
@@ -250,7 +279,7 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
         setIsRequestingOtp(false)
       }
     }
-  }, [formData.email, data.email, emailError, toast])
+  }, [formData.email, data.email, data.otpLockExpiresAt, emailError, onUpdate, toast])
 
   // Expose method and state to parent component via ref
   useImperativeHandle(ref, () => ({
@@ -275,6 +304,7 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
       onUpdate({ ...formData, emailVerified: true })
       setIsOtpModalOpen(false)
       setOtpError('')
+      onUpdate({ ...formData, emailVerified: true, otpLockExpiresAt: null })
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || 'Invalid or expired OTP'
       setOtpError(message)
@@ -516,7 +546,7 @@ export const CreateAccountStep = forwardRef<CreateAccountStepRef, CreateAccountS
         error={otpError}
         resendCountdown={resendCountdown}
         otpLength={6}
-        dismissible={false}
+        dismissible={resendCountdown <= 0}
       />
     </div>
   )

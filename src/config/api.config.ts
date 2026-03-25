@@ -60,6 +60,8 @@ export const API_ENDPOINTS = {
     UPDATE: '/management/tenants/{id}',
     DELETE: '/management/tenants/{id}',
     TRANSFER_OWNER: '/management/tenants/{id}/transfer-owner',
+    TRANSFER_OWNER_PREVIEW: '/management/tenants/transfer-owner/preview',
+    TRANSFER_OWNER_CONFIRM: '/management/tenants/transfer-owner/confirm',
     SETTINGS: '/management/tenants/{id}/settings',
     BRANCHES: '/management/tenants/{id}/branches',
     USERS: '/management/tenants/{id}/users',

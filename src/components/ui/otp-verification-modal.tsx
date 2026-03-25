@@ -5,6 +5,7 @@ import { Mail } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -137,6 +138,7 @@ export function OtpVerificationModal({
           }
         }}
       >
+        <DialogTitle className="sr-only">OTP Verification</DialogTitle>
         <div className="flex flex-col items-center text-center space-y-6 py-4">
           {/* Envelope Icon */}
           <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
