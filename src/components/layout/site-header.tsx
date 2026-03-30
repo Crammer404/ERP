@@ -47,6 +47,7 @@ import { ROUTES } from '@/config/api.config';
 import { managementService, type Tenant, type Branch } from '@/services/management/managementService';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { productService } from '@/services/product/productService';
+import { isAuthenticated } from '@/services/api';
 import { Badge } from '@/components/ui/badge';
 import { stockMonitor, monitorProducts, clearStockStatuses } from '@/lib/stockMonitor';
 
@@ -140,9 +141,13 @@ export function SiteHeader() {
 
   // Load branches when component mounts or tenant changes
   useEffect(() => {
+    if (!user || !isAuthenticated()) {
+      return;
+    }
+
     if (selectedTenant) {
       loadBranchesForTenant(parseInt(selectedTenant));
-    } else if (user) {
+    } else {
       loadUserBranches();
     }
   }, [selectedTenant, user]);
@@ -211,6 +216,10 @@ export function SiteHeader() {
   }, [user]);
 
   const loadStockNotifications = async () => {
+    if (!user || !isAuthenticated()) {
+      return;
+    }
+
     try {
       // Get current branch for filtering products
       const currentBranch = tenantContextService.getStoredBranchContext();
@@ -243,6 +252,10 @@ export function SiteHeader() {
   };
   
   const loadTenants = async () => {
+    if (!user || !isAuthenticated()) {
+      return;
+    }
+
     setIsLoadingTenants(true);
     try {
       const storedTenant = tenantContextService.getStoredTenantContext();
@@ -311,6 +324,10 @@ export function SiteHeader() {
   };
   
   const loadBranchesForTenant = async (tenantId: number) => {
+    if (!user || !isAuthenticated()) {
+      return;
+    }
+
     setIsLoadingBranches(true);
     try {
       const fetchedBranches = await managementService.fetchTenantBranches(tenantId);
@@ -338,6 +355,10 @@ export function SiteHeader() {
   };
   
   const loadUserBranches = async () => {
+    if (!user || !isAuthenticated()) {
+      return;
+    }
+
     setIsLoadingBranches(true);
     try {
       const fetchedBranches = await managementService.fetchUserBranches();

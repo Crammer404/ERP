@@ -23,6 +23,7 @@ import { SectionInfoDialog } from './components/section-info-dialog';
 import { PayrollItemFormDialog } from './components/payroll-item-form-dialog';
 import { AddGroupDialog } from './components/add-group-dialog';
 import { DeletePayrollItemDialog } from './components/delete-payroll-item-dialog';
+import { ManageItemEmployeesDialog } from './components/manage-item-employees-dialog';
 import type {
   EditRateDraft,
   NewRateDraft,
@@ -54,6 +55,7 @@ export default function ComputationPage() {
   const [editRateOpen, setEditRateOpen] = useState(false);
   const [editRate, setEditRate] = useState<EditRateDraft | null>(null);
   const [deleteRateTarget, setDeleteRateTarget] = useState<{ code: string; label: string; group: string } | null>(null);
+  const [manageRateTarget, setManageRateTarget] = useState<RateItem | null>(null);
   const [customRateGroups, setCustomRateGroups] = useState<string[]>([]);
   const [addGroupModalOpen, setAddGroupModalOpen] = useState(false);
   const [tempGroupName, setTempGroupName] = useState('');
@@ -176,6 +178,7 @@ export default function ComputationPage() {
           label: String(c.label || c.code || ''),
           value: typeof c.value === 'number' ? c.value : parseFloat(String(c.value || '0')) || 0,
           is_rate: (c.is_rate ? 1 : 0) as 0 | 1,
+          assigned_count: Number(c.assigned_count || 0),
         }))
         .filter((c) => c.code.trim() !== '')
         .sort((a, b) => a.label.localeCompare(b.label));
@@ -1006,6 +1009,7 @@ export default function ComputationPage() {
           onDragEnd={handleRateGroupDragEnd}
           onEditItem={openEditRate}
           onDeleteItem={setDeleteRateTarget}
+          onManageItem={(item) => setManageRateTarget(item)}
           formatGroupLabel={formatGroupLabel}
           formatRatePreview={formatRatePreview}
           reconcileOrder={reconcileOrder}
@@ -1190,6 +1194,13 @@ export default function ComputationPage() {
           onConfirm={(code, group) => {
             void deleteRate(code, group);
           }}
+        />
+
+        <ManageItemEmployeesDialog
+          open={Boolean(manageRateTarget)}
+          item={manageRateTarget}
+          onClose={() => setManageRateTarget(null)}
+          onSaved={fetchComputationData}
         />
     </div>
   );

@@ -19,6 +19,7 @@ export interface RateItem {
   label: string;
   value: number;
   is_rate: 0 | 1;
+  assigned_count?: number;
 }
 
 export interface NewRateDraft {

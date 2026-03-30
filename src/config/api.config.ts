@@ -115,6 +115,15 @@ export const API_ENDPOINTS = {
       USERS: '/hrms/dtr/configuration/users',
     },
   },
+
+  HR: {
+    HOLIDAYS_LIST: '/hrms/hr/holidays',
+    HOLIDAYS_SYNC: '/hrms/hr/holidays/sync',
+    HOLIDAYS_UPDATE_DB: '/hrms/hr/holidays/update-db',
+    HOLIDAYS_CREATE: '/hrms/hr/holidays',
+    HOLIDAYS_UPDATE: '/hrms/hr/holidays/{id}',
+    HOLIDAYS_DELETE: '/hrms/hr/holidays/{id}',
+  },
   
   PAYROLL: {
     BASE: '/hrms/payroll',
@@ -129,6 +138,7 @@ export const API_ENDPOINTS = {
       UPDATE_RATE: '/hrms/payroll/config/updateRate',
       UPDATE_COMPEN_OR_DEDUC: '/hrms/payroll/config/updateCompenOrDeduc',
       DELETE_COMPONENT: '/hrms/payroll/config/deleteComponent',
+      ITEM_EMPLOYEES: '/hrms/payroll/config/items/{id}/employees',
     },
     REPORTS: {
       DATA: '/hrms/payroll/reports/data',
@@ -370,6 +380,14 @@ export const ROUTES = {
     SALES: '/pos/sales',
   },
   HRMS: {
+    HR: {
+      HOLIDAYS: '/hrms/hr/holidays',
+      HOLIDAYS_LIST: '/hrms/hr/holidays',
+      HOLIDAYS_SYNC: '/hrms/hr/holidays/sync',
+      HOLIDAYS_CREATE: '/hrms/hr/holidays',
+      HOLIDAYS_UPDATE: '/hrms/hr/holidays/{id}',
+      HOLIDAYS_DELETE: '/hrms/hr/holidays/{id}',
+    },
     DTR: {
       OVERTIME: '/hrms/dtr/overtime',
     },

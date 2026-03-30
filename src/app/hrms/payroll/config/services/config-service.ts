@@ -9,6 +9,7 @@ export interface PayrollComponent {
   label: string;
   value: string | number;
   is_rate?: boolean;
+  assigned_count?: number;
 }
 
 export interface PayrollPosition {
@@ -36,6 +37,7 @@ export interface ComputationData {
   roles: { id: number; name: string }[];
   branches: { id: number; name: string }[];
   currency_symbol: string;
+  assignment_counts: Record<string, number>;
 }
 
 export interface UpdatePayRequest {
@@ -93,14 +95,41 @@ export interface DeleteComponentRequest {
   category?: 'earnings' | 'deductions';
 }
 
+export interface PayrollItemEmployee {
+  id: number;
+  name: string;
+  email: string;
+  is_assigned: boolean;
+}
+
+export interface PayrollItemEmployeesResponse {
+  item: {
+    id: number;
+    code: string;
+    label: string;
+    group: string;
+    category?: 'earnings' | 'deductions';
+  };
+  assigned_user_ids: number[];
+  employees: PayrollItemEmployee[];
+}
+
 const normalizeComputationData = (payload: any): ComputationData => {
   const source = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
   return {
-    components: Array.isArray(source?.components) ? source.components : [],
+    components: Array.isArray(source?.components)
+      ? source.components.map((component: PayrollComponent) => ({
+        ...component,
+        assigned_count: Number(source?.assignment_counts?.[String(component.id ?? '')] || 0),
+      }))
+      : [],
     positions: Array.isArray(source?.positions) ? source.positions : [],
     roles: Array.isArray(source?.roles) ? source.roles : [],
     branches: Array.isArray(source?.branches) ? source.branches : [],
     currency_symbol: typeof source?.currency_symbol === 'string' ? source.currency_symbol : 'P',
+    assignment_counts: (source?.assignment_counts && typeof source.assignment_counts === 'object')
+      ? source.assignment_counts
+      : {},
   };
 };
 
@@ -139,6 +168,19 @@ export const configService = {
     return await api(API_ENDPOINTS.PAYROLL.CONFIG.DELETE_COMPONENT, {
       method: 'DELETE',
       body: JSON.stringify(data),
+    });
+  },
+
+  async getItemEmployees(itemId: number): Promise<PayrollItemEmployeesResponse> {
+    const endpoint = API_ENDPOINTS.PAYROLL.CONFIG.ITEM_EMPLOYEES.replace('{id}', String(itemId));
+    return await api(endpoint);
+  },
+
+  async updateItemEmployees(itemId: number, userIds: number[]): Promise<{ message: string; payroll_config_id: number; assigned_user_ids: number[] }> {
+    const endpoint = API_ENDPOINTS.PAYROLL.CONFIG.ITEM_EMPLOYEES.replace('{id}', String(itemId));
+    return await api(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify({ user_ids: userIds }),
     });
   },
 };

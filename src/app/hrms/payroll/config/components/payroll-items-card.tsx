@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +25,7 @@ interface PayrollItemsCardProps {
   onDragEnd: (result: DropResult) => void;
   onEditItem: (code: string, group: string) => void;
   onDeleteItem: (target: { code: string; label: string; group: string }) => void;
+  onManageItem: (item: RateItem) => void;
   formatGroupLabel: (groupKey: string) => string;
   formatRatePreview: (item: { code: string; value: number; is_rate: 0 | 1 }) => string;
   reconcileOrder: (keys: string[], saved: string[]) => string[];
@@ -39,6 +41,7 @@ export function PayrollItemsCard({
   onDragEnd,
   onEditItem,
   onDeleteItem,
+  onManageItem,
   formatGroupLabel,
   formatRatePreview,
   reconcileOrder,
@@ -113,7 +116,14 @@ export function PayrollItemsCard({
                             .sort((a, b) => a.label.localeCompare(b.label))
                             .map((item) => (
                               <div key={item.code} className="space-y-2">
-                                <Label>{item.label}</Label>
+                                <div className="flex items-center gap-2">
+                                  <Label>{item.label}</Label>
+                                  {Number(item.assigned_count || 0) > 0 ? (
+                                    <Badge variant="secondary">Assigned: {item.assigned_count}</Badge>
+                                  ) : (
+                                    <Badge variant="outline">Global</Badge>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-0">
                                   <Input
                                     className="flex-1 rounded-r-none border-r-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none"
@@ -136,6 +146,9 @@ export function PayrollItemsCard({
                                     <DropdownMenuContent align="end">
                                       <DropdownMenuItem onClick={() => onEditItem(item.code, item.group)}>
                                         Edit
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => onManageItem(item)}>
+                                        Manage
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         onClick={() =>
