@@ -96,7 +96,7 @@ export default function StatutoriesPage() {
       const raw = typeof entry.amount === 'string' ? Number(entry.amount) : entry.amount;
       const num = Number.isFinite(raw) ? Number(raw) : 0;
       if (entry.is_rate) {
-        return `${numberFormatter.format(num)}%`;
+        return `${numberFormatter.format(num * 100)}%`;
       }
       return `${currencySymbol} ${numberFormatter.format(num)}`;
     },

@@ -20,16 +20,18 @@ export function StatutoryEditModal({ open, onOpenChange, type, entry, employeeNa
   const [amount, setAmount] = useState<string>('');
   const [isRate, setIsRate] = useState<boolean>(false);
 
-  const formatInitialAmount = (value: unknown): string => {
+  const formatInitialAmount = (value: unknown, rate: boolean): string => {
     const num = typeof value === 'string' ? Number(value) : (value as number);
     if (!Number.isFinite(num)) return '';
-    return Number(num).toFixed(2);
+    const display = rate ? Number(num) * 100 : Number(num);
+    return display.toFixed(2);
   };
 
   useEffect(() => {
     if (!open || !entry) return;
-    setAmount(formatInitialAmount(entry.amount));
-    setIsRate(Boolean(entry.is_rate));
+    const rate = Boolean(entry.is_rate);
+    setIsRate(rate);
+    setAmount(formatInitialAmount(entry.amount, rate));
     setSaving(false);
   }, [open, entry]);
 
@@ -44,7 +46,8 @@ export function StatutoryEditModal({ open, onOpenChange, type, entry, employeeNa
       const raw = amount.trim();
       const parsed = raw === '' ? 0 : Number(raw);
       const nextAmount = Number.isFinite(parsed) ? parsed : 0;
-      await onSave({ user_id: entry.user_id, amount: nextAmount, is_rate: isRate ? 1 : 0 });
+      const persistedAmount = isRate ? nextAmount / 100 : nextAmount;
+      await onSave({ user_id: entry.user_id, amount: persistedAmount, is_rate: isRate ? 1 : 0 });
       onOpenChange(false);
     } finally {
       setSaving(false);
