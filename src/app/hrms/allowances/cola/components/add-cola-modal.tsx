@@ -118,6 +118,11 @@ export function AddColaModal({ open, onOpenChange, loadingEmployees, employees, 
 
   const canSave = selectedUserIds.length > 0 && !saving;
 
+  const clearSelection = () => {
+    setSelectedUserIds([]);
+    setAmountByUserId({});
+  };
+
   const handleSave = async () => {
     if (!canSave) return;
 
@@ -148,40 +153,52 @@ export function AddColaModal({ open, onOpenChange, loadingEmployees, employees, 
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="space-y-3">
             <div className="rounded-md border h-[360px] flex flex-col">
-              <div className="p-4 border-b space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <Label>Select Employees</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {filteredEmployees.length} shown of {employees.length} • {selectedUserIds.length} selected
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2 flex-shrink-0 pt-1">
-                    <Checkbox
-                      id="select-all-employees"
-                      checked={selectAllState}
-                      onCheckedChange={(checked) => toggleSelectAll(checked === true)}
-                      disabled={saving || loadingEmployees}
-                    />
-                    <Label htmlFor="select-all-employees" className="text-sm">
-                      Select All
-                    </Label>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={employeeSearch}
-                    onChange={(e) => setEmployeeSearch(e.target.value)}
-                    placeholder="Search employees..."
-                    className="pl-10"
-                    disabled={saving || loadingEmployees}
-                  />
-                </div>
+              <div className="p-4 border-b space-y-1">
+                <Label>Select Employees</Label>
+                <p className="text-xs text-muted-foreground">
+                  {filteredEmployees.length} shown of {employees.length} • {selectedUserIds.length} selected
+                </p>
               </div>
 
               <ScrollArea className="flex-1 p-4">
+                <div className="space-y-3 pb-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={employeeSearch}
+                      onChange={(e) => setEmployeeSearch(e.target.value)}
+                      placeholder="Search employees..."
+                      className="pl-10"
+                      disabled={saving || loadingEmployees}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center space-x-2 flex-shrink-0">
+                      <Checkbox
+                        id="select-all-employees"
+                        checked={selectAllState}
+                        onCheckedChange={(checked) => toggleSelectAll(checked === true)}
+                        disabled={saving || loadingEmployees}
+                      />
+                      <Label htmlFor="select-all-employees" className="text-sm">
+                        Select All
+                      </Label>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3"
+                      onClick={clearSelection}
+                      disabled={saving || loadingEmployees || selectedUserIds.length === 0}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+
                 {loadingEmployees ? (
                   <div className="flex justify-center py-4">
                     <Loader size="sm" />

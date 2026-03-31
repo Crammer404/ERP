@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation';
 import { ROUTES } from '@/config/api.config';
 import { 
   DollarSign, 
-  CreditCard 
+  CreditCard,
+  Percent,
 } from 'lucide-react';
 
 const pageMeta = {
@@ -18,6 +19,11 @@ const pageMeta = {
     title: 'Loan Management',
     description: 'Manage employee loans, repayment schedules, and automatic payroll deductions.',
     icon: CreditCard,
+  },
+  [ROUTES.HRMS.DEDUCTIONS.STATUTORIES]: {
+    title: 'Statutories',
+    description: 'Manage SSS, PhilHealth, and Pag-IBIG per employee.',
+    icon: Percent,
   },
 } as const;
 

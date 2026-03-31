@@ -175,6 +175,12 @@ export const API_ENDPOINTS = {
       DELETE: '/hrms/deductions/loan/{id}',
       GET: '/hrms/deductions/loan/{id}',
     },
+    STATUTORIES: {
+      BASE: '/hrms/deductions/statutories',
+      GET: '/hrms/deductions/statutories',
+      UPSERT: '/hrms/deductions/statutories',
+      DELETE: '/hrms/deductions/statutories',
+    },
   },
 
   ALLOWANCES: {
@@ -410,6 +416,7 @@ export const ROUTES = {
     DEDUCTIONS: {
       CASH_ADVANCE: '/hrms/deductions/cash-advance',
       LOAN: '/hrms/deductions/loan',
+      STATUTORIES: '/hrms/deductions/statutories',
     },
   },
   SETTINGS: {

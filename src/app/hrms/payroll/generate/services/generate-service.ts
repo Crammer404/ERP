@@ -104,7 +104,17 @@ export const generateService = {
   },
 
   async getReportUsers(): Promise<PayrollReportUser[]> {
-    return await api(API_ENDPOINTS.PAYROLL.REPORTS.USERS);
+    const response = await api(API_ENDPOINTS.PAYROLL.REPORTS.USERS);
+    if (Array.isArray(response)) {
+      return response;
+    }
+    if (Array.isArray(response?.data)) {
+      return response.data;
+    }
+    if (Array.isArray(response?.data?.data)) {
+      return response.data.data;
+    }
+    return [];
   },
 
   async getEmployeePayslips(): Promise<ViewPayslipsResponse> {
