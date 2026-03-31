@@ -389,6 +389,7 @@ export default function GeneratePayrollPage() {
     payrollRange?: { from?: Date; to?: Date };
     userIds: number[];
     includeStatutoryDeductions: boolean;
+    includeCola: boolean;
   }) => {
     if (!payload.payrollRange?.from || !payload.payrollRange?.to) {
       toast({
@@ -415,6 +416,7 @@ export default function GeneratePayrollPage() {
         end_date: formatLocalDate(payload.payrollRange.to),
         payroll_type: payload.payrollType,
         statutory_include: payload.includeStatutoryDeductions ? 1 : 0,
+        include_cola: payload.includeCola ? 1 : 0,
       };
 
       console.log('🚀 Generating payroll with payload:', generatePayload);

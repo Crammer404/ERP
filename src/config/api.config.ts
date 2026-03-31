@@ -176,6 +176,15 @@ export const API_ENDPOINTS = {
       GET: '/hrms/deductions/loan/{id}',
     },
   },
+
+  ALLOWANCES: {
+    COLA: {
+      BASE: '/hrms/allowances/cola',
+      GET: '/hrms/allowances/cola/{id}',
+      UPDATE: '/hrms/allowances/cola/{id}',
+      DELETE: '/hrms/allowances/cola/{id}',
+    },
+  },
   
   INVENTORY: {
     BASE: '/inventory',

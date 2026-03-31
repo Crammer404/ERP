@@ -44,6 +44,7 @@ export interface GeneratePayrollPayload {
   payrollRange?: DateRange;
   userIds: number[];
   includeStatutoryDeductions: boolean;
+  includeCola: boolean;
 }
 
 interface GeneratePayrollDialogProps {
@@ -95,6 +96,7 @@ const GeneratePayrollDialog = ({
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [includeStatutory, setIncludeStatutory] = useState(true);
+  const [includeCola, setIncludeCola] = useState(true);
   const [availableUsers, setAvailableUsers] = useState<GeneratePayrollUser[]>(users ?? []);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -261,6 +263,7 @@ const GeneratePayrollDialog = ({
     setDateRange(undefined);
     setSelectedUserIds([]);
     setIncludeStatutory(true);
+    setIncludeCola(true);
     setEmployeeSearch('');
   };
 
@@ -286,6 +289,7 @@ const GeneratePayrollDialog = ({
           payrollRange: dateRange,
           userIds: selectedUserIds,
           includeStatutoryDeductions: includeStatutory,
+          includeCola,
         });
       }
       return; // Don't close if validation fails
@@ -299,6 +303,7 @@ const GeneratePayrollDialog = ({
           payrollRange: dateRange,
           userIds: selectedUserIds,
           includeStatutoryDeductions: includeStatutory,
+          includeCola,
         });
       }
       return; // Don't close if validation fails
@@ -350,6 +355,7 @@ const GeneratePayrollDialog = ({
           payrollRange: dateRange,
           userIds: selectedUserIds,
           includeStatutoryDeductions: includeStatutory,
+          includeCola,
         });
         handleClose();
       }
@@ -435,6 +441,21 @@ const GeneratePayrollDialog = ({
                       checked={includeStatutory}
                       onCheckedChange={setIncludeStatutory}
                     />
+                  </div>
+                </div>
+
+                <div className="space-y-2 border rounded-md p-4">
+                  <Label>COLA Allowance</Label>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Include COLA in this payroll run
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Adds per-employee COLA to earnings and Gross.
+                      </p>
+                    </div>
+                    <Switch checked={includeCola} onCheckedChange={setIncludeCola} />
                   </div>
                 </div>
               </div>

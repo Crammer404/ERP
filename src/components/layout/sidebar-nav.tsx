@@ -144,7 +144,7 @@ const buildDynamicMenu = (userModuleGroups: Record<string, any>): NavLink[] => {
     if (modules.length === 1) {
       const module = modules[0];
       const icon = getIconComponent(module.icon_path);
-      const href = module.module_path;
+      const href = String(module.module_path || '').toLowerCase();
 
       menuItems.push({
         href,
@@ -158,8 +158,7 @@ const buildDynamicMenu = (userModuleGroups: Record<string, any>): NavLink[] => {
       const groupIcon = getIconComponent(group.icon_path);
       const subLinks: NavLink[] = modules.map((module: any) => {
         const icon = getIconComponent(module.icon_path);
-        // Use the module path as-is (transactions are at /pos/transactions)
-        const href = module.module_path;
+        const href = String(module.module_path || '').toLowerCase();
 
         return {
           href,
@@ -170,7 +169,7 @@ const buildDynamicMenu = (userModuleGroups: Record<string, any>): NavLink[] => {
       });
 
       // Use the first module's href as the main group href (or create a default)
-      const mainHref = modules[0]?.module_path || `/${group.display_name.toLowerCase()}`;
+      const mainHref = String(modules[0]?.module_path || `/${group.display_name.toLowerCase()}`).toLowerCase();
 
       menuItems.push({
         href: mainHref,

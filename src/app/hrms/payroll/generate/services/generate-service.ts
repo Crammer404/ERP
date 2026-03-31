@@ -27,6 +27,7 @@ export interface GeneratePayrollRequest {
   end_date: string;
   payroll_type: string;
   statutory_include?: number;
+  include_cola?: number;
 }
 
 export interface PayrollReportUser {
