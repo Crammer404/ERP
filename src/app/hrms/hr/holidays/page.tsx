@@ -1,181 +1,42 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useToast } from '@/hooks/use-toast';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { holidaysService, type HolidayPreviewItem, type PayrollHolidayItem } from './services/holidays-service';
+import type { HolidayPreviewItem, PayrollHolidayItem } from './services/holidays-service';
+import { useHolidays } from './hooks/use-holidays';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { HolidayInfoDialog } from './components/holiday-info-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { MoreVertical, RefreshCw } from 'lucide-react';
+import { Loader } from '@/components/ui/loader';
+import { InfoDialog } from './components/info-dialog';
 
 export default function HolidaysPage() {
-  const { toast } = useToast();
-  const [holidayYear, setHolidayYear] = useState<number>(new Date().getFullYear());
-  const [holidays, setHolidays] = useState<PayrollHolidayItem[]>([]);
-  const [holidayLoading, setHolidayLoading] = useState(false);
-  const [holidaySyncing, setHolidaySyncing] = useState(false);
-  const [hasSyncedPreview, setHasSyncedPreview] = useState(false);
-  const [previewHolidays, setPreviewHolidays] = useState<HolidayPreviewItem[]>([]);
-  const [holidaySaving, setHolidaySaving] = useState(false);
-  const [newHolidayDate, setNewHolidayDate] = useState('');
-  const [newHolidayName, setNewHolidayName] = useState('');
-  const [newHolidayType, setNewHolidayType] = useState<'regular' | 'special_non_working'>('regular');
+  const {
+    holidayYear,
+    setHolidayYear,
+    holidayYearOptions,
+    holidayLoading,
+    holidaySyncing,
+    hasSyncedPreview,
+    displayedHolidays,
+    refresh,
+    syncOrUpdateDb,
+    syncInfoDialog,
+    deleteDialog,
+    typeChangeDialog,
+    editDialog,
+  } = useHolidays();
 
-  const holidayYearOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    return Array.from({ length: 6 }, (_, index) => currentYear - index);
-  }, []);
-
-  useEffect(() => {
-    setHasSyncedPreview(false);
-    setPreviewHolidays([]);
-    void fetchHolidayData(holidayYear);
-  }, [holidayYear]);
-
-  const fetchHolidayData = async (year: number) => {
-    try {
-      setHolidayLoading(true);
-      const response = await holidaysService.list(year);
-      setHolidays(response.holidays || []);
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error?.message || 'Failed to load holidays',
-        variant: 'destructive',
-      });
-    } finally {
-      setHolidayLoading(false);
-    }
-  };
-
-  const handleSyncHolidays = async () => {
-    try {
-      setHolidaySyncing(true);
-      if (!hasSyncedPreview) {
-        const response = await holidaysService.sync(holidayYear);
-        setPreviewHolidays(response.holidays || []);
-        setHasSyncedPreview(true);
-        toast({
-          title: 'Synced',
-          description: `${response.total} holidays fetched. Click "Update DB Holiday" to apply.`,
-        });
-      } else {
-        const response = await holidaysService.updateDb(
-          holidayYear,
-          previewHolidays.map((holiday) => ({
-            holiday_date: holiday.holiday_date,
-            holiday_name: holiday.holiday_name,
-            holiday_type: holiday.holiday_type,
-          }))
-        );
-        setHasSyncedPreview(false);
-        setPreviewHolidays([]);
-        await fetchHolidayData(holidayYear);
-        toast({
-          title: 'Success',
-          description: `DB updated. Deleted ${response.deleted}, seeded ${response.seeded}.`,
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: hasSyncedPreview ? 'Update DB Failed' : 'Sync Failed',
-        description: error?.message || 'Failed to process holiday request.',
-        variant: 'destructive',
-      });
-    } finally {
-      setHolidaySyncing(false);
-    }
-  };
-
-  const handleCreateHoliday = async () => {
-    if (!newHolidayDate || !newHolidayName.trim()) {
-      toast({
-        title: 'Validation Error',
-        description: 'Date and holiday name are required.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      setHolidaySaving(true);
-      await holidaysService.create({
-        holiday_date: newHolidayDate,
-        holiday_name: newHolidayName.trim(),
-        holiday_type: newHolidayType,
-        is_active: true,
-      });
-      setNewHolidayDate('');
-      setNewHolidayName('');
-      await fetchHolidayData(holidayYear);
-      toast({ title: 'Success', description: 'Holiday added successfully.' });
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error?.message || 'Failed to add holiday.',
-        variant: 'destructive',
-      });
-    } finally {
-      setHolidaySaving(false);
-    }
-  };
-
-  const handleUpdateHolidayType = async (id: number, holiday_type: 'regular' | 'special_non_working') => {
-    try {
-      await holidaysService.update(id, { holiday_type });
-      setHolidays((prev) => prev.map((h) => (h.id === id ? { ...h, holiday_type } : h)));
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error?.message || 'Failed to update holiday type.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleDeleteHoliday = async (id: number) => {
-    try {
-      await holidaysService.delete(id);
-      setHolidays((prev) => prev.filter((h) => h.id !== id));
-      toast({ title: 'Deleted', description: 'Holiday removed.' });
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error?.message || 'Failed to delete holiday.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleRemovePreviewHoliday = (holidayDate: string, holidayName: string) => {
-    setPreviewHolidays((prev) =>
-      prev.filter(
-        (holiday) => !(holiday.holiday_date === holidayDate && holiday.holiday_name === holidayName)
-      )
-    );
-  };
-
-  const handleUpdatePreviewHolidayType = (
-    holidayDate: string,
-    holidayName: string,
-    holidayType: 'regular' | 'special_non_working'
-  ) => {
-    setPreviewHolidays((prev) =>
-      prev.map((holiday) =>
-        holiday.holiday_date === holidayDate && holiday.holiday_name === holidayName
-          ? { ...holiday, holiday_type: holidayType }
-          : holiday
-      )
-    );
+  const loading = holidayLoading;
+  const handleRefresh = () => {
+    void refresh();
   };
 
   const formatDateToUs = (dateValue: string): string => {
-    // Handles both "YYYY-MM-DD" and ISO datetime values from API.
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
       const [year, month, day] = dateValue.split('-').map((part) => Number(part));
       const date = new Date(Date.UTC(year, month - 1, day));
@@ -187,12 +48,32 @@ export default function HolidaysPage() {
       return dateValue;
     }
 
-    // Use Philippines timezone to avoid off-by-one rendering from UTC timestamps.
     return format(parsed, 'MMM d, yyyy');
   };
 
-  const displayedHolidays: Array<PayrollHolidayItem | HolidayPreviewItem> = hasSyncedPreview ? previewHolidays : holidays;
-  const selectedManualHolidayDate = newHolidayDate ? new Date(`${newHolidayDate}T00:00:00`) : undefined;
+  const deleteDialogTitle = useMemo(() => {
+    if (!deleteDialog.pending) return 'Confirm deletion';
+    return deleteDialog.pending.kind === 'db' ? 'Delete holiday' : 'Remove holiday from preview';
+  }, [deleteDialog.pending]);
+
+  const deleteDialogDescription = useMemo(() => {
+    if (!deleteDialog.pending) return 'Are you sure you want to continue?';
+    if (deleteDialog.pending.kind === 'db') {
+      return `Are you sure you want to delete "${deleteDialog.pending.name}"? This action cannot be undone.`;
+    }
+    return `Are you sure you want to remove "${deleteDialog.pending.holiday_name}" from the preview list?`;
+  }, [deleteDialog.pending]);
+
+  const typeChangeDialogTitle = 'Confirm type change';
+  const typeChangeDialogDescription = useMemo(() => {
+    if (!typeChangeDialog.pending) return 'Are you sure you want to continue?';
+    const name =
+      typeChangeDialog.pending.kind === 'db'
+        ? typeChangeDialog.pending.name
+        : typeChangeDialog.pending.holiday_name;
+    const typeLabel = typeChangeDialog.pending.nextType === 'regular' ? 'Regular' : 'Special Non-Working';
+    return `Change holiday type for "${name}" to "${typeLabel}"?`;
+  }, [typeChangeDialog.pending]);
 
   return (
     <div className="space-y-6">
@@ -213,7 +94,19 @@ export default function HolidaysPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button size="sm" onClick={handleSyncHolidays} disabled={holidaySyncing}>
+              <Button
+                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none shrink-0"
+                  variant="default" 
+                  onClick={handleRefresh}
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+              </Button>
+              <Button
+                onClick={syncOrUpdateDb}
+                disabled={holidaySyncing}
+                variant={hasSyncedPreview ? 'destructive' : 'default'}
+              >
                 {holidaySyncing
                   ? hasSyncedPreview
                     ? 'Updating DB...'
@@ -222,77 +115,42 @@ export default function HolidaysPage() {
                     ? 'Update DB Holiday'
                     : 'Sync API Holiday'}
               </Button>
+              <Button onClick={editDialog.openCreate} disabled={holidaySyncing || holidayLoading}>
+                Add Manual Holiday
+              </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    'justify-start text-left font-normal',
-                    !newHolidayDate && 'text-muted-foreground'
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {newHolidayDate ? format(selectedManualHolidayDate as Date, 'MMM d, yyyy') : 'Select holiday date'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={selectedManualHolidayDate}
-                  onSelect={(date) => {
-                    if (!date) {
-                      setNewHolidayDate('');
-                      return;
-                    }
-                    setNewHolidayDate(format(date, 'yyyy-MM-dd'));
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-            <Input
-              placeholder="Holiday name"
-              value={newHolidayName}
-              onChange={(e) => setNewHolidayName(e.target.value)}
-            />
-            <Select value={newHolidayType} onValueChange={(value: 'regular' | 'special_non_working') => setNewHolidayType(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="regular">Regular</SelectItem>
-                <SelectItem value="special_non_working">Special Non-Working</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={handleCreateHoliday} disabled={holidaySaving}>
-              Add Manual Holiday
-            </Button>
-          </div>
-
-          {holidayLoading ? (
-            <p className="text-sm text-muted-foreground">Loading holidays...</p>
-          ) : displayedHolidays.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No holidays configured for this year.</p>
-          ) : (
-            <div className="rounded-md border overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-left p-2">Name</th>
-                    <th className="text-left p-2">Type</th>
-                    <th className="text-left p-2">Source</th>
-                    <th className="text-left p-2">Active</th>
-                    <th className="text-left p-2">Action</th>
+          <div className="rounded-md border overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40">
+                <tr>
+                  <th className="text-left p-2">Date</th>
+                  <th className="text-left p-2">Name</th>
+                  <th className="text-left p-2">Type</th>
+                  <th className="text-left p-2">Source</th>
+                  <th className="text-left p-2">Status</th>
+                  <th className="text-left p-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holidayLoading ? (
+                  <tr className="border-t">
+                    <td className="p-6" colSpan={6}>
+                      <div className="flex items-center justify-center">
+                        <Loader size="sm" />
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {displayedHolidays.map((holiday) => (
+                ) : displayedHolidays.length === 0 ? (
+                  <tr className="border-t">
+                    <td className="p-6 text-center text-muted-foreground" colSpan={6}>
+                      No holidays configured for this year.
+                    </td>
+                  </tr>
+                ) : (
+                  displayedHolidays.map((holiday) => (
                     <tr key={'id' in holiday ? holiday.id : `${holiday.holiday_date}-${holiday.holiday_name}`} className="border-t">
                       <td className="p-2">{formatDateToUs(holiday.holiday_date)}</td>
                       <td className="p-2">{holiday.holiday_name}</td>
@@ -301,8 +159,18 @@ export default function HolidaysPage() {
                           value={holiday.holiday_type || 'regular'}
                           onValueChange={(value: 'regular' | 'special_non_working') =>
                             'id' in holiday
-                              ? handleUpdateHolidayType(holiday.id, value)
-                              : handleUpdatePreviewHolidayType(holiday.holiday_date, holiday.holiday_name, value)
+                              ? typeChangeDialog.requestTypeChange({
+                                  kind: 'db',
+                                  id: holiday.id,
+                                  name: holiday.holiday_name,
+                                  nextType: value,
+                                })
+                              : typeChangeDialog.requestTypeChange({
+                                  kind: 'preview',
+                                  holiday_date: holiday.holiday_date,
+                                  holiday_name: holiday.holiday_name,
+                                  nextType: value,
+                                })
                           }
                         >
                           <SelectTrigger className="h-8 w-[180px]">
@@ -315,28 +183,113 @@ export default function HolidaysPage() {
                         </Select>
                       </td>
                       <td className="p-2">{holiday.source}</td>
-                      <td className="p-2">{holiday.is_active ? 'Yes' : 'No'}</td>
+                      <td className="p-2">{holiday.is_active ? 'Active' : 'Inactive'}</td>
                       <td className="p-2">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() =>
-                            'id' in holiday
-                              ? handleDeleteHoliday(holiday.id)
-                              : handleRemovePreviewHoliday(holiday.holiday_date, holiday.holiday_name)
-                          }
-                        >
-                          {'id' in holiday ? 'Delete' : 'Remove'}
-                        </Button>
+                        {'id' in holiday ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => editDialog.openEdit(holiday)}>
+                                Update
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  deleteDialog.requestDelete({
+                                    kind: 'db',
+                                    id: holiday.id,
+                                    name: holiday.holiday_name,
+                                  })
+                                }
+                                className="text-destructive focus:text-destructive"
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  deleteDialog.requestDelete({
+                                    kind: 'preview',
+                                    holiday_date: holiday.holiday_date,
+                                    holiday_name: holiday.holiday_name,
+                                  })
+                                }
+                              >
+                                Remove
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => {
+          if (!open) deleteDialog.cancelDelete();
+        }}
+        title={deleteDialogTitle}
+        description={deleteDialogDescription}
+        confirmText={deleteDialog.pending?.kind === 'db' ? 'Delete' : 'Remove'}
+        cancelText="Cancel"
+        onConfirm={deleteDialog.confirmDelete}
+        variant="destructive"
+        loading={deleteDialog.loading}
+      />
+
+      <ConfirmDialog
+        open={typeChangeDialog.open}
+        onOpenChange={(open) => {
+          if (!open) typeChangeDialog.cancelTypeChange();
+        }}
+        title={typeChangeDialogTitle}
+        description={typeChangeDialogDescription}
+        confirmText="Confirm"
+        cancelText="Cancel"
+        onConfirm={typeChangeDialog.confirmTypeChange}
+        variant="default"
+        loading={typeChangeDialog.loading}
+      />
+
+      <HolidayInfoDialog
+        open={editDialog.open}
+        onOpenChange={(open) => {
+          if (!open) editDialog.closeEdit();
+          editDialog.setOpen(open);
+        }}
+        saving={editDialog.saving}
+        mode={editDialog.mode}
+        value={editDialog.form}
+        onChange={editDialog.setForm}
+        onSave={editDialog.saveEdit}
+      />
+
+      <InfoDialog
+        open={syncInfoDialog.open}
+        onOpenChange={syncInfoDialog.setOpen}
+        title={syncInfoDialog.data?.title || 'Info'}
+        description={syncInfoDialog.data?.description || ''}
+      />
     </div>
   );
 }
