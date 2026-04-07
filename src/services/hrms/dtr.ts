@@ -35,6 +35,7 @@ export interface DtrLogResponseItem {
   shift: string;
   clock_in: string | null;
   clock_out: string | null;
+  deleted_at?: string | null;
   grace_late_minutes?: number | null;
   late_minutes?: number | null;
   grace_overtime_minutes?: number | null;
@@ -90,6 +91,7 @@ export const getTimeClockLogs = async (params?: {
   shift?: string;
   start_date?: string;
   end_date?: string;
+  archived?: boolean;
 }): Promise<any> => {
   const query = new URLSearchParams();
   if (params?.page) query.append("page", String(params.page));
@@ -98,8 +100,17 @@ export const getTimeClockLogs = async (params?: {
   if (params?.shift && params.shift !== "all") query.append("shift", params.shift);
   if (params?.start_date) query.append("start_date", params.start_date);
   if (params?.end_date) query.append("end_date", params.end_date);
+  if (params?.archived) query.append("archived", "1");
   const qs = query.toString();
   return await api(`/hrms/dtr/logs${qs ? `?${qs}` : ""}`, { method: "GET" });
+};
+
+export const restoreManualLog = async (logId: number): Promise<any> => {
+  return await api(`/hrms/dtr/logs/${logId}/restore`, { method: "POST" });
+};
+
+export const forceDeleteManualLog = async (logId: number): Promise<any> => {
+  return await api(`/hrms/dtr/logs/${logId}/force`, { method: "DELETE" });
 };
 
 export const getUserScheduleDetails = async (

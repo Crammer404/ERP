@@ -28,6 +28,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DeleteLogDialog } from './components/delete-log-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -45,8 +47,8 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { Download, Smartphone, X, Clock, RefreshCw, Edit, CirclePlus, MoreVertical, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog, reopenForOvertime } from '@/services/hrms/dtr';
+import { Download, Smartphone, X, Clock, RefreshCw, Edit, CirclePlus, MoreVertical, Trash2, ChevronLeft, ChevronRight, Archive } from 'lucide-react';
+import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog, reopenForOvertime, restoreManualLog, forceDeleteManualLog } from '@/services/hrms/dtr';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -62,6 +64,7 @@ interface TimeClockLog {
   userId: number;
   date: string;
   dateRaw: string;
+  deletedAt: string | null;
   employee: string;
   branch: string;
   scheduleName: string;
@@ -130,8 +133,16 @@ export default function TimeClockPage() {
   const [overtimeConfirmOpen, setOvertimeConfirmOpen] = useState(false);
   const [overtimeConfirmData, setOvertimeConfirmData] = useState<OvertimePromptData | null>(null);
   const [overtimeConfirming, setOvertimeConfirming] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [logToRestore, setLogToRestore] = useState<TimeClockLog | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [forceDeleteConfirmOpen, setForceDeleteConfirmOpen] = useState(false);
+  const [logToForceDelete, setLogToForceDelete] = useState<TimeClockLog | null>(null);
+  const [forceDeleting, setForceDeleting] = useState(false);
 
   const today = new Date();
+  const tabsGridClass = 'grid-cols-2';
 
   const mapLog = (item: DtrLogResponseItem): TimeClockLog => {
     const formatHoursAndMinutes = (
@@ -240,6 +251,7 @@ export default function TimeClockPage() {
       userId: item.user_id,
       date: toDate(item.date),
       dateRaw: item.date,
+      deletedAt: item.deleted_at || null,
       employee: employeeName,
       branch: branchName,
       scheduleName: scheduleName,
@@ -325,17 +337,6 @@ export default function TimeClockPage() {
     }, 1200);
   };
 
-  const getLogsCacheKey = (page: number, perPage: number): string => {
-    return [
-      page,
-      perPage,
-      debouncedSearch.trim().toLowerCase(),
-      selectedShift,
-      toApiDate(dateRange?.from) || '',
-      toApiDate(dateRange?.to) || '',
-    ].join('|');
-  };
-
   const applyPageData = (snapshot: CachedPageData) => {
     setLogs(snapshot.logs);
     setTotalItems(snapshot.totalItems);
@@ -345,12 +346,21 @@ export default function TimeClockPage() {
     setEarliestLogDate(snapshot.earliestLogDate);
   };
 
-  const fetchLogs = async (overrides?: { page?: number; perPage?: number; force?: boolean }) => {
+  const fetchLogs = async (overrides?: { page?: number; perPage?: number; force?: boolean; tab?: 'active' | 'archive' }) => {
     try {
       const page = overrides?.page ?? currentPage;
       const perPage = overrides?.perPage ?? itemsPerPage;
       const forceRefresh = overrides?.force ?? false;
-      const cacheKey = getLogsCacheKey(page, perPage);
+      const tab = overrides?.tab ?? activeTab;
+      const cacheKey = [
+        tab,
+        page,
+        perPage,
+        debouncedSearch.trim().toLowerCase(),
+        selectedShift,
+        toApiDate(dateRange?.from) || '',
+        toApiDate(dateRange?.to) || '',
+      ].join('|');
 
       if (!forceRefresh) {
         const cachedPage = pageCacheRef.current.get(cacheKey);
@@ -369,6 +379,7 @@ export default function TimeClockPage() {
         shift: selectedShift !== 'all' ? selectedShift : undefined,
         start_date: toApiDate(dateRange?.from),
         end_date: toApiDate(dateRange?.to),
+        archived: tab === 'archive',
       });
 
       const isPaginatedShape = response && !Array.isArray(response) && Array.isArray(response.data);
@@ -437,6 +448,20 @@ export default function TimeClockPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTabChange = (value: string) => {
+    const nextTab = (value === 'archive' ? 'archive' : 'active') as 'active' | 'archive';
+    if (nextTab === activeTab) {
+      return;
+    }
+    clearLogsCache();
+    setActiveTab(nextTab);
+    if (currentPage === 1) {
+      fetchLogs({ page: 1, force: true, tab: nextTab });
+      return;
+    }
+    setCurrentPage(1);
   };
 
   useEffect(() => {
@@ -614,7 +639,7 @@ export default function TimeClockPage() {
     }
 
     fetchLogs();
-  }, [currentPage, filterKey]);
+  }, [currentPage, filterKey, activeTab]);
 
   const handleItemsPerPageChange = (value: string) => {
     const parsed = parseInt(value, 10);
@@ -639,9 +664,79 @@ export default function TimeClockPage() {
     setDateRange(undefined);
     setSelectedShift('all');
     setCurrentPage(1);
+    setActiveTab('active');
 
     if (!hasChanges) {
       fetchLogs({ page: 1, force: true });
+    }
+  };
+
+  const toDaysLeft = (deletedAt: string | null): number | null => {
+    if (!deletedAt) return null;
+    const parse = (raw: string): Date | null => {
+      const d = new Date(raw);
+      if (!Number.isNaN(d.getTime())) return d;
+      const normalized = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
+      const d2 = new Date(normalized);
+      if (!Number.isNaN(d2.getTime())) return d2;
+      return null;
+    };
+    const deleted = parse(deletedAt);
+    if (!deleted) return null;
+    const diffMs = Date.now() - deleted.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    return Math.max(0, 90 - diffDays);
+  };
+
+  const handleRestoreLog = (log: TimeClockLog) => {
+    setLogToRestore(log);
+    setRestoreConfirmOpen(true);
+  };
+
+  const confirmRestore = async () => {
+    if (!logToRestore) return;
+    try {
+      setRestoring(true);
+      await restoreManualLog(logToRestore.id);
+      setRestoreConfirmOpen(false);
+      setLogToRestore(null);
+      clearLogsCache();
+      await fetchLogs({ force: true });
+      toast({ title: 'Restored', description: 'Time log restored successfully.' });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.message || error?.message || 'Failed to restore time log.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleForceDeleteLog = (log: TimeClockLog) => {
+    setLogToForceDelete(log);
+    setForceDeleteConfirmOpen(true);
+  };
+
+  const confirmForceDelete = async () => {
+    if (!logToForceDelete) return;
+    try {
+      setForceDeleting(true);
+      await forceDeleteManualLog(logToForceDelete.id);
+      setForceDeleteConfirmOpen(false);
+      setLogToForceDelete(null);
+      clearLogsCache();
+      await fetchLogs({ force: true });
+      toast({ title: 'Deleted', description: 'Time log permanently deleted.' });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.message || error?.message || 'Failed to permanently delete time log.',
+        variant: 'destructive',
+      });
+    } finally {
+      setForceDeleting(false);
     }
   };
 
@@ -1158,6 +1253,23 @@ export default function TimeClockPage() {
             )}
 
           </div>
+
+          {canManageLogs() && (
+            <div className="pt-3">
+              <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+                <TabsList className={`grid w-full mb-6 ${tabsGridClass}`}>
+                  <TabsTrigger value="active" className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Active
+                  </TabsTrigger>
+                  <TabsTrigger value="archive" className="flex items-center gap-2">
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent>
@@ -1167,6 +1279,7 @@ export default function TimeClockPage() {
                <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
                  <TableRow>
                    <TableHead>Date</TableHead>
+                   {activeTab === 'archive' && <TableHead>Days Left</TableHead>}
                    <TableHead>Employee</TableHead>
                    <TableHead>Branch</TableHead>
                    <TableHead>Shift</TableHead>
@@ -1190,6 +1303,9 @@ export default function TimeClockPage() {
                    logs.map((log) => (
                      <TableRow key={log.id}>
                        <TableCell>{log.date}</TableCell>
+                       {activeTab === 'archive' && (
+                         <TableCell>{toDaysLeft(log.deletedAt) ?? '-'}</TableCell>
+                       )}
                        <TableCell className="font-medium">{log.employee}</TableCell>
                        <TableCell>
                          <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 text-[10px] font-medium rounded-md px-2 py-0.5">
@@ -1216,17 +1332,33 @@ export default function TimeClockPage() {
                                </Button>
                              </DropdownMenuTrigger>
                              <DropdownMenuContent align="end">
-                               <DropdownMenuItem onClick={() => handleEditLog(log)}>
-                                 <Edit className="mr-2 h-4 w-4" />
-                                 Edit
-                               </DropdownMenuItem>
-                               <DropdownMenuItem 
-                                 onClick={() => handleDeleteLog(log)}
-                                 className="text-destructive"
-                               >
-                                 <Trash2 className="mr-2 h-4 w-4" />
-                                 Delete
-                               </DropdownMenuItem>
+                               {activeTab === 'archive' ? (
+                                 <>
+                                   <DropdownMenuItem onClick={() => handleRestoreLog(log)}>
+                                     Restore
+                                   </DropdownMenuItem>
+                                   <DropdownMenuItem
+                                     onClick={() => handleForceDeleteLog(log)}
+                                     className="text-destructive"
+                                   >
+                                     Delete permanently
+                                   </DropdownMenuItem>
+                                 </>
+                               ) : (
+                                 <>
+                                   <DropdownMenuItem onClick={() => handleEditLog(log)}>
+                                     <Edit className="mr-2 h-4 w-4" />
+                                     Edit
+                                   </DropdownMenuItem>
+                                   <DropdownMenuItem 
+                                     onClick={() => handleDeleteLog(log)}
+                                     className="text-destructive"
+                                   >
+                                     <Trash2 className="mr-2 h-4 w-4" />
+                                     Delete
+                                   </DropdownMenuItem>
+                                 </>
+                               )}
                              </DropdownMenuContent>
                            </DropdownMenu>
                          </TableCell>
@@ -1412,6 +1544,35 @@ export default function TimeClockPage() {
           date={logToDelete?.date}
           onConfirm={confirmDelete}
           loading={deleting}
+        />
+      )}
+
+      {canManageLogs() && (
+        <ConfirmDialog
+          open={restoreConfirmOpen}
+          onOpenChange={setRestoreConfirmOpen}
+          title="Restore time log?"
+          description="This will move the log back to Active logs."
+          confirmText="Restore"
+          cancelText="Cancel"
+          onConfirm={confirmRestore}
+          variant="warning"
+          contentClassName="border border-yellow-500"
+          loading={restoring}
+        />
+      )}
+
+      {canManageLogs() && (
+        <DeleteLogDialog
+          open={forceDeleteConfirmOpen}
+          onOpenChange={setForceDeleteConfirmOpen}
+          employeeName={logToForceDelete?.employee}
+          date={logToForceDelete?.date}
+          title="Permanently delete time log?"
+          description="This action cannot be undone."
+          confirmText="Delete permanently"
+          onConfirm={confirmForceDelete}
+          loading={forceDeleting}
         />
       )}
 

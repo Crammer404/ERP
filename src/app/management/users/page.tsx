@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { UserCog, MoreVertical, Plus, Trash2, Edit, Search, RefreshCw, IdCard, Download, Loader2, User } from 'lucide-react';
+import { UserCog, MoreVertical, Plus, Trash2, Edit, Search, RefreshCw, IdCard, User } from 'lucide-react';
 import { userService, employeeService } from '@/services';
 import type { UserEntity } from '@/services';
 import type { Role, PaginationResponse, UserInfo as UserInfoPayload } from '@/app/management/users/services/userService';
@@ -24,9 +24,8 @@ import { PaginationInfos } from '@/components/ui/pagination-info';
 import { UserFormModal } from '@/app/management/users/components/user-form-modal';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { FlipCard } from '@/components/ui/flip-card';
-import html2canvas from 'html2canvas';
 import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
+import { EmployeeIdCard, type EmployeeDisplay } from '@/app/hrms/dtr/employeeId/components/employee-id';
 
 const getRoleName = (role: string | number | Role | null): string => {
   if (!role) return 'N/A';
@@ -87,11 +86,6 @@ export default function UserPage() {
   // Digital ID Card state
   const [idModalOpen, setIdModalOpen] = useState(false);
   const [selectedUserForId, setSelectedUserForId] = useState<UserEntity | null>(null);
-  const [qrCode, setQrCode] = useState<string>('');
-  const [generatingQr, setGeneratingQr] = useState(false);
-  const [downloadingId, setDownloadingId] = useState(false);
-  const frontCardRef = useRef<HTMLDivElement>(null);
-  const backCardRef = useRef<HTMLDivElement>(null);
 
   const getPositionOrRole = useCallback((targetUser: UserEntity): string => {
     const positionId = Number(targetUser.user_info?.payroll_positions_id);
@@ -432,88 +426,10 @@ export default function UserPage() {
     try {
       setSelectedUserForId(user);
       setIdModalOpen(true);
-      setGeneratingQr(true);
-      setQrCode('');
-
-      const qrData = {
-        id: user.id,
-        name: getDisplayName(user),
-        email: user.email,
-        role: getPositionOrRole(user),
-        branch: getPrimaryBranchName(user),
-      };
-
-      const svgQrCode = await employeeService.generateEmployeeQr(qrData);
-      setQrCode(svgQrCode);
-      showToast('success', 'Success', 'Digital ID generated successfully');
     } catch (error) {
       console.error('Failed to generate Digital ID:', error);
       showToast('error', 'Error', 'Failed to generate Digital ID');
       setIdModalOpen(false);
-    } finally {
-      setGeneratingQr(false);
-    }
-  };
-
-  // Handle Download Digital ID (front and back)
-  const handleDownloadIdCards = async () => {
-    if (!selectedUserForId || !frontCardRef.current || !backCardRef.current) return;
-
-    try {
-      setDownloadingId(true);
-
-      const displayName = getDisplayName(selectedUserForId) || `User_${selectedUserForId.id}`;
-      const fileName = displayName.replace(/\s+/g, '_');
-
-      const downloadCanvasImage = async (canvas: HTMLCanvasElement, filename: string) => {
-        return new Promise<void>((resolve) => {
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = filename;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-            }
-            resolve();
-          }, 'image/png');
-        });
-      };
-
-      // Ensure hidden cards are fully rendered
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const frontCanvas = await html2canvas(frontCardRef.current, {
-        background: undefined,
-        useCORS: true,
-        logging: false,
-        dpi: 300,
-        scale: 2,
-      } as any);
-
-      await downloadCanvasImage(frontCanvas, `${fileName}_ID_Front.png`);
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      const backCanvas = await html2canvas(backCardRef.current, {
-        background: undefined,
-        useCORS: true,
-        logging: false,
-        dpi: 300,
-        scale: 2,
-      } as any);
-
-      await downloadCanvasImage(backCanvas, `${fileName}_ID_Back.png`);
-
-      showToast('success', 'Success', 'Digital ID downloaded successfully');
-    } catch (error) {
-      console.error('Failed to download ID cards:', error);
-      showToast('error', 'Error', 'Failed to download Digital ID');
-    } finally {
-      setDownloadingId(false);
     }
   };
 
@@ -858,6 +774,18 @@ export default function UserPage() {
     return <FullPageAccessDenied moduleName="users" />;
   }
 
+  const selectedEmployeeForCard: EmployeeDisplay | null = selectedUserForId
+    ? {
+        id: selectedUserForId.id,
+        name: getDisplayName(selectedUserForId),
+        email: selectedUserForId.email,
+        role: getRoleName(selectedUserForId.role),
+        position: getPositionOrRole(selectedUserForId),
+        displayRole: getPositionOrRole(selectedUserForId),
+        branch: getPrimaryBranchName(selectedUserForId),
+      }
+    : null;
+
   return (
     <div className="container mx-auto py-6 px-4">
       <Card>
@@ -1095,193 +1023,9 @@ export default function UserPage() {
               {selectedUserForId && `Hover over the card to view QR code`}
             </DialogDescription>
           </DialogHeader>
-          
-          {generatingQr ? (
-            <div className="flex justify-center items-center min-h-[400px]">
-              <div className="text-center">
-                <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-                <p className="text-sm text-muted-foreground mt-2">Generating Digital ID...</p>
-              </div>
-            </div>
-          ) : selectedUserForId && qrCode ? (
-            (() => {
-              const displayName = getDisplayName(selectedUserForId);
-              const positionOrRole = getPositionOrRole(selectedUserForId);
-              const branchName = getPrimaryBranchName(selectedUserForId);
-
-              return (
-                <>
-                  {/* Hidden cards for high-quality downloads */}
-                  <div className="fixed -left-[9999px] top-0">
-                    <div
-                      ref={frontCardRef}
-                      className="w-[260px] h-[380px] bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl shadow-2xl p-5 text-white"
-                    >
-                      <div className="flex flex-col items-center h-full">
-                        <div className="text-center mb-4">
-                          <h3 className="text-sm font-bold tracking-widest">THE NEST</h3>
-                          <div className="h-0.5 w-12 bg-white/30 mx-auto mt-1.5 rounded-full"></div>
-                        </div>
-                        <div className="flex-shrink-0 mb-4">
-                          <div className="w-24 h-24 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border-3 border-white/30">
-                            <User className="w-12 h-12 text-white" />
-                          </div>
-                        </div>
-                        <div className="flex-1 flex flex-col justify-center text-center space-y-2.5 w-full">
-                          <h2 className="text-xl font-bold leading-tight px-2">{displayName}</h2>
-                          <div className="space-y-1.5 text-xs bg-white/10 backdrop-blur-sm rounded-lg p-3">
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/80">ID:</span>
-                              <span className="font-semibold">{selectedUserForId.id}</span>
-                            </div>
-                            <div className="h-px bg-white/20"></div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/80">Position:</span>
-                              <span className="font-semibold text-right ml-2">{positionOrRole}</span>
-                            </div>
-                            <div className="h-px bg-white/20"></div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/80">Branch:</span>
-                              <span className="font-semibold">{branchName}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div
-                      ref={backCardRef}
-                      className="w-[260px] h-[380px] bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl shadow-2xl p-4"
-                    >
-                      <div className="flex flex-col items-center h-full">
-                        <div className="text-center mb-2">
-                          <h3 className="text-sm font-bold text-gray-800">Digital ID</h3>
-                          <p className="text-[9px] text-gray-500 mt-0.5">Scan to Clock In/Out</p>
-                        </div>
-                        <div className="flex-1 flex items-center justify-center my-2">
-                          <div
-                            className="bg-white p-1.5 rounded-lg border border-gray-300 shadow-sm [&_svg]:w-[110px] [&_svg]:h-[110px]"
-                            dangerouslySetInnerHTML={{ __html: qrCode }}
-                          />
-                        </div>
-                        <div className="w-full bg-white rounded-lg p-2 border border-gray-200 shadow-sm">
-                          <h4 className="text-[9px] font-bold text-gray-500 tracking-wider mb-1.5">EMPLOYEE INFORMATION</h4>
-                          <div className="space-y-1 text-[10px]">
-                            <div>
-                              <span className="text-gray-500 text-[8px] block leading-tight">Name</span>
-                              <span className="font-medium text-gray-800 text-[10px]">{displayName}</span>
-                            </div>
-                            <div className="h-px bg-gray-200"></div>
-                            <div>
-                              <span className="text-gray-500 text-[8px] block leading-tight">Employee ID</span>
-                              <span className="font-medium text-gray-800 text-[10px]">{selectedUserForId.id}</span>
-                            </div>
-                            <div className="h-px bg-gray-200"></div>
-                            <div>
-                              <span className="text-gray-500 text-[8px] block leading-tight">Branch</span>
-                              <span className="font-medium text-gray-800 text-[10px]">{branchName}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Visible flip card */}
-                  <div className="w-[260px] h-[380px] mx-auto">
-                    <FlipCard
-                      front={
-                        <div className="w-full h-full bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl shadow-2xl p-5 text-white">
-                          <div className="flex flex-col items-center h-full">
-                            <div className="text-center mb-4">
-                              <h3 className="text-sm font-bold tracking-widest">THE NEST</h3>
-                              <div className="h-0.5 w-12 bg-white/30 mx-auto mt-1.5 rounded-full"></div>
-                            </div>
-                            <div className="flex-shrink-0 mb-4">
-                              <div className="w-24 h-24 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border-3 border-white/30">
-                                <User className="w-12 h-12 text-white" />
-                              </div>
-                            </div>
-                            <div className="flex-1 flex flex-col justify-center text-center space-y-2.5 w-full">
-                              <h2 className="text-xl font-bold leading-tight px-2">{displayName}</h2>
-                              <div className="space-y-1.5 text-xs bg-white/10 backdrop-blur-sm rounded-lg p-3">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-white/80">ID:</span>
-                                  <span className="font-semibold">{selectedUserForId.id}</span>
-                                </div>
-                                <div className="h-px bg-white/20"></div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-white/80">Position:</span>
-                                  <span className="font-semibold text-right ml-2">{positionOrRole}</span>
-                                </div>
-                                <div className="h-px bg-white/20"></div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-white/80">Branch:</span>
-                                  <span className="font-semibold">{branchName}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      }
-                      back={
-                        <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl shadow-2xl p-4">
-                          <div className="flex flex-col items-center h-full">
-                            <div className="text-center mb-2">
-                              <h3 className="text-sm font-bold text-gray-800">Digital ID</h3>
-                              <p className="text-[9px] text-gray-500 mt-0.5">Scan to Clock In/Out</p>
-                            </div>
-                            <div className="flex-1 flex items-center justify-center my-2">
-                              <div
-                                className="bg-white p-1.5 rounded-lg border border-gray-300 shadow-sm [&_svg]:w-[110px] [&_svg]:h-[110px]"
-                                dangerouslySetInnerHTML={{ __html: qrCode }}
-                              />
-                            </div>
-                            <div className="w-full bg-white rounded-lg p-2 border border-gray-200 shadow-sm">
-                              <h4 className="text-[9px] font-bold text-gray-500 tracking-wider mb-1.5">EMPLOYEE INFORMATION</h4>
-                              <div className="space-y-1 text-[10px]">
-                                <div>
-                                  <span className="text-gray-500 text-[8px] block leading-tight">Name</span>
-                                  <span className="font-medium text-gray-800 text-[10px]">{displayName}</span>
-                                </div>
-                                <div className="h-px bg-gray-200"></div>
-                                <div>
-                                  <span className="text-gray-500 text-[8px] block leading-tight">Employee ID</span>
-                                  <span className="font-medium text-gray-800 text-[10px]">{selectedUserForId.id}</span>
-                                </div>
-                                <div className="h-px bg-gray-200"></div>
-                                <div>
-                                  <span className="text-gray-500 text-[8px] block leading-tight">Branch</span>
-                                  <span className="font-medium text-gray-800 text-[10px]">{branchName}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      }
-                    />
-                  </div>
-
-                  {/* Download Button */}
-                  <div className="flex justify-center mt-6">
-                    <Button onClick={handleDownloadIdCards} size="lg" disabled={downloadingId}>
-                      {downloadingId ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Downloading...
-                        </>
-                      ) : (
-                        <>
-                          <Download className="mr-2 h-4 w-4" />
-                          Download ID Card
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </>
-              );
-            })()
-          ) : null}
+          {selectedEmployeeForCard && (
+            <EmployeeIdCard employeeOverride={selectedEmployeeForCard} />
+          )}
         </DialogContent>
       </Dialog>
     </div>

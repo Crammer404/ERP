@@ -13,7 +13,7 @@ import html2canvas from 'html2canvas';
 import useLocalStorage from '@/hooks/use-local-storage';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 
-interface EmployeeDisplay {
+export interface EmployeeDisplay {
   id: number;
   name: string;
   email: string;
@@ -27,12 +27,14 @@ interface EmployeeIdCardProps {
   compact?: boolean;
   hideDownloadButton?: boolean;
   onDownloadRequestReady?: (handler: (() => Promise<void>) | null) => void;
+  employeeOverride?: EmployeeDisplay | null;
 }
 
 export function EmployeeIdCard({
   compact = false,
   hideDownloadButton = false,
   onDownloadRequestReady,
+  employeeOverride,
 }: EmployeeIdCardProps) {
   const { user } = useAuth();
   const [employee, setEmployee] = useState<EmployeeDisplay | null>(null);
@@ -44,10 +46,16 @@ export function EmployeeIdCard({
   const [idHeaderPreference] = useLocalStorage<'tenant' | 'branch'>('id-header-display', 'tenant');
 
   useEffect(() => {
+    if (employeeOverride) {
+      setEmployee(employeeOverride);
+      void generateQrCode(employeeOverride).finally(() => setLoading(false));
+      return;
+    }
+
     if (user) {
       fetchCurrentUserEmployee();
     }
-  }, [user]);
+  }, [user, employeeOverride]);
 
   const fetchCurrentUserEmployee = async () => {
     try {

@@ -18,8 +18,9 @@ interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   onConfirm: () => void;
-  variant?: 'default' | 'destructive';
+  variant?: 'default' | 'destructive' | 'warning';
   loading?: boolean;
+  contentClassName?: string;
 }
 
 export function ConfirmDialog({
@@ -32,6 +33,7 @@ export function ConfirmDialog({
   onConfirm,
   variant = 'default',
   loading = false,
+  contentClassName,
 }: ConfirmDialogProps) {
   const handleConfirm = () => {
     onConfirm();
@@ -40,7 +42,7 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className={contentClassName}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
@@ -53,7 +55,9 @@ export function ConfirmDialog({
             className={
               variant === 'destructive'
                 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                : ''
+                : variant === 'warning'
+                  ? 'bg-yellow-500 text-black hover:bg-yellow-600'
+                  : ''
             }
           >
             {loading ? 'Processing...' : confirmText}
