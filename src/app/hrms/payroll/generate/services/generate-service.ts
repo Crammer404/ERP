@@ -48,6 +48,16 @@ export interface PayslipData {
   date_end: string;
   pay_date: string;
   payroll_type: string;
+  worked_days?: number;
+  regular_hours_worked?: number;
+  late_days?: number;
+  late_minutes?: number;
+  overtime_days?: number;
+  overtime_minutes?: number;
+  restday_days?: number;
+  restday_hours?: number;
+  holiday_days?: number;
+  holiday_hours?: number;
   basic_pay: number;
   overtime_pay: number;
   allowance: number;

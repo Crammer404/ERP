@@ -1346,17 +1346,17 @@ export default function TimeClockPage() {
                                  </>
                                ) : (
                                  <>
-                                   <DropdownMenuItem onClick={() => handleEditLog(log)}>
-                                     <Edit className="mr-2 h-4 w-4" />
-                                     Edit
-                                   </DropdownMenuItem>
-                                   <DropdownMenuItem 
-                                     onClick={() => handleDeleteLog(log)}
-                                     className="text-destructive"
-                                   >
-                                     <Trash2 className="mr-2 h-4 w-4" />
-                                     Delete
-                                   </DropdownMenuItem>
+                               <DropdownMenuItem onClick={() => handleEditLog(log)}>
+                                 <Edit className="mr-2 h-4 w-4" />
+                                 Edit
+                               </DropdownMenuItem>
+                               <DropdownMenuItem 
+                                 onClick={() => handleDeleteLog(log)}
+                                 className="text-destructive"
+                               >
+                                 <Trash2 className="mr-2 h-4 w-4" />
+                                 Delete
+                               </DropdownMenuItem>
                                  </>
                                )}
                              </DropdownMenuContent>

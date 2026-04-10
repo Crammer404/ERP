@@ -22,10 +22,12 @@ import { Loader } from '@/components/ui/loader';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { UserFormModal } from '@/app/management/users/components/user-form-modal';
-import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
 import { EmployeeIdCard, type EmployeeDisplay } from '@/app/hrms/dtr/employeeId/components/employee-id';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const getRoleName = (role: string | number | Role | null): string => {
   if (!role) return 'N/A';
@@ -72,10 +74,11 @@ export default function UserPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusTab, setStatusTab] = useState<'active' | 'inactive'>('active');
   const [positionsById, setPositionsById] = useState<Record<number, string>>({});
   // Consolidated modal state
   const [modalState, setModalState] = useState<{
-    type: 'add' | 'edit' | 'delete' | null;
+    type: 'add' | 'edit' | 'disable' | 'enable' | null;
     isOpen: boolean;
     user?: UserEntity | null;
   }>({ type: null, isOpen: false, user: null });
@@ -199,8 +202,8 @@ export default function UserPage() {
     }
   });
 
-  const getCacheKey = (page: number, perPage: number, search: string) => {
-    return `${page}-${perPage}-${search}`;
+  const getCacheKey = (page: number, perPage: number, search: string, showInactive: boolean) => {
+    return `${page}-${perPage}-${search}-${showInactive ? 'inactive' : 'active'}`;
   };
 
   const clearCache = () => {
@@ -208,7 +211,13 @@ export default function UserPage() {
     setUserCache(new Map());
   };
 
-  const fetchUsers = async (page: number = currentPage, perPage: number = itemsPerPage, search: string = searchTerm, forceRefresh: boolean = false) => {
+  const fetchUsers = async (
+    page: number = currentPage,
+    perPage: number = itemsPerPage,
+    search: string = searchTerm,
+    showInactive: boolean = statusTab === 'inactive',
+    forceRefresh: boolean = false
+  ) => {
     // Check if branch is selected before fetching
     const currentBranch = tenantContextService.getStoredBranchContext();
     if (!currentBranch) {
@@ -227,7 +236,7 @@ export default function UserPage() {
       return;
     }
 
-    const cacheKey = getCacheKey(page, perPage, search);
+    const cacheKey = getCacheKey(page, perPage, search, showInactive);
     
     console.log('Fetching users with cache key:', cacheKey);
     console.log('Cache has key:', userCache.has(cacheKey));
@@ -246,7 +255,7 @@ export default function UserPage() {
 
     setLoading(true);
     try {
-      const response = await userService.getAll(page, perPage, search);
+      const response = await userService.getAll(page, perPage, search, showInactive);
       console.log('API response received:', response.users.length, 'users');
       setUsers(response.users);
       setPagination(response.pagination);
@@ -310,7 +319,7 @@ export default function UserPage() {
     
     // Only fetch users if branch is selected
     if (currentBranch) {
-      fetchUsers(currentPage, itemsPerPage, searchTerm);
+      fetchUsers(currentPage, itemsPerPage, searchTerm, statusTab === 'inactive');
       fetchPositions(currentBranch.id);
     } else {
       // Clear users if no branch selected
@@ -328,7 +337,7 @@ export default function UserPage() {
       setLoading(false);
     }
     fetchRoles();
-  }, [currentPage, itemsPerPage, searchTerm]);
+  }, [currentPage, itemsPerPage, searchTerm, statusTab]);
 
   useEffect(() => {
     setRoles((prev) => filterRolesForCurrentUser(prev));
@@ -366,7 +375,7 @@ export default function UserPage() {
       
       // Only fetch if branch is selected
       if (currentBranch) {
-        fetchUsers(1, itemsPerPage, searchTerm);
+        fetchUsers(1, itemsPerPage, searchTerm, statusTab === 'inactive');
         fetchPositions(currentBranch.id);
       } else {
         // Clear users if no branch selected
@@ -390,7 +399,7 @@ export default function UserPage() {
     return () => {
       window.removeEventListener('branchChanged', handleBranchChange);
     };
-  }, [itemsPerPage, searchTerm]);
+  }, [itemsPerPage, searchTerm, statusTab]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -417,7 +426,7 @@ export default function UserPage() {
     }
     // Force fresh fetch by bypassing cache
     setTimeout(() => {
-      fetchUsers(currentPage, itemsPerPage, searchTerm, true);
+      fetchUsers(currentPage, itemsPerPage, searchTerm, statusTab === 'inactive', true);
     }, 100);
   };
 
@@ -444,7 +453,12 @@ export default function UserPage() {
     }
     
     try {
-      const response = await userService.getAll(currentPage, itemsPerPage, searchTerm);
+      const response = await userService.getAll(
+        currentPage,
+        itemsPerPage,
+        searchTerm,
+        statusTab === 'inactive'
+      );
       console.log('Force refresh - API response received:', response.users.length, 'users');
       setUsers(response.users);
       setPagination(response.pagination);
@@ -592,59 +606,72 @@ export default function UserPage() {
   };
 
   // Consolidated modal handlers
-  const openModal = async (type: 'add' | 'edit' | 'delete', user?: UserEntity) => {
+  const openModal = async (
+    type: 'add' | 'edit' | 'disable' | 'enable',
+    user?: UserEntity
+  ) => {
     setErrors({});
 
     if (type === 'add') {
       resetForm();
       setModalState({ type: 'add', isOpen: true, user: null });
-    } else if (type === 'delete' && user) {
-      setModalState({ type: 'delete', isOpen: true, user });
+    } else if (type === 'disable' && user) {
+      setModalState({ type: 'disable', isOpen: true, user });
+    } else if (type === 'enable' && user) {
+      setModalState({ type: 'enable', isOpen: true, user });
     } else if (type === 'edit' && user) {
       setFormLoading(true);
-    try {
-      const fullUser = await userService.getById(user.id);
-      setFormData({
-        email: fullUser.email || '',
-        password: '',
-        confirmPassword: '',
-        role: fullUser.role
-          ? (typeof fullUser.role === 'object' && fullUser.role.id ? fullUser.role.id.toString() : (typeof fullUser.role === 'string' || typeof fullUser.role === 'number' ? fullUser.role.toString() : ''))
-          : '',
-        branch_ids: Array.isArray(fullUser.branches) && fullUser.branches.length > 0
-          ? fullUser.branches.map(branch => branch.id.toString())
-          : (activeBranch ? [activeBranch.id.toString()] : []),
-        user_info: {
-          first_name: fullUser.user_info?.first_name || '',
-          middle_name: fullUser.user_info?.middle_name || '',
-          last_name: fullUser.user_info?.last_name || '',
-          payroll_positions_id: fullUser.user_info?.payroll_positions_id
-            ? fullUser.user_info.payroll_positions_id.toString()
+      try {
+        const fullUser = await userService.getById(user.id);
+        setFormData({
+          email: fullUser.email || '',
+          password: '',
+          confirmPassword: '',
+          role: fullUser.role
+            ? (typeof fullUser.role === 'object' && fullUser.role.id
+                ? fullUser.role.id.toString()
+                : (typeof fullUser.role === 'string' || typeof fullUser.role === 'number'
+                    ? fullUser.role.toString()
+                    : ''))
             : '',
-          address: {
-            ...(() => {
-              const userAddress = fullUser.user_info?.address as Record<string, any> | undefined;
-              return {
-                street: userAddress?.street || '',
-                city: userAddress?.city || '',
-                province: userAddress?.province || '',
-                region: userAddress?.region || '',
-                postal_code: userAddress?.postal_code || userAddress?.zipcode || '',
-                zipcode: userAddress?.zipcode || userAddress?.postal_code || '',
-                barangay: userAddress?.barangay || '',
-                block_lot: userAddress?.block_lot || '',
-                country: userAddress?.country || 'Philippines',
-              };
-            })()
+          branch_ids: Array.isArray(fullUser.branches) && fullUser.branches.length > 0
+            ? fullUser.branches.map((branch) => branch.id.toString())
+            : (activeBranch ? [activeBranch.id.toString()] : []),
+          user_info: {
+            first_name: fullUser.user_info?.first_name || '',
+            middle_name: fullUser.user_info?.middle_name || '',
+            last_name: fullUser.user_info?.last_name || '',
+            payroll_positions_id: fullUser.user_info?.payroll_positions_id
+              ? fullUser.user_info.payroll_positions_id.toString()
+              : '',
+            address: {
+              ...(() => {
+                const userAddress = fullUser.user_info?.address as
+                  | Record<string, any>
+                  | undefined;
+                return {
+                  street: userAddress?.street || '',
+                  city: userAddress?.city || '',
+                  province: userAddress?.province || '',
+                  region: userAddress?.region || '',
+                  postal_code:
+                    userAddress?.postal_code || userAddress?.zipcode || '',
+                  zipcode:
+                    userAddress?.zipcode || userAddress?.postal_code || '',
+                  barangay: userAddress?.barangay || '',
+                  block_lot: userAddress?.block_lot || '',
+                  country: userAddress?.country || 'Philippines',
+                };
+              })()
+            }
           }
-        }
-      });
+        });
         setModalState({ type: 'edit', isOpen: true, user });
-    } catch (error) {
-      console.error('Failed to fetch user details:', error);
-      setErrors({ general: 'Failed to load user details' });
-    } finally {
-      setFormLoading(false);
+      } catch (error) {
+        console.error('Failed to fetch user details:', error);
+        setErrors({ general: 'Failed to load user details' });
+      } finally {
+        setFormLoading(false);
       }
     }
   };
@@ -736,34 +763,60 @@ export default function UserPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDisable = async () => {
     if (!modalState.user) return;
-    
+
     setFormLoading(true);
     setErrors({});
 
     try {
-      await userService.delete(modalState.user.id);
+      await userService.disable(modalState.user.id);
 
       closeModal();
       forceRefresh();
-      showToast("success", "User Deleted", "The user was successfully deleted.");
+      showToast("success", "User Disabled", "The user account has been disabled.");
     } catch (err: any) {
-      console.error('Delete error:', err);
-      
-      // Handle specific error cases
+      console.error('Disable error:', err);
+
       if (err.response?.status === 404) {
-        setErrors({ general: "User not found. It may have already been deleted." });
-        showToast("warning", "User Not Found", "This user may have already been deleted.");
-        // Still refresh to get the latest data
+        setErrors({ general: "User not found. It may have already been disabled." });
+        showToast("warning", "User Not Found", "This user may have already been disabled.");
         forceRefresh();
-      } else if (err.response?.status === 500 && err.response?.data?.error?.includes("No query results")) {
-        setErrors({ general: "User not found in database." });
-        showToast("warning", "User Not Found", "This user no longer exists.");
-        // Still refresh to get the latest data
-        forceRefresh();
+      } else if (err.response?.status === 403) {
+        setErrors({ general: "You do not have permission to disable this user." });
+        showToast("warning", "Permission Denied", "You do not have permission to disable this user.");
       } else {
-        handleApiError(err, "Failed to delete user");
+        handleApiError(err, "Failed to disable user");
+      }
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleEnable = async () => {
+    if (!modalState.user) return;
+
+    setFormLoading(true);
+    setErrors({});
+
+    try {
+      await userService.enable(modalState.user.id);
+
+      closeModal();
+      forceRefresh();
+      showToast("success", "User Enabled", "The user account has been enabled.");
+    } catch (err: any) {
+      console.error('Enable error:', err);
+
+      if (err.response?.status === 404) {
+        setErrors({ general: "User not found." });
+        showToast("warning", "User Not Found", "This user no longer exists.");
+        forceRefresh();
+      } else if (err.response?.status === 403) {
+        setErrors({ general: "You do not have permission to enable this user." });
+        showToast("warning", "Permission Denied", "You do not have permission to enable this user.");
+      } else {
+        handleApiError(err, "Failed to enable user");
       }
     } finally {
       setFormLoading(false);
@@ -820,6 +873,25 @@ export default function UserPage() {
               </PermissionGuard>
             </div>
           </div>
+
+          <div className="mb-4">
+            <Tabs
+              value={statusTab}
+              onValueChange={(value) => {
+                const nextTab = value === 'inactive' ? 'inactive' : 'active';
+                setStatusTab(nextTab);
+                setUserCache(new Map());
+                setCurrentPage(1);
+                fetchUsers(1, itemsPerPage, searchTerm, nextTab === 'inactive');
+              }}
+            >
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="active">Active</TabsTrigger>
+                <TabsTrigger value="inactive">Inactive</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
           {loading ? (
             <div className="flex justify-center py-8">
               <Loader size="md" />
@@ -841,6 +913,7 @@ export default function UserPage() {
                     <TableHead>Branch</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Position</TableHead>
+                    <TableHead>Status</TableHead>
                     {(canUpdate || canDelete) && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
@@ -865,6 +938,11 @@ export default function UserPage() {
                           return positionsById[positionId] || "-";
                         })()}
                       </TableCell>
+                      <TableCell>
+                        <Badge variant={user.is_active ? 'default' : 'secondary'}>
+                          {user.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
                       {(canUpdate || canDelete) && (
                         <TableCell>
                           <DropdownMenu>
@@ -884,15 +962,27 @@ export default function UserPage() {
                                   Edit
                                 </DropdownMenuItem>
                               </PermissionGuard>
-                              <PermissionGuard module="users" action="delete">
-                                <DropdownMenuItem
-                                  onClick={() => openModal('delete', user)}
-                                  className="text-red-600 focus:text-red-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </PermissionGuard>
+                              {user.is_active ? (
+                                <PermissionGuard module="users" action="delete">
+                                  <DropdownMenuItem
+                                    onClick={() => openModal('disable', user)}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Disable
+                                  </DropdownMenuItem>
+                                </PermissionGuard>
+                              ) : (
+                                <PermissionGuard module="users" action="update">
+                                  <DropdownMenuItem
+                                    onClick={() => openModal('enable', user)}
+                                    className="text-green-600 focus:text-green-600"
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Enable
+                                  </DropdownMenuItem>
+                                </PermissionGuard>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -997,21 +1087,39 @@ export default function UserPage() {
       </PermissionGuard>
       )}
 
-      {modalState.type === 'delete' && (
+      {modalState.type === 'disable' && (
         <PermissionGuard module="users" action="delete">
-          <DeleteConfirmModal
-            isOpen={modalState.isOpen}
-            onClose={closeModal}
-            onConfirm={handleDelete}
+          <ConfirmDialog
+            open={modalState.isOpen}
+            onOpenChange={(open) => {
+              if (!open) closeModal();
+            }}
+            title="Disable user?"
+            description={`Disable "${modalState.user ? getDisplayName(modalState.user) : ''}" and revoke API access.`}
+            confirmText="Disable"
+            cancelText="Cancel"
+            onConfirm={handleDisable}
+            variant="destructive"
             loading={formLoading}
-            title="Delete User"
-            itemName={modalState.user?.user_info?.first_name && modalState.user?.user_info?.last_name 
-              ? `${modalState.user.user_info.first_name} ${modalState.user.user_info.last_name}`
-              : modalState.user?.email
-            }
-            errors={errors}
           />
-      </PermissionGuard>
+        </PermissionGuard>
+      )}
+
+      {modalState.type === 'enable' && (
+        <PermissionGuard module="users" action="update">
+          <ConfirmDialog
+            open={modalState.isOpen}
+            onOpenChange={(open) => {
+              if (!open) closeModal();
+            }}
+            title="Enable user?"
+            description={`Enable "${modalState.user ? getDisplayName(modalState.user) : ''}" to allow login.`}
+            confirmText="Enable"
+            cancelText="Cancel"
+            onConfirm={handleEnable}
+            loading={formLoading}
+          />
+        </PermissionGuard>
       )}
 
       {/* Digital ID Card Modal */}

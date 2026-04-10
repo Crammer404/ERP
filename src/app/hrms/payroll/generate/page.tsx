@@ -250,16 +250,31 @@ export default function GeneratePayrollPage() {
       const companyName = response.company?.name || '';
       const logoUrl = response.company?.logo || undefined;
 
+      const pushRowIfNotZero = (
+        rows: Array<{ leftLabel: string; leftValue: string; rightLabel: string; rightValue: string }>,
+        leftLabel: string,
+        leftValueNumber: number,
+        leftValueDisplay: string,
+        rightLabel: string,
+        rightValueNumber: number,
+        rightValueDisplay: string
+      ) => {
+        if (leftValueNumber === 0 && rightValueNumber === 0) {
+          return;
+        }
+        rows.push({
+          leftLabel,
+          leftValue: leftValueDisplay,
+          rightLabel,
+          rightValue: rightValueDisplay,
+        });
+      };
+
       const mapped: PayslipTemplateData[] = response.payslips.map((p) => {
-        const otherEarnings = [
-          ...(p.total_allowance
-            ? [{ label: 'Allowance', amount: p.total_allowance }]
-            : []),
-          ...(p.earnings || []).map((e) => ({
-            label: e.description,
-            amount: e.total || 0,
-          })),
-        ];
+        const otherEarnings = (p.earnings || []).map((e) => ({
+          label: e.description,
+          amount: e.total || 0,
+        }));
 
         const otherDeductions = (p.deductions || []).map((d) => ({
           label: d.description,
@@ -274,6 +289,54 @@ export default function GeneratePayrollPage() {
           (p.philhealth || 0) +
           otherDeductions.reduce((sum, d) => sum + d.amount, 0);
 
+        const summaryRows: Array<{
+          leftLabel: string;
+          leftValue: string;
+          rightLabel: string;
+          rightValue: string;
+        }> = [];
+
+        const workedDays = Number(p.worked_days ?? 0);
+        const regularHoursWorked = Number(p.regular_hours_worked ?? 0);
+        const lateDays = Number(p.late_days ?? 0);
+        const lateMinutes = Number(p.late_minutes ?? 0);
+        const overtimeDays = Number(p.overtime_days ?? 0);
+        const overtimeMinutes = Number(p.overtime_minutes ?? 0);
+        const restdayDays = Number(p.restday_days ?? 0);
+        const restdayHours = Number(p.restday_hours ?? 0);
+        const holidayDays = Number(p.holiday_days ?? 0);
+        const holidayHours = Number(p.holiday_hours ?? 0);
+
+        pushRowIfNotZero(
+          summaryRows,
+          'Days worked',
+          workedDays,
+          String(workedDays),
+          'Regular hours worked',
+          regularHoursWorked,
+          `${regularHoursWorked} hrs`
+        );
+
+        pushRowIfNotZero(
+          summaryRows,
+          'Days late',
+          lateDays,
+          String(lateDays),
+          'Late minutes',
+          lateMinutes,
+          `${lateMinutes} min`
+        );
+
+        pushRowIfNotZero(
+          summaryRows,
+          'Days overtime',
+          overtimeDays,
+          String(overtimeDays),
+          'Overtime minutes',
+          overtimeMinutes,
+          `${overtimeMinutes} min`
+        );
+
         return {
           companyName,
           companyAddress: '',
@@ -284,6 +347,8 @@ export default function GeneratePayrollPage() {
           payrollType: p.payroll_type,
           payPeriod: p.date_range,
           generatedDate: p.pay_date || p.date_end,
+          daysWorked: workedDays,
+          summaryRows,
           basicPay: p.basic_pay || 0,
           overtimePay: p.overtime_pay || 0,
           nightDifferential: p.night_diff || 0,

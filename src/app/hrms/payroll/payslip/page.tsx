@@ -83,6 +83,7 @@ export default function PayslipPage() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
 
   const [payslipToDownload, setPayslipToDownload] = useState<PayslipRecord | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const downloadRef = useRef<HTMLDivElement | null>(null);
   const { defaultCurrency } = useCurrency();
   const [currentPosition, setCurrentPosition] = useState<string>('');
@@ -149,7 +150,6 @@ export default function PayslipPage() {
 
   const mapToTemplateData = (payslip: ApiPayslipData): PayslipTemplateData => {
     const otherEarnings = [
-      ...(payslip.total_allowance ? [{ label: 'Allowance', amount: payslip.total_allowance }] : []),
       ...(payslip.earnings || []).map((earning) => ({
         label: earning.description,
         amount: earning.total || 0,
@@ -170,6 +170,51 @@ export default function PayslipPage() {
       otherDeductions.reduce((sum, d) => sum + d.amount, 0);
 
     const currencySymbol = defaultCurrency?.symbol || 'PHP';
+    const summaryRows: Array<{ leftLabel: string; leftValue: string; rightLabel: string; rightValue: string }> = [];
+
+    const pushRowIfNotZero = (
+      leftLabel: string,
+      leftValue: number,
+      leftSuffix: string,
+      rightLabel: string,
+      rightValue: number,
+      rightSuffix: string
+    ) => {
+      const left = Number(leftValue || 0);
+      const right = Number(rightValue || 0);
+      if (left === 0 && right === 0) return;
+      summaryRows.push({
+        leftLabel,
+        leftValue: `${left}${leftSuffix}`,
+        rightLabel,
+        rightValue: `${right}${rightSuffix}`,
+      });
+    };
+
+    pushRowIfNotZero(
+      'Days worked',
+      payslip.worked_days || 0,
+      '',
+      'Regular hours work',
+      payslip.regular_hours_worked || 0,
+      'h'
+    );
+    pushRowIfNotZero(
+      'Days late',
+      payslip.late_days || 0,
+      '',
+      'Late minutes',
+      payslip.late_minutes || 0,
+      'min'
+    );
+    pushRowIfNotZero(
+      'Days overtime',
+      payslip.overtime_days || 0,
+      '',
+      'Overtime minutes',
+      payslip.overtime_minutes || 0,
+      'min'
+    );
 
     return {
       companyName: companyInfo.name || 'Company',
@@ -181,6 +226,8 @@ export default function PayslipPage() {
       payrollType: payslip.payroll_type || 'N/A',
       payPeriod: payslip.date_range || 'N/A',
       generatedDate: payslip.pay_date || payslip.date_end || 'N/A',
+      daysWorked: typeof payslip.worked_days === 'number' ? payslip.worked_days : undefined,
+      summaryRows,
       basicPay: payslip.basic_pay || 0,
       overtimePay: payslip.overtime_pay || 0,
       nightDifferential: payslip.night_diff || 0,
@@ -289,8 +336,34 @@ export default function PayslipPage() {
     setIsViewDialogOpen(true);
   };
 
-  const handleDownload = (payslip: PayslipRecord) => {
-    setPayslipToDownload(payslip);
+  const handleDownload = async (payslip: PayslipRecord) => {
+    if (downloading) return;
+
+    try {
+      setDownloading(true);
+      const response = await payslipService.getEmployeePayslips();
+      const latest = response.payslips || [];
+
+      const match = latest.find((p) =>
+        p.date_start === payslip.payslipData.date_start &&
+        p.date_end === payslip.payslipData.date_end &&
+        p.pay_date === payslip.payslipData.pay_date
+      );
+
+      setPayslipToDownload({
+        ...payslip,
+        payslipData: match || payslip.payslipData,
+      });
+    } catch (err) {
+      console.error('Failed to refresh payslip before download:', err);
+      toast({
+        title: 'Download Failed',
+        description: 'Failed to refresh payslip data. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const totalPages = Math.ceil(payslips.length / itemsPerPage);
@@ -395,7 +468,10 @@ export default function PayslipPage() {
                                   <Eye className="mr-2 h-4 w-4" />
                                   View
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDownload(payslip)}>
+                                <DropdownMenuItem
+                                  onClick={() => handleDownload(payslip)}
+                                  disabled={downloading}
+                                >
                                   <Download className="mr-2 h-4 w-4" />
                                   Download PDF
                                 </DropdownMenuItem>

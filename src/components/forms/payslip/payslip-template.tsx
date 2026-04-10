@@ -25,6 +25,8 @@ export interface PayslipData {
   payrollType: string
   payPeriod: string
   generatedDate: string
+  daysWorked?: number
+  summaryRows?: Array<{ leftLabel: string; leftValue: string; rightLabel: string; rightValue: string }>
 
   // Earnings / deductions
   basicPay: number
@@ -108,6 +110,38 @@ export function PayslipTemplate({ data, className = '' }: PayslipTemplateProps) 
     deduction: deductionsItems[index],
   }))
 
+  const infoRows: Array<{
+    leftLabel: string
+    leftValue: string
+    rightLabel: string
+    rightValue: string
+  }> = []
+
+  infoRows.push({
+    leftLabel: 'Employee name',
+    leftValue: data.employeeName,
+    rightLabel: 'Payroll type',
+    rightValue: data.payrollType,
+  })
+
+  infoRows.push({
+    leftLabel: 'Position',
+    leftValue: data.designation || 'N/A',
+    rightLabel: 'Pay period',
+    rightValue: data.payPeriod,
+  })
+
+  infoRows.push({
+    leftLabel: 'Branch',
+    leftValue: data.branch || 'N/A',
+    rightLabel: 'Pay date',
+    rightValue: data.generatedDate,
+  })
+
+  if (Array.isArray(data.summaryRows) && data.summaryRows.length > 0) {
+    infoRows.push(...data.summaryRows)
+  }
+
   return (
     <div className={className} style={styles.page}>
       <div style={styles.header}>
@@ -143,36 +177,19 @@ export function PayslipTemplate({ data, className = '' }: PayslipTemplateProps) 
         <div style={styles.extraHeader}>{data.extraHeaderContent}</div>
       )}
 
-      <div style={styles.metaGrid}>
-        <div style={styles.metaCard}>
-          <div style={styles.metaLabel}>Employee Name</div>
-          <div style={styles.metaValue}>{data.employeeName}</div>
-
-          {data.designation && (
-            <>
-              <div style={styles.metaLabel}>Position</div>
-              <div style={styles.metaValue}>{data.designation}</div>
-            </>
-          )}
-
-          {data.branch && (
-            <>
-              <div style={styles.metaLabel}>Branch</div>
-              <div style={styles.metaValue}>{data.branch}</div>
-            </>
-          )}
-        </div>
-
-        <div style={styles.metaCard}>
-          <div style={styles.metaLabel}>Payroll Type</div>
-          <div style={styles.metaValue}>{data.payrollType}</div>
-
-          <div style={styles.metaLabel}>Pay Period</div>
-          <div style={styles.metaValue}>{data.payPeriod}</div>
-
-          <div style={styles.metaLabel}>Pay Date</div>
-          <div style={styles.metaValue}>{data.generatedDate}</div>
-        </div>
+      <div style={styles.infoContainer}>
+        {infoRows.map((row) => (
+          <div key={`${row.leftLabel}-${row.rightLabel}`} style={styles.infoRow}>
+            <div style={styles.infoItem}>
+              <span style={styles.infoLabel}>{row.leftLabel}:</span>
+              <span style={styles.infoValue}>{row.leftValue}</span>
+            </div>
+            <div style={styles.infoItem}>
+              <span style={styles.infoLabel}>{row.rightLabel}:</span>
+              <span style={styles.infoValue}>{row.rightValue}</span>
+            </div>
+          </div>
+        ))}
       </div>
 
       <table style={styles.table}>
@@ -307,29 +324,40 @@ const styles: Record<string, CSSProperties> = {
   extraHeader: {
     marginTop: '10px',
   },
-  metaGrid: {
+  infoContainer: {
     marginTop: '14px',
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '12px',
-  },
-  metaCard: {
     border: '1px solid #e5e7eb',
-    borderRadius: '6px',
-    padding: '10px 12px',
+    borderRadius: '8px',
+    padding: '8px 10px',
     backgroundColor: '#fafafa',
   },
-  metaLabel: {
+  infoRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '10px',
+    padding: '3px 0',
+  },
+  infoItem: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: '4px',
+    minWidth: 0,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  infoLabel: {
     fontSize: '10px',
     textTransform: 'uppercase',
     letterSpacing: '0.7px',
     color: '#64748b',
-    marginTop: '4px',
+    fontWeight: 600,
   },
-  metaValue: {
+  infoValue: {
     fontSize: '13px',
     fontWeight: 600,
     color: '#0f172a',
+    fontVariantNumeric: 'tabular-nums',
     lineHeight: 1.35,
   },
   table: {

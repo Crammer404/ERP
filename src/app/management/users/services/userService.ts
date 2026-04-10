@@ -21,6 +21,7 @@ export interface UserEntity {
   name?: string;
   email: string;
   role: string | number | Role | null;
+  is_active?: boolean;
   created_at?: string;
   updated_at?: string;
   user_info?: UserInfo;
@@ -75,7 +76,7 @@ export interface PaginatedUsersResponse {
 }
 
 export const userService = {
-  async getAll(page: number = 1, perPage: number = 10, search: string = ''): Promise<PaginatedUsersResponse> {
+  async getAll(page: number = 1, perPage: number = 10, search: string = '', showInactive: boolean = false): Promise<PaginatedUsersResponse> {
     const params = new URLSearchParams({
       page: page.toString(),
       per_page: perPage.toString(),
@@ -83,6 +84,10 @@ export const userService = {
     
     if (search.trim()) {
       params.append('search', search.trim());
+    }
+
+    if (showInactive) {
+      params.append('inactive', '1');
     }
     
     const response = await api(`${API_ENDPOINTS.USERS.BASE}?${params}`);
@@ -138,10 +143,17 @@ export const userService = {
     }
   },
 
-  async delete(id: number): Promise<void> {
-    return await api(`${API_ENDPOINTS.USERS.BASE}/${id}`, {
+  async disable(id: number): Promise<void> {
+    await api(`${API_ENDPOINTS.USERS.BASE}/${id}`, {
       method: "DELETE",
     });
+  },
+
+  async enable(id: number): Promise<UserEntity> {
+    const response = await api(`${API_ENDPOINTS.USERS.BASE}/${id}/enable`, {
+      method: "PATCH",
+    });
+    return response.user as UserEntity;
   },
 
   async getRoles(): Promise<Role[]> {
