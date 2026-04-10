@@ -11,7 +11,6 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { Loader } from '@/components/ui/loader';
 import html2canvas from 'html2canvas';
 import useLocalStorage from '@/hooks/use-local-storage';
-import { tenantContextService } from '@/services/tenant/tenantContextService';
 
 export interface EmployeeDisplay {
   id: number;
@@ -21,6 +20,7 @@ export interface EmployeeDisplay {
   position?: string | null;
   displayRole: string;
   branch: string;
+  tenantName?: string | null;
 }
 
 interface EmployeeIdCardProps {
@@ -209,11 +209,10 @@ export function EmployeeIdCard({
     );
   }
 
-  const tenantContext = tenantContextService.getCurrentTenantContext();
   const headerName =
     idHeaderPreference === 'branch'
-      ? (tenantContext?.branch?.name || employee.branch)
-      : (tenantContext?.tenant?.name || tenantContext?.branch?.name || employee.branch);
+      ? employee.branch
+      : (employee.tenantName || employee.branch);
 
   return (
     <>

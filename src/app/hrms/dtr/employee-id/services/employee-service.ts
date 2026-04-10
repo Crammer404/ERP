@@ -165,6 +165,10 @@ class EmployeeService {
     const branch = employee.branches && employee.branches.length > 0 
                    ? employee.branches[0].name 
                    : 'N/A';
+    const tenantName =
+      employee.branches && employee.branches.length > 0
+        ? employee.branches[0].tenant?.name ?? null
+        : null;
 
     return {
       id: employee.id,
@@ -175,6 +179,7 @@ class EmployeeService {
       position,
       displayRole: position || role,
       branch,
+      tenantName,
       raw: employee, // Keep raw data for detailed operations
     };
   }

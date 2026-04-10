@@ -35,8 +35,8 @@ export { dtrService } from './dtr/dtrService';
 export type { DTR, CheckInRequest, CheckOutRequest, CreateDTRRequest, UpdateDTRRequest } from './dtr/dtrService';
 
 // Employee service
-export { employeeService } from '../app/hrms/dtr/employeeId/services/employee-service';
-export type { Employee, EmployeeQrRequest, EmployeeQrResponse } from '../app/hrms/dtr/employeeId/services/employee-service';
+export { employeeService } from '../app/hrms/dtr/employee-id/services/employee-service';
+export type { Employee, EmployeeQrRequest, EmployeeQrResponse } from '../app/hrms/dtr/employee-id/services/employee-service';
 
 // Payroll service
 export { payrollService } from './payroll/payrollService';

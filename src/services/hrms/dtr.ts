@@ -44,6 +44,9 @@ export interface DtrLogResponseItem {
   cleaned_total_work_hours?: number | null;
   actual_hours?: number | null;
   schedule_name?: string | null;
+  status?: string | null;
+  early_out_request_status?: 'pending' | 'approved' | 'rejected' | null;
+  early_out_remaining_minutes?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -92,6 +95,7 @@ export const getTimeClockLogs = async (params?: {
   start_date?: string;
   end_date?: string;
   archived?: boolean;
+  early_out?: boolean;
 }): Promise<any> => {
   const query = new URLSearchParams();
   if (params?.page) query.append("page", String(params.page));
@@ -101,6 +105,7 @@ export const getTimeClockLogs = async (params?: {
   if (params?.start_date) query.append("start_date", params.start_date);
   if (params?.end_date) query.append("end_date", params.end_date);
   if (params?.archived) query.append("archived", "1");
+  if (params?.early_out) query.append("early_out", "1");
   const qs = query.toString();
   return await api(`/hrms/dtr/logs${qs ? `?${qs}` : ""}`, { method: "GET" });
 };
@@ -192,11 +197,11 @@ export const exportAttendance = async (startDate?: string, endDate?: string): Pr
   }
 };
 
-export const clock = async (userId: number) => {
+export const clock = async (userId: number, options?: { confirm_early_out?: boolean }) => {
   return await api("/hrms/dtr/clock", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId }),
+    body: JSON.stringify({ user_id: userId, confirm_early_out: options?.confirm_early_out ?? false }),
   });
 };
 

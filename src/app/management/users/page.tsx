@@ -25,7 +25,7 @@ import { UserFormModal } from '@/app/management/users/components/user-form-modal
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
-import { EmployeeIdCard, type EmployeeDisplay } from '@/app/hrms/dtr/employeeId/components/employee-id';
+import { EmployeeIdCard, type EmployeeDisplay } from '@/app/hrms/dtr/employee-id/components/employee-id';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -47,6 +47,10 @@ const getDisplayName = (user: UserEntity): string => {
 
 const getPrimaryBranchName = (user: UserEntity): string => {
   return user.branches && user.branches.length > 0 ? user.branches[0].name : 'N/A';
+};
+
+const getPrimaryTenantName = (user: UserEntity): string | null => {
+  return user.branches && user.branches.length > 0 ? user.branches[0].tenant?.name ?? null : null;
 };
 
 const ROLE_ORDER = ['Super Admin', 'Owner', 'Tenant Manager', 'Branch Manager', 'Employee'] as const;
@@ -433,7 +437,8 @@ export default function UserPage() {
   // Handle View ID
   const handleViewId = async (user: UserEntity) => {
     try {
-      setSelectedUserForId(user);
+      const fullUser = await userService.getById(user.id);
+      setSelectedUserForId(fullUser || user);
       setIdModalOpen(true);
     } catch (error) {
       console.error('Failed to generate Digital ID:', error);
@@ -836,6 +841,7 @@ export default function UserPage() {
         position: getPositionOrRole(selectedUserForId),
         displayRole: getPositionOrRole(selectedUserForId),
         branch: getPrimaryBranchName(selectedUserForId),
+        tenantName: getPrimaryTenantName(selectedUserForId),
       }
     : null;
 
@@ -1132,7 +1138,10 @@ export default function UserPage() {
             </DialogDescription>
           </DialogHeader>
           {selectedEmployeeForCard && (
-            <EmployeeIdCard employeeOverride={selectedEmployeeForCard} />
+            <EmployeeIdCard
+              key={`${selectedEmployeeForCard.id}-${selectedEmployeeForCard.branch}-${selectedEmployeeForCard.tenantName ?? ''}`}
+              employeeOverride={selectedEmployeeForCard}
+            />
           )}
         </DialogContent>
       </Dialog>

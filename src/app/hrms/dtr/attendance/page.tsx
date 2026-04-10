@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { Download, Loader2, RefreshCw, Clock } from 'lucide-react';
-import { EmployeeIdCard } from '../employeeId/components/employee-id';
+import { EmployeeIdCard } from '../employee-id/components/employee-id';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useToast } from '@/hooks/use-toast';

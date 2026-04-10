@@ -47,7 +47,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { Download, Smartphone, X, Clock, RefreshCw, Edit, CirclePlus, MoreVertical, Trash2, ChevronLeft, ChevronRight, Archive } from 'lucide-react';
+import { Download, Smartphone, X, Clock, RefreshCw, Edit, CirclePlus, MoreVertical, Trash2, ChevronLeft, ChevronRight, Archive, AlertTriangle } from 'lucide-react';
 import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog, reopenForOvertime, restoreManualLog, forceDeleteManualLog } from '@/services/hrms/dtr';
 import { useToast } from '@/hooks/use-toast';
 import { Loader } from '@/components/ui/loader';
@@ -77,6 +77,9 @@ interface TimeClockLog {
   totalWorkHours: string;
   clockInRaw: string | null;
   clockOutRaw: string | null;
+  status: string | null;
+  earlyOutRequestStatus: 'pending' | 'approved' | 'rejected' | null;
+  earlyOutRemainingMinutes: number;
 }
 
 interface CachedPageData {
@@ -133,7 +136,16 @@ export default function TimeClockPage() {
   const [overtimeConfirmOpen, setOvertimeConfirmOpen] = useState(false);
   const [overtimeConfirmData, setOvertimeConfirmData] = useState<OvertimePromptData | null>(null);
   const [overtimeConfirming, setOvertimeConfirming] = useState(false);
-  const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'early_out' | 'archive'>('active');
+  const [earlyOutConfirmOpen, setEarlyOutConfirmOpen] = useState(false);
+  const [earlyOutConfirming, setEarlyOutConfirming] = useState(false);
+  const [earlyOutPromptData, setEarlyOutPromptData] = useState<{
+    userId: number;
+    employeeName: string;
+    attemptedClockOut: string;
+    scheduledClockOut: string;
+    remainingMinutes: number;
+  } | null>(null);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [logToRestore, setLogToRestore] = useState<TimeClockLog | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -142,7 +154,7 @@ export default function TimeClockPage() {
   const [forceDeleting, setForceDeleting] = useState(false);
 
   const today = new Date();
-  const tabsGridClass = 'grid-cols-2';
+  const tabsGridClass = 'grid-cols-3';
 
   const mapLog = (item: DtrLogResponseItem): TimeClockLog => {
     const formatHoursAndMinutes = (
@@ -264,6 +276,9 @@ export default function TimeClockPage() {
       late: formatLateMinutes(item.late_minutes, item.grace_late_minutes),
       clockInRaw: item.clock_in,
       clockOutRaw: item.clock_out,
+      status: item.status || null,
+      earlyOutRequestStatus: item.early_out_request_status || null,
+      earlyOutRemainingMinutes: item.early_out_remaining_minutes || 0,
     };
   };
 
@@ -346,7 +361,7 @@ export default function TimeClockPage() {
     setEarliestLogDate(snapshot.earliestLogDate);
   };
 
-  const fetchLogs = async (overrides?: { page?: number; perPage?: number; force?: boolean; tab?: 'active' | 'archive' }) => {
+  const fetchLogs = async (overrides?: { page?: number; perPage?: number; force?: boolean; tab?: 'active' | 'early_out' | 'archive' }) => {
     try {
       const page = overrides?.page ?? currentPage;
       const perPage = overrides?.perPage ?? itemsPerPage;
@@ -380,6 +395,7 @@ export default function TimeClockPage() {
         start_date: toApiDate(dateRange?.from),
         end_date: toApiDate(dateRange?.to),
         archived: tab === 'archive',
+        early_out: tab === 'early_out',
       });
 
       const isPaginatedShape = response && !Array.isArray(response) && Array.isArray(response.data);
@@ -451,7 +467,7 @@ export default function TimeClockPage() {
   };
 
   const handleTabChange = (value: string) => {
-    const nextTab = (value === 'archive' ? 'archive' : 'active') as 'active' | 'archive';
+    const nextTab = (value === 'archive' ? 'archive' : value === 'early_out' ? 'early_out' : 'active') as 'active' | 'early_out' | 'archive';
     if (nextTab === activeTab) {
       return;
     }
@@ -883,6 +899,25 @@ export default function TimeClockPage() {
         setOvertimeConfirmOpen(true);
         return true; // dialog opened
       }
+
+      if (res?.status === 'early_out_prompt') {
+        if (fromScanner) {
+          pauseScanner();
+          clearScannerResetTimeout();
+          clearScannerInstance();
+          setIsScanning(false);
+        }
+
+        setEarlyOutPromptData({
+          userId: uid,
+          employeeName: res?.employee_name || `User #${uid}`,
+          attemptedClockOut: res?.attempted_clock_out || '-',
+          scheduledClockOut: res?.scheduled_clock_out || '-',
+          remainingMinutes: Number(res?.remaining_minutes || 0),
+        });
+        setEarlyOutConfirmOpen(true);
+        return true;
+      }
       
       if (res?.status === 'error') {
         const shouldRefreshLogs = Boolean(res?.refresh_logs || res?.dead_time_deleted);
@@ -1038,6 +1073,50 @@ export default function TimeClockPage() {
     setOvertimeConfirmData(null);
     resetScanProcessingState();
     // Restart the scanner after cancellation
+    setIsScanning(true);
+  };
+
+  const handleEarlyOutConfirm = async () => {
+    if (!earlyOutPromptData) return;
+    setEarlyOutConfirming(true);
+    try {
+      const res = await clockApi(earlyOutPromptData.userId, { confirm_early_out: true });
+      if (res?.status === 'error') {
+        toast({
+          title: 'Error',
+          description: res?.message || 'Failed to clock out early.',
+          variant: 'destructive',
+        });
+      } else {
+        clearLogsCache();
+        await fetchLogs({ force: true });
+        setScanConfirmData({
+          employeeName: res?.employee_name || earlyOutPromptData.employeeName,
+          action: res?.action || 'Clock Out',
+          time: res?.time || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }),
+        });
+        setScanConfirmOpen(true);
+      }
+    } catch (e: any) {
+      const apiErr = e?.response?.data?.message || e?.message || 'Failed to clock out early.';
+      toast({
+        title: 'Error',
+        description: apiErr,
+        variant: 'destructive',
+      });
+    } finally {
+      setEarlyOutConfirming(false);
+      setEarlyOutConfirmOpen(false);
+      setEarlyOutPromptData(null);
+      resetScanProcessingState();
+      setIsScanning(true);
+    }
+  };
+
+  const handleEarlyOutCancel = () => {
+    setEarlyOutConfirmOpen(false);
+    setEarlyOutPromptData(null);
+    resetScanProcessingState();
     setIsScanning(true);
   };
 
@@ -1262,6 +1341,10 @@ export default function TimeClockPage() {
                     <Clock className="h-4 w-4" />
                     Active
                   </TabsTrigger>
+                  <TabsTrigger value="early_out" className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Early Out
+                  </TabsTrigger>
                   <TabsTrigger value="archive" className="flex items-center gap-2">
                     <Archive className="h-4 w-4" />
                     Archive
@@ -1301,7 +1384,10 @@ export default function TimeClockPage() {
                    </TableRow>
                  ) : logs.length > 0 ? (
                    logs.map((log) => (
-                     <TableRow key={log.id}>
+                     <TableRow
+                       key={log.id}
+                       className={activeTab === 'active' && log.earlyOutRequestStatus === 'pending' ? 'bg-red-50/70 hover:bg-red-100/70 dark:bg-red-950/20 dark:hover:bg-red-950/30' : undefined}
+                     >
                        <TableCell>{log.date}</TableCell>
                        {activeTab === 'archive' && (
                          <TableCell>{toDaysLeft(log.deletedAt) ?? '-'}</TableCell>
@@ -1597,6 +1683,22 @@ export default function TimeClockPage() {
         confirming={overtimeConfirming}
         onConfirm={handleOvertimeConfirm}
         onCancel={handleOvertimeCancel}
+      />
+
+      <ConfirmDialog
+        open={earlyOutConfirmOpen}
+        onOpenChange={setEarlyOutConfirmOpen}
+        title="Early clock-out detected"
+        description={
+          earlyOutPromptData
+            ? `${earlyOutPromptData.employeeName}, this clock-out is ${earlyOutPromptData.remainingMinutes} minute(s) earlier than your scheduled out (${earlyOutPromptData.scheduledClockOut}). Early clock-out is subject to disciplinary action and requires admin approval before payroll processing.`
+            : 'This clock-out is earlier than scheduled and requires approval.'
+        }
+        confirmText={earlyOutConfirming ? 'Processing...' : 'Proceed Clock Out'}
+        cancelText="Cancel"
+        onConfirm={handleEarlyOutConfirm}
+        variant="warning"
+        loading={earlyOutConfirming}
       />
     </div>
   );

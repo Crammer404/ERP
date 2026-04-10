@@ -400,7 +400,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       console.warn('UserFormModal: No assignable roles available; submission blocked.');
       return;
     }
-    if (!activeBranchId) {
+    if (isCreateMode && !activeBranchId) {
       console.warn('UserFormModal: No active branch context; submission blocked.');
       return;
     }
@@ -416,7 +416,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     ? (loading ? 'Creating...' : 'Create User')
     : (loading ? 'Updating...' : 'Update User');
 
-  const canSubmit = !loading && roles.length > 0 && (!!activeBranchId);
+  const canSubmit = !loading && roles.length > 0 && (isCreateMode ? !!activeBranchId : true);
   const positionError = errors.payroll_positions_id || errors['user_info.payroll_positions_id'];
 
   const addressErrors = useMemo(() => {
@@ -591,7 +591,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             className="bg-muted text-sm"
           />
           {errors.branch_ids && <p className="text-red-500 text-xs">{errors.branch_ids}</p>}
-          {!activeBranchId && (
+          {isCreateMode && !activeBranchId && (
             <p className="text-xs text-muted-foreground">
               Select an active branch from the branch filter before creating a user.
             </p>

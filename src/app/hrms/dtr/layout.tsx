@@ -36,7 +36,7 @@ const pageMeta = {
     description: 'Configure and manage employee work schedules.',
     icon: CalendarRange,
   },
-  '/hrms/dtr/employeeId': {
+  '/hrms/dtr/employee-id': {
     title: 'Employee ID',
     description: 'Manage QR employee IDs and identification settings.',
     icon: IdCard,
