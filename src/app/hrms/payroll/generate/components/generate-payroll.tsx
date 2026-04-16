@@ -30,7 +30,7 @@ import { type CheckedState } from '@radix-ui/react-checkbox';
 import { userService, UserEntity } from '@/app/management/users/services/userService';
 import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
 import { Loader } from '@/components/ui/loader';
-import { getOvertimeRequests } from '@/services/hrms/dtr';
+import { getOvertimeRequests, getTimeClockLogs } from '@/services/hrms/dtr';
 import { ROUTES } from '@/config/api.config';
 
 export interface GeneratePayrollUser {
@@ -103,6 +103,7 @@ const GeneratePayrollDialog = ({
   const [usersError, setUsersError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPendingOvertimeDialog, setShowPendingOvertimeDialog] = useState(false);
+  const [showPendingEarlyOutDialog, setShowPendingEarlyOutDialog] = useState(false);
 
   useEffect(() => {
     if (users) {
@@ -347,6 +348,59 @@ const GeneratePayrollDialog = ({
       return;
     }
 
+    const hasNoPendingEarlyOut = await (async () => {
+      if (!dateRange?.from || !dateRange?.to || selectedUserIds.length === 0) {
+        return true;
+      }
+
+      try {
+        const selectedUserSet = new Set(selectedUserIds);
+        const startDate = formatLocalDate(dateRange.from);
+        const endDate = formatLocalDate(dateRange.to);
+        const perPage = 100;
+        let page = 1;
+        let hasNext = true;
+
+        while (hasNext) {
+          const response: any = await getTimeClockLogs({
+            page,
+            per_page: perPage,
+            start_date: startDate,
+            end_date: endDate,
+            early_out: true,
+          });
+
+          const records: any[] = Array.isArray(response?.data)
+            ? response.data
+            : (Array.isArray(response) ? response : []);
+
+          const hasBlocking = records.some((record: any) =>
+            String(record?.status || '').toLowerCase() === 'pending' &&
+            selectedUserSet.has(Number(record?.user_id || 0))
+          );
+
+          if (hasBlocking) {
+            setShowPendingEarlyOutDialog(true);
+            return false;
+          }
+
+          const lastPage = Number(response?.meta?.last_page || 1);
+          const currentPage = Number(response?.meta?.current_page || page);
+          hasNext = currentPage < lastPage;
+          page += 1;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Failed to check pending early-out before payroll generation:', error);
+        return true;
+      }
+    })();
+
+    if (!hasNoPendingEarlyOut) {
+      return;
+    }
+
     try {
       setIsGenerating(true);
       if (onGenerate) {
@@ -359,7 +413,18 @@ const GeneratePayrollDialog = ({
         });
         handleClose();
       }
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = String(
+        error?.response?.data?.message ||
+        error?.message ||
+        ''
+      ).toLowerCase();
+
+      if (errorMessage.includes('pending early clock-out requests')) {
+        setShowPendingEarlyOutDialog(true);
+        return;
+      }
+
       console.error('Error generating payroll:', error);
     } finally {
       setIsGenerating(false);
@@ -588,6 +653,30 @@ const GeneratePayrollDialog = ({
               Go to Overtime
           </Button>
         </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPendingEarlyOutDialog} onOpenChange={setShowPendingEarlyOutDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pending Early Time-Out Requests</DialogTitle>
+            <DialogDescription>
+              There are pending early time-out requests for the selected employees in this date range.
+              Please approve or reject all early time-out requests before generating payroll.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowPendingEarlyOutDialog(false);
+                setOpen(false);
+                router.push(ROUTES.HRMS.DTR.TIME_CLOCK);
+              }}
+            >
+              Go to Time Clock
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

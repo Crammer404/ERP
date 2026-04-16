@@ -20,6 +20,8 @@ import { managementService } from '@/services/management/managementService';
 import { userService } from '@/services';
 import { configService } from '../config/services/config-service';
 import { UserAvatarStack, UserData } from '@/components/ui/user-avatar-stack';
+import { formatCurrencyAmount } from '@/app/settings/currencies/services/currencyService';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 interface PaginationResponse {
   current_page: number;
@@ -79,6 +81,7 @@ export default function PositionsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   
   const { toast } = useToast();
+  const { defaultCurrency } = useCurrency();
 
   const showToast = (
     type: 'success' | 'error' | 'warning' | 'info',
@@ -470,7 +473,7 @@ export default function PositionsPage() {
                         </span>
                       </TableCell>
                       <TableCell>{position.name}</TableCell>
-                      <TableCell>₱{position.base_salary.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      <TableCell>{formatCurrencyAmount(position.base_salary, defaultCurrency?.symbol)}</TableCell>
                       <TableCell>
                         <UserAvatarStack 
                           users={convertUserInfosToUserData(position.user_infos)}

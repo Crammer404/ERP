@@ -405,6 +405,7 @@ export const ROUTES = {
     },
     DTR: {
       OVERTIME: '/hrms/dtr/overtime',
+      TIME_CLOCK: '/hrms/dtr/time-clock',
     },
     PAYROLL: {
       GENERATE: '/hrms/payroll/generate',

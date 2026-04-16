@@ -45,8 +45,20 @@ export interface DtrLogResponseItem {
   actual_hours?: number | null;
   schedule_name?: string | null;
   status?: string | null;
+  early_out_request?: {
+    id: number;
+    status?: 'pending' | 'approved' | 'rejected' | null;
+    remaining_minutes?: number | null;
+  } | null;
   early_out_request_status?: 'pending' | 'approved' | 'rejected' | null;
   early_out_remaining_minutes?: number | null;
+  request_id?: number;
+  employee_name?: string;
+  branch_name?: string;
+  scheduled_clock_out_at?: string | null;
+  actual_clock_out_at?: string | null;
+  remaining_minutes?: number | null;
+  reviewed_by_name?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -396,8 +408,15 @@ export interface ManualDtrPayload {
   shift?: 'Morning' | 'Afternoon' | 'Night';
 }
 
+export interface EarlyOutWarningPayload {
+  employee_name: string;
+  attempted_clock_out: string;
+  scheduled_clock_out: string;
+  remaining_minutes: number;
+}
+
 // Manual log management functions
-export const createManualLog = async (data: ManualDtrPayload): Promise<{ status: string; message: string; data?: DtrLogResponseItem }> => {
+export const createManualLog = async (data: ManualDtrPayload): Promise<{ status: string; message: string; data?: DtrLogResponseItem; early_out_warning?: EarlyOutWarningPayload | null }> => {
   return await api("/hrms/dtr/logs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -405,7 +424,7 @@ export const createManualLog = async (data: ManualDtrPayload): Promise<{ status:
   });
 };
 
-export const updateManualLog = async (id: number, data: Partial<ManualDtrPayload>): Promise<{ status: string; message: string; data?: DtrLogResponseItem }> => {
+export const updateManualLog = async (id: number, data: Partial<ManualDtrPayload>): Promise<{ status: string; message: string; data?: DtrLogResponseItem; early_out_warning?: EarlyOutWarningPayload | null }> => {
   return await api(`/hrms/dtr/logs/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -417,5 +436,27 @@ export const deleteManualLog = async (id: number): Promise<{ status: string; mes
   return await api(`/hrms/dtr/logs/${id}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
+  });
+};
+
+export const approveEarlyOutRequest = async (
+  id: number,
+  reviewNotes?: string,
+): Promise<{ status: string; message: string; data?: any }> => {
+  return await api(`/hrms/dtr/early-out-requests/${id}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ review_notes: reviewNotes }),
+  });
+};
+
+export const rejectEarlyOutRequest = async (
+  id: number,
+  reviewNotes: string,
+): Promise<{ status: string; message: string; data?: any }> => {
+  return await api(`/hrms/dtr/early-out-requests/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ review_notes: reviewNotes }),
   });
 };

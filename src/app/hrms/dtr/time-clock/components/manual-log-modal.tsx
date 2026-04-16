@@ -35,6 +35,7 @@ import {
   createManualLog,
   updateManualLog,
   ManualDtrPayload,
+  EarlyOutWarningPayload,
   getUserScheduleDetails,
   UserScheduleDetails,
   UserScheduleShiftDetail,
@@ -86,7 +87,7 @@ interface ManualLogModalProps {
   mode: 'add' | 'edit';
   log: ManualLogData | null;
   onClose: () => void;
-  onSuccess: () => void | Promise<void>;
+  onSuccess: (result?: { earlyOutWarning: EarlyOutWarningPayload | null }) => void | Promise<void>;
 }
 
 interface ShiftTimeFieldsProps {
@@ -638,6 +639,7 @@ export function ManualLogModal({
 
     setSavingLog(true);
     try {
+      let firstEarlyOutWarning: EarlyOutWarningPayload | null = null;
       for (const operation of operationsToProcess) {
         const clockInDateTime = buildIsoDateTime(logFormData.date, operation.clockIn24);
         const clockOutBaseDate = resolveClockOutDate(
@@ -662,6 +664,9 @@ export function ManualLogModal({
           if (updateResult.status === 'error') {
             throw new Error(updateResult.message || `Failed to update ${operation.definition.label} shift.`);
           }
+          if (!firstEarlyOutWarning && updateResult.early_out_warning) {
+            firstEarlyOutWarning = updateResult.early_out_warning;
+          }
         } else {
           const createPayload: ManualDtrPayload = {
             user_id: userId,
@@ -674,6 +679,9 @@ export function ManualLogModal({
           if (createResult.status === 'error') {
             throw new Error(createResult.message || `Failed to create ${operation.definition.label} shift.`);
           }
+          if (!firstEarlyOutWarning && createResult.early_out_warning) {
+            firstEarlyOutWarning = createResult.early_out_warning;
+          }
         }
       }
 
@@ -685,7 +693,7 @@ export function ManualLogModal({
         variant: 'default',
       });
 
-      await onSuccess();
+      await onSuccess({ earlyOutWarning: firstEarlyOutWarning });
       onClose();
     } catch (error: any) {
       const errorMessage =

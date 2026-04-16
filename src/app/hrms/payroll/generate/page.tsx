@@ -509,12 +509,18 @@ export default function GeneratePayrollPage() {
         || err?.response?.data?.errors 
         || err?.message 
         || 'Failed to generate payroll';
+
+      const earlyOutGateMessage = String(errorMessage).toLowerCase();
+      if (earlyOutGateMessage.includes('pending early clock-out requests')) {
+        throw err;
+      }
       
       toast({
         title: 'Error',
         description: typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage),
         variant: 'destructive',
       });
+      throw err;
     }
   };
 

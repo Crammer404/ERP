@@ -31,6 +31,22 @@ export interface Currency {
   symbol: string;
 }
 
+const DEFAULT_CURRENCY_SYMBOL = "₱";
+
+/** Formats an amount with the given symbol and a space before the number (e.g. "₱ 1,234.56"). */
+export function formatCurrencyAmount(
+  amount: number,
+  symbol: string | null | undefined = DEFAULT_CURRENCY_SYMBOL,
+  locale: string = "en-US"
+): string {
+  const formatted = amount.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const sym = (symbol ?? DEFAULT_CURRENCY_SYMBOL).trim();
+  return sym ? `${sym} ${formatted}` : formatted;
+}
+
 export interface CreateCurrencyRequest {
   name: string;
   symbol: string;
@@ -102,4 +118,5 @@ export const currencyService = {
   createCurrency,
   updateCurrency,
   deleteCurrency,
+  formatCurrencyAmount,
 };

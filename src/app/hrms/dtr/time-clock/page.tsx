@@ -1,18 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { DateRange } from 'react-day-picker';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue 
-} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -21,23 +13,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { DeleteLogDialog } from './components/delete-log-dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   Pagination,
   PaginationContent,
@@ -47,80 +24,26 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { Download, Smartphone, X, Clock, RefreshCw, Edit, CirclePlus, MoreVertical, Trash2, ChevronLeft, ChevronRight, Archive, AlertTriangle } from 'lucide-react';
-import { getTimeClockLogs, clock as clockApi, exportTimesheet, DtrLogResponseItem, deleteManualLog, reopenForOvertime, restoreManualLog, forceDeleteManualLog } from '@/services/hrms/dtr';
+import { Download, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { exportTimesheet, deleteManualLog, restoreManualLog, forceDeleteManualLog, approveEarlyOutRequest, rejectEarlyOutRequest } from '@/services/hrms/dtr';
 import { useToast } from '@/hooks/use-toast';
-import { Loader } from '@/components/ui/loader';
-import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
-import { Badge } from '@/components/ui/badge';
-import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
-import { TimeDisplay } from './components/time-display';
-import { ScanConfirmDialog, ScanConfirmData, ScanErrorDialog, OvertimeConfirmDialog, OvertimePromptData } from './components/scan-result-dialog';
-
-interface TimeClockLog {
-  id: number;
-  userId: number;
-  date: string;
-  dateRaw: string;
-  deletedAt: string | null;
-  employee: string;
-  branch: string;
-  scheduleName: string;
-  shift: string;
-  clockIn: string;
-  clockOut: string;
-  late: string;
-  overtime: string;
-  actualHours: string;
-  totalWorkHours: string;
-  clockInRaw: string | null;
-  clockOutRaw: string | null;
-  status: string | null;
-  earlyOutRequestStatus: 'pending' | 'approved' | 'rejected' | null;
-  earlyOutRemainingMinutes: number;
-}
-
-interface CachedPageData {
-  logs: TimeClockLog[];
-  totalItems: number;
-  totalPages: number;
-  pageFrom: number;
-  pageTo: number;
-  earliestLogDate?: Date;
-}
+import { ScanConfirmDialog, ScanErrorDialog, OvertimeConfirmDialog } from './components/scan-result-dialog';
+import { TimeClockToolbar } from './components/time-clock-toolbar';
+import { QrScannerPanel } from './components/qr-scanner-panel';
+import { TimeClockTable } from './components/time-clock-table';
+import type { TimeClockLog } from './types';
+import { useTimeClockLogs } from './hooks/use-time-clock-logs';
+import { useTimeClockDialogs } from './hooks/use-time-clock-dialogs';
+import { useClockActions } from './hooks/use-clock-actions';
+import { useQrScannerClock } from './hooks/use-qr-scanner-clock';
 
 export default function TimeClockPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [selectedShift, setSelectedShift] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [isScanning, setIsScanning] = useState(false);
-  const [isScannerPanelCollapsed, setIsScannerPanelCollapsed] = useState(false);
-  const [logs, setLogs] = useState<TimeClockLog[]>([]);
-  const [totalItems, setTotalItems] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [pageFrom, setPageFrom] = useState(0);
-  const [pageTo, setPageTo] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [clocking, setClocking] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [exportDateRange, setExportDateRange] = useState<DateRange | undefined>();
   const [userIdInput, setUserIdInput] = useState('');
-  const [isProcessingScan, setIsProcessingScan] = useState(false);
-  const [isModalShaking, setIsModalShaking] = useState(false);
-  const [earliestLogDate, setEarliestLogDate] = useState<Date | undefined>();
-  const scannerRef = useRef<any>(null);
-  const scannerResetTimeoutRef = useRef<number | null>(null);
-  const isProcessingScanRef = useRef(false);
-  const prevFilterKeyRef = useRef<string>('');
-  const pageCacheRef = useRef<Map<string, CachedPageData>>(new Map());
   const { toast } = useToast();
   const { user } = useAuth();
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
@@ -129,360 +52,80 @@ export default function TimeClockPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [logToDelete, setLogToDelete] = useState<TimeClockLog | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [scanConfirmOpen, setScanConfirmOpen] = useState(false);
-  const [scanConfirmData, setScanConfirmData] = useState<ScanConfirmData | null>(null);
-  const [scanErrorOpen, setScanErrorOpen] = useState(false);
-  const [scanErrorMessage, setScanErrorMessage] = useState('');
-  const [overtimeConfirmOpen, setOvertimeConfirmOpen] = useState(false);
-  const [overtimeConfirmData, setOvertimeConfirmData] = useState<OvertimePromptData | null>(null);
-  const [overtimeConfirming, setOvertimeConfirming] = useState(false);
-  const [activeTab, setActiveTab] = useState<'active' | 'early_out' | 'archive'>('active');
-  const [earlyOutConfirmOpen, setEarlyOutConfirmOpen] = useState(false);
-  const [earlyOutConfirming, setEarlyOutConfirming] = useState(false);
-  const [earlyOutPromptData, setEarlyOutPromptData] = useState<{
-    userId: number;
-    employeeName: string;
-    attemptedClockOut: string;
-    scheduledClockOut: string;
-    remainingMinutes: number;
-  } | null>(null);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [logToRestore, setLogToRestore] = useState<TimeClockLog | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [forceDeleteConfirmOpen, setForceDeleteConfirmOpen] = useState(false);
   const [logToForceDelete, setLogToForceDelete] = useState<TimeClockLog | null>(null);
   const [forceDeleting, setForceDeleting] = useState(false);
+  const [earlyOutApproveModalOpen, setEarlyOutApproveModalOpen] = useState(false);
+  const [earlyOutRejectModalOpen, setEarlyOutRejectModalOpen] = useState(false);
+  const [earlyOutSubmitting, setEarlyOutSubmitting] = useState(false);
+  const [earlyOutActionNotes, setEarlyOutActionNotes] = useState('');
+  const [selectedEarlyOutLog, setSelectedEarlyOutLog] = useState<TimeClockLog | null>(null);
 
   const today = new Date();
-  const tabsGridClass = 'grid-cols-3';
+  const {
+    exportModalOpen,
+    setExportModalOpen,
+    exportDateRange,
+    setExportDateRange,
+    isModalShaking,
+    handleModalOutsideClick,
+    scanConfirmOpen,
+    setScanConfirmOpen,
+    scanConfirmData,
+    setScanConfirmData,
+    scanErrorOpen,
+    setScanErrorOpen,
+    scanErrorMessage,
+    setScanErrorMessage,
+    overtimeConfirmOpen,
+    setOvertimeConfirmOpen,
+    overtimeConfirmData,
+    setOvertimeConfirmData,
+    overtimeConfirming,
+    setOvertimeConfirming,
+    earlyOutConfirmOpen,
+    setEarlyOutConfirmOpen,
+    earlyOutConfirming,
+    setEarlyOutConfirming,
+    earlyOutPromptData,
+    setEarlyOutPromptData,
+  } = useTimeClockDialogs();
 
-  const mapLog = (item: DtrLogResponseItem): TimeClockLog => {
-    const formatHoursAndMinutes = (
-      raw: number | string | null | undefined,
-      fallback?: number | string | null | undefined
-    ): string => {
-      const toNum = (v: any): number | null => {
-        if (v === null || v === undefined) return null;
-        const n = typeof v === 'number' ? v : parseFloat(String(v));
-        return isNaN(n) ? null : n;
-      };
-
-      const primary = toNum(raw);
-      const secondary = toNum(fallback);
-      const value = primary ?? secondary ?? 0;
-      if (!value || value <= 0) return '0h 0m';
-
-      let hours = 0;
-      let minutes = 0;
-
-      if (value < 48) {
-        hours = Math.floor(value);
-        minutes = Math.round((value - hours) * 60);
-      } else {
-        hours = Math.floor(value / 60);
-        minutes = Math.round(value % 60);
-      }
-
-      if (minutes >= 60) {
-        hours += Math.floor(minutes / 60);
-        minutes = minutes % 60;
-      }
-
-      return `${hours}h ${minutes}min`;
-    };
-
-    const toNum = (value: any): number | null => {
-      if (value === null || value === undefined) return null;
-      const parsed = typeof value === 'number' ? value : parseFloat(String(value));
-      return Number.isNaN(parsed) ? null : parsed;
-    };
-
-    const formatLateMinutes = (
-      late: number | string | null | undefined,
-      grace: number | string | null | undefined
-    ): string => {
-      const lateMinutes = toNum(late) ?? 0;
-      const graceMinutes = toNum(grace) ?? 0;
-
-      if (lateMinutes <= 0) return '-';
-      if (graceMinutes > 0 && lateMinutes <= graceMinutes) return '-';
-
-      return `${lateMinutes} min`;
-    };
-
-    const formatOvertimeMinutes = (
-      overtime: number | string | null | undefined,
-      grace: number | string | null | undefined
-    ): string => {
-      const overtimeMin = toNum(overtime) ?? 0;
-      const graceMin = toNum(grace) ?? 0;
-
-      if (overtimeMin <= 0) return '-';
-      if (graceMin > 0 && overtimeMin <= graceMin) return '-';
-
-      return `${overtimeMin} min`;
-    };
-
-    const computeTotalFromClockTimes = (startStr: string | null, endStr: string | null): string => {
-      if (!startStr || !endStr) return '0h 0min';
-      const start = new Date(startStr).getTime();
-      const end = new Date(endStr).getTime();
-      if (!isFinite(start) || !isFinite(end) || end <= start) return '0h 0min';
-      const diffMinutes = Math.round((end - start) / 60000);
-      const hours = Math.floor(diffMinutes / 60);
-      const minutes = diffMinutes % 60;
-      return `${hours}h ${minutes}min`;
-    };
-
-    const toTime = (ts: string | null): string => {
-      if (!ts) return '-';
-      const d = new Date(ts);
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-    };
-
-    const toDate = (dateStr: string): string => {
-      const d = new Date(dateStr);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      }
-      return item.date;
-    };
-
-    const nestedFirst = (item.user as any)?.user_info?.first_name;
-    const nestedLast = (item.user as any)?.user_info?.last_name;
-    const employeeName = item.user?.name
-      || [item.user?.first_name, item.user?.last_name].filter(Boolean).join(' ')
-      || [nestedFirst, nestedLast].filter(Boolean).join(' ')
-      || `#${item.user_id}`;
-
-    const branchName = item.user?.branch_users?.[0]?.branch?.name || '-';
-    const scheduleName = item.schedule_name || '-';
-
-    return {
-      id: item.id,
-      userId: item.user_id,
-      date: toDate(item.date),
-      dateRaw: item.date,
-      deletedAt: item.deleted_at || null,
-      employee: employeeName,
-      branch: branchName,
-      scheduleName: scheduleName,
-      shift: item.shift || '-',
-      clockIn: toTime(item.clock_in),
-      clockOut: toTime(item.clock_out),
-      overtime: formatOvertimeMinutes(item.overtime_minutes, item.grace_overtime_minutes),
-      actualHours: formatHoursAndMinutes(item.actual_hours, item.cleaned_total_work_hours),
-      totalWorkHours: formatHoursAndMinutes(item.total_work_hours),
-      late: formatLateMinutes(item.late_minutes, item.grace_late_minutes),
-      clockInRaw: item.clock_in,
-      clockOutRaw: item.clock_out,
-      status: item.status || null,
-      earlyOutRequestStatus: item.early_out_request_status || null,
-      earlyOutRemainingMinutes: item.early_out_remaining_minutes || 0,
-    };
-  };
-
-  const toApiDate = (date?: Date): string | undefined => {
-    if (!date) return undefined;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const clearLogsCache = () => {
-    pageCacheRef.current.clear();
-  };
-
-  const clearScannerResetTimeout = () => {
-    if (scannerResetTimeoutRef.current !== null) {
-      window.clearTimeout(scannerResetTimeoutRef.current);
-      scannerResetTimeoutRef.current = null;
-    }
-  };
-
-  const pauseScanner = () => {
-    const scannerInstance = scannerRef.current;
-    if (!scannerInstance) return;
-    try {
-      // Html5QrcodeScanner.pause(true) pauses scanning AND freezes the video frame
-      scannerInstance.pause(true);
-    } catch {}
-  };
-
-  const clearScannerInstance = () => {
-    const scannerInstance = scannerRef.current;
-    if (!scannerInstance) return;
-    scannerRef.current = null;
-    try {
-      const clearResult = scannerInstance.clear();
-      if (clearResult && typeof clearResult.then === 'function') {
-        clearResult.catch(() => {});
-      }
-    } catch {}
-  };
-
-  const getQrFileInput = (): HTMLInputElement | null => {
-    return document.getElementById('html5-qrcode-private-filescan-input') as HTMLInputElement | null;
-  };
-
-  const clearQrFileInput = () => {
-    const fileInput = getQrFileInput();
-    if (!fileInput) return;
-    fileInput.value = '';
-  };
-
-  const isFileScanMode = (): boolean => {
-    const fileInput = getQrFileInput();
-    return Boolean(fileInput && !fileInput.disabled);
-  };
-
-  const resetScanProcessingState = () => {
-    isProcessingScanRef.current = false;
-    setIsProcessingScan(false);
-    clearQrFileInput();
-  };
-
-  const scheduleScanReset = (mounted: boolean) => {
-    clearScannerResetTimeout();
-    scannerResetTimeoutRef.current = window.setTimeout(() => {
-      scannerResetTimeoutRef.current = null;
-      if (!mounted) return;
-      resetScanProcessingState();
-    }, 1200);
-  };
-
-  const applyPageData = (snapshot: CachedPageData) => {
-    setLogs(snapshot.logs);
-    setTotalItems(snapshot.totalItems);
-    setTotalPages(snapshot.totalPages);
-    setPageFrom(snapshot.pageFrom);
-    setPageTo(snapshot.pageTo);
-    setEarliestLogDate(snapshot.earliestLogDate);
-  };
-
-  const fetchLogs = async (overrides?: { page?: number; perPage?: number; force?: boolean; tab?: 'active' | 'early_out' | 'archive' }) => {
-    try {
-      const page = overrides?.page ?? currentPage;
-      const perPage = overrides?.perPage ?? itemsPerPage;
-      const forceRefresh = overrides?.force ?? false;
-      const tab = overrides?.tab ?? activeTab;
-      const cacheKey = [
-        tab,
-        page,
-        perPage,
-        debouncedSearch.trim().toLowerCase(),
-        selectedShift,
-        toApiDate(dateRange?.from) || '',
-        toApiDate(dateRange?.to) || '',
-      ].join('|');
-
-      if (!forceRefresh) {
-        const cachedPage = pageCacheRef.current.get(cacheKey);
-        if (cachedPage) {
-          applyPageData(cachedPage);
-          return;
-        }
-      }
-
-      setLoading(true);
-      const search = debouncedSearch.trim();
-      const response: any = await getTimeClockLogs({
-        page,
-        per_page: perPage,
-        search: search || undefined,
-        shift: selectedShift !== 'all' ? selectedShift : undefined,
-        start_date: toApiDate(dateRange?.from),
-        end_date: toApiDate(dateRange?.to),
-        archived: tab === 'archive',
-        early_out: tab === 'early_out',
-      });
-
-      const isPaginatedShape = response && !Array.isArray(response) && Array.isArray(response.data);
-      const rawLogs: DtrLogResponseItem[] = isPaginatedShape
-        ? response.data
-        : Array.isArray(response)
-          ? response
-          : [];
-
-      const slicedLogs = isPaginatedShape
-        ? rawLogs
-        : rawLogs.slice((page - 1) * perPage, page * perPage);
-
-      const mappedLogs = slicedLogs.map(mapLog);
-
-      let snapshot: CachedPageData;
-      if (isPaginatedShape) {
-        const total = response.meta?.total || 0;
-        const pages = response.meta?.last_page || 1;
-        const from = response.meta?.from || 0;
-        const to = response.meta?.to || 0;
-        const earliestDateRaw = response.filters?.earliest_log_date;
-        let earliest: Date | undefined;
-        if (earliestDateRaw) {
-          const parsed = new Date(earliestDateRaw);
-          earliest = Number.isNaN(parsed.getTime()) ? undefined : parsed;
-        }
-
-        snapshot = {
-          logs: mappedLogs,
-          totalItems: total,
-          totalPages: pages,
-          pageFrom: from,
-          pageTo: to,
-          earliestLogDate: earliest,
-        };
-      } else {
-        const total = rawLogs.length;
-        const from = total > 0 ? (page - 1) * perPage + 1 : 0;
-        const to = Math.min(page * perPage, total);
-        const pages = Math.max(1, Math.ceil(total / perPage));
-        const earliest = rawLogs
-          .map((item) => new Date(item.date).getTime())
-          .filter((value) => Number.isFinite(value))
-          .sort((a, b) => a - b)[0];
-
-        snapshot = {
-          logs: mappedLogs,
-          totalItems: total,
-          totalPages: pages,
-          pageFrom: from,
-          pageTo: to,
-          earliestLogDate: typeof earliest === 'number' ? new Date(earliest) : undefined,
-        };
-      }
-
-      pageCacheRef.current.set(cacheKey, snapshot);
-      applyPageData(snapshot);
-    } catch (e: any) {
-      const apiErr = e?.response?.data?.message || e?.message || 'Failed to load logs';
+  const {
+    logs,
+    loading,
+    totalItems,
+    totalPages,
+    pageFrom,
+    pageTo,
+    earliestLogDate,
+    earlyOutPendingCount,
+    currentPage,
+    itemsPerPage,
+    searchTerm,
+    dateRange,
+    selectedShift,
+    activeTab,
+    setSearchTerm,
+    setDateRange,
+    setSelectedShift,
+    setCurrentPage,
+    setItemsPerPage,
+    setActiveTab,
+    clearLogsCache,
+    fetchLogs,
+    handleTabChange,
+  } = useTimeClockLogs({
+    onError: (message) =>
       toast({
         title: 'Error',
-        description: apiErr,
+        description: message,
         variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTabChange = (value: string) => {
-    const nextTab = (value === 'archive' ? 'archive' : value === 'early_out' ? 'early_out' : 'active') as 'active' | 'early_out' | 'archive';
-    if (nextTab === activeTab) {
-      return;
-    }
-    clearLogsCache();
-    setActiveTab(nextTab);
-    if (currentPage === 1) {
-      fetchLogs({ page: 1, force: true, tab: nextTab });
-      return;
-    }
-    setCurrentPage(1);
-  };
-
-  useEffect(() => {
-    setIsScanning(true);
-  }, []);
+      }),
+  });
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -512,7 +155,7 @@ export default function TimeClockPage() {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('branchChanged', handleBranchChange);
     };
-  }, [currentPage, itemsPerPage, debouncedSearch, selectedShift, dateRange?.from?.getTime(), dateRange?.to?.getTime()]);
+  }, [currentPage, itemsPerPage, searchTerm, selectedShift, dateRange?.from?.getTime(), dateRange?.to?.getTime()]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -521,141 +164,7 @@ export default function TimeClockPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Debounce search input — only update debouncedSearch after 500ms of no typing
-  useEffect(() => {
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-    }
-    searchDebounceRef.current = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-    }, 500);
-    return () => {
-      if (searchDebounceRef.current) {
-        clearTimeout(searchDebounceRef.current);
-      }
-    };
-  }, [searchTerm]);
-
-  useEffect(() => {
-    isProcessingScanRef.current = isProcessingScan;
-  }, [isProcessingScan]);
-
-  useEffect(() => {
-    if (isScannerPanelCollapsed) {
-      clearScannerResetTimeout();
-      isProcessingScanRef.current = false;
-      setIsProcessingScan(false);
-      clearQrFileInput();
-    }
-  }, [isScannerPanelCollapsed]);
-
-  useEffect(() => {
-    let mounted = true;
-    const init = async () => {
-      if (!isScanning || isScannerPanelCollapsed) return;
-      if (!document.getElementById('timeclock-qr-reader')) return;
-      try {
-        const mod: any = await import('html5-qrcode');
-        const Html5QrcodeScanner = mod.Html5QrcodeScanner;
-        const config = {
-          fps: 10,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const base = Math.min(viewfinderWidth, viewfinderHeight);
-            const edge = Math.floor(base * 0.90);
-            return { width: edge, height: edge };
-          },
-          rememberLastUsedCamera: true
-        } as any;
-        const scanner = new Html5QrcodeScanner('timeclock-qr-reader', config, false);
-        scannerRef.current = scanner;
-
-        const onScanSuccess = async (decodedText: string) => {
-          if (!mounted || isProcessingScanRef.current) return;
-          
-          isProcessingScanRef.current = true;
-          setIsProcessingScan(true);
-          // Immediately pause scanning to prevent any further decode callbacks
-          pauseScanner();
-          
-          let dialogOpened = false;
-          try {
-            let userId: number | null = null;
-            
-            try {
-              const qrData = JSON.parse(decodedText);
-              userId = qrData.id;
-            } catch {
-              const match = decodedText.match(/\d+/);
-              if (match) {
-                userId = parseInt(match[0], 10);
-              }
-            }
-            
-            if (userId) {
-              dialogOpened = await handleClockWithUserId(userId, true);
-            } else {
-              // Show error dialog for invalid QR codes too
-              pauseScanner();
-              clearScannerResetTimeout();
-              clearScannerInstance();
-              setIsScanning(false);
-              setScanErrorMessage('QR code does not contain a valid user ID.');
-              setScanErrorOpen(true);
-              dialogOpened = true;
-            }
-          } finally {
-            if (!dialogOpened) {
-              scheduleScanReset(mounted);
-            }
-          }
-        };
-
-        const onScanFailure = () => {
-          if (!isFileScanMode()) return;
-          clearScannerResetTimeout();
-          resetScanProcessingState();
-        };
-
-        scanner.render(onScanSuccess, onScanFailure);
-      } catch (err: any) {
-        toast({
-          title: 'Scanner Error',
-          description: err?.message || 'Failed to start QR scanner',
-          variant: 'destructive',
-        });
-      }
-    };
-
-    init();
-
-    return () => {
-      mounted = false;
-      clearScannerResetTimeout();
-      isProcessingScanRef.current = false;
-      clearScannerInstance();
-    };
-  }, [isScanning, isScannerPanelCollapsed]);
-
   const hasDateFilter = Boolean(dateRange?.from || dateRange?.to);
-  const filterKey = [
-    debouncedSearch.trim().toLowerCase(),
-    selectedShift,
-    toApiDate(dateRange?.from) || '',
-    toApiDate(dateRange?.to) || '',
-    itemsPerPage,
-  ].join('|');
-
-  useEffect(() => {
-    const filtersChanged = prevFilterKeyRef.current !== filterKey;
-    prevFilterKeyRef.current = filterKey;
-
-    if (filtersChanged && currentPage !== 1) {
-      setCurrentPage(1);
-      return;
-    }
-
-    fetchLogs();
-  }, [currentPage, filterKey, activeTab]);
 
   const handleItemsPerPageChange = (value: string) => {
     const parsed = parseInt(value, 10);
@@ -672,11 +181,6 @@ export default function TimeClockPage() {
 
     clearLogsCache();
     setSearchTerm('');
-    setDebouncedSearch('');
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = null;
-    }
     setDateRange(undefined);
     setSelectedShift('all');
     setCurrentPage(1);
@@ -687,22 +191,6 @@ export default function TimeClockPage() {
     }
   };
 
-  const toDaysLeft = (deletedAt: string | null): number | null => {
-    if (!deletedAt) return null;
-    const parse = (raw: string): Date | null => {
-      const d = new Date(raw);
-      if (!Number.isNaN(d.getTime())) return d;
-      const normalized = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
-      const d2 = new Date(normalized);
-      if (!Number.isNaN(d2.getTime())) return d2;
-      return null;
-    };
-    const deleted = parse(deletedAt);
-    if (!deleted) return null;
-    const diffMs = Date.now() - deleted.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    return Math.max(0, 90 - diffDays);
-  };
 
   const handleRestoreLog = (log: TimeClockLog) => {
     setLogToRestore(log);
@@ -824,193 +312,99 @@ export default function TimeClockPage() {
   };
 
   const handleStartScanning = () => {
-    setIsScanning(true);
+    startScanner();
   };
 
   const handleStopScanning = () => {
-    clearScannerResetTimeout();
-    setIsScanning(false);
-    isProcessingScanRef.current = false;
-    setIsProcessingScan(false);
-    clearQrFileInput();
+    stopScanner();
+    resetScanProcessingState();
   };
 
   const handleRestartScanning = async () => {
-    clearScannerResetTimeout();
-    setIsScanning(false);
-    isProcessingScanRef.current = false;
-    setIsProcessingScan(false);
-    clearQrFileInput();
-    
+    stopScanner();
+    resetScanProcessingState();
     await new Promise(resolve => setTimeout(resolve, 300));
-    
-    setIsScanning(true);
+    startScanner();
   };
 
   const handleScanImage = () => {
     console.log('Scan image file...');
   };
 
-  const formatDateTime = (date: Date) => {
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    });
-  };
-
-  const handleClockWithUserId = async (uid: number, fromScanner = false): Promise<boolean> => {
-    if (!uid || uid <= 0) {
-      toast({
-        title: 'Invalid User ID',
-        description: 'Please provide a valid user ID.',
-        variant: 'destructive',
-      });
-      return false;
-    }
-    setClocking(true);
-    try {
-      const res = await clockApi(uid);
-
-      // Handle overtime prompt — the backend detected a completed shift for today
-      if (res?.status === 'overtime_prompt') {
-        const promptData: OvertimePromptData = {
-          employeeName: res.employee_name || `User #${uid}`,
-          logId: res.log_id,
-          userId: uid,
-          shift: res.shift || '-',
-          clockIn: res.clock_in || '-',
-          clockOut: res.clock_out || '-',
-          date: res.date || new Date().toISOString().slice(0, 10),
-        };
-
-        if (fromScanner) {
-          pauseScanner();
-          clearScannerResetTimeout();
-          clearScannerInstance();
-          setIsScanning(false);
-        }
-
-        setOvertimeConfirmData(promptData);
-        setOvertimeConfirmOpen(true);
-        return true; // dialog opened
-      }
-
-      if (res?.status === 'early_out_prompt') {
-        if (fromScanner) {
-          pauseScanner();
-          clearScannerResetTimeout();
-          clearScannerInstance();
-          setIsScanning(false);
-        }
-
-        setEarlyOutPromptData({
-          userId: uid,
-          employeeName: res?.employee_name || `User #${uid}`,
-          attemptedClockOut: res?.attempted_clock_out || '-',
-          scheduledClockOut: res?.scheduled_clock_out || '-',
-          remainingMinutes: Number(res?.remaining_minutes || 0),
-        });
-        setEarlyOutConfirmOpen(true);
-        return true;
-      }
-      
-      if (res?.status === 'error') {
-        const shouldRefreshLogs = Boolean(res?.refresh_logs || res?.dead_time_deleted);
-        if (shouldRefreshLogs) {
-          clearLogsCache();
-          try {
-            await fetchLogs({ force: true });
-          } catch {}
-        }
-
-        const msg = res?.message || 'Clock action failed';
-        if (fromScanner) {
-          pauseScanner();
-          clearScannerResetTimeout();
-          clearScannerInstance();
-          setIsScanning(false);
-          setScanErrorMessage(msg);
-          setScanErrorOpen(true);
-          return true;
-        }
-        toast({
-          title: 'Error',
-          description: msg,
-          variant: 'destructive',
-        });
-        return false;
-      }
-
+  const {
+    clocking: isClocking,
+    overtimeConfirming: isOvertimeConfirming,
+    earlyOutConfirming: isEarlyOutConfirming,
+    handleClockWithUserId,
+    handleOvertimeConfirm: onOvertimeConfirm,
+    handleOvertimeCancel,
+    handleEarlyOutConfirm: onEarlyOutConfirm,
+    handleEarlyOutCancel,
+  } = useClockActions({
+    onSuccess: (message) => toast({ title: 'Success', description: message, variant: 'default' }),
+    onError: (message) => toast({ title: 'Error', description: message, variant: 'destructive' }),
+    refreshLogs: async () => {
       clearLogsCache();
       await fetchLogs({ force: true });
+    },
+    stopScanner: () => {
+      clearScannerResetTimeout();
+      setIsScanning(false);
+    },
+    startScanner: () => setIsScanning(true),
+    resetScanProcessingState: () => resetScanProcessingState(),
+    setScanConfirmData,
+    setScanConfirmOpen,
+    setScanErrorMessage,
+    setScanErrorOpen,
+    setOvertimeConfirmData,
+    setOvertimeConfirmOpen,
+    setEarlyOutPromptData,
+    setEarlyOutConfirmOpen,
+  });
 
-      if (fromScanner) {
-        const now = new Date();
-        setScanConfirmData({
-          employeeName: res?.employee_name || `User #${uid}`,
-          action: res?.action || (res?.clock_in ? 'Clock In' : 'Clock Out'),
-          time: res?.time || now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        });
-        // Immediately pause scanning (freezes camera frame, stops decoding)
-        pauseScanner();
-        // Then fully tear down the scanner and camera
-        clearScannerResetTimeout();
-        clearScannerInstance();
-        setIsScanning(false);
-        setScanConfirmOpen(true);
-        return true;
-      }
+  useEffect(() => {
+    setClocking(isClocking);
+  }, [isClocking]);
 
-      const msg = res?.message || 'Clock action completed';
-      toast({
-        title: 'Success',
-        description: msg,
-        variant: 'default',
-      });
-      return false;
-    } catch (e: any) {
-      const responseData = e?.response?.data;
-      const shouldRefreshLogs = Boolean(responseData?.refresh_logs || responseData?.dead_time_deleted);
-      if (shouldRefreshLogs) {
-        clearLogsCache();
-        try {
-          await fetchLogs({ force: true });
-        } catch {}
-      }
+  useEffect(() => {
+    setOvertimeConfirming(isOvertimeConfirming);
+  }, [isOvertimeConfirming]);
 
-      const validationErrors = responseData?.errors
-        ? Object.values(responseData.errors).flat().filter(Boolean).join(' ')
-        : '';
-      const apiErr = responseData?.message || validationErrors || e?.message || 'Clock action failed';
-      if (fromScanner) {
-        pauseScanner();
-        clearScannerResetTimeout();
-        clearScannerInstance();
-        setIsScanning(false);
-        setScanErrorMessage(apiErr);
-        setScanErrorOpen(true);
-        return true;
-      }
-      toast({
-        title: 'Error',
-        description: apiErr,
-        variant: 'destructive',
-      });
-      return false;
-    } finally {
-      setClocking(false);
-    }
-  };
+  useEffect(() => {
+    setEarlyOutConfirming(isEarlyOutConfirming);
+  }, [isEarlyOutConfirming]);
 
   const handleClock = async () => {
     const uid = parseInt(userIdInput, 10);
     await handleClockWithUserId(uid);
   };
+
+  const {
+    isScanning,
+    setIsScanning,
+    isScannerPanelCollapsed,
+    setIsScannerPanelCollapsed,
+    isProcessingScan,
+    resetScanProcessingState,
+    startScanner,
+    stopScanner,
+    clearScannerResetTimeout,
+  } = useQrScannerClock({
+    onScanUserId: async (userId) => handleClockWithUserId(userId, true),
+    onScanInvalid: () => {
+      stopScanner();
+      setScanErrorMessage('QR code does not contain a valid user ID.');
+      setScanErrorOpen(true);
+    },
+    onScannerError: (message) => {
+      toast({
+        title: 'Scanner Error',
+        description: message,
+        variant: 'destructive',
+      });
+    },
+  });
 
   const handleScanConfirmClose = () => {
     setScanConfirmOpen(false);
@@ -1029,101 +423,16 @@ export default function TimeClockPage() {
   };
 
   const handleOvertimeConfirm = async () => {
-    if (!overtimeConfirmData) return;
-    setOvertimeConfirming(true);
-    try {
-      const res = await reopenForOvertime({
-        user_id: overtimeConfirmData.userId,
-        log_id: overtimeConfirmData.logId,
-      });
-
-      if (res?.status === 'error') {
-        toast({
-          title: 'Error',
-          description: res?.message || 'Failed to reopen shift for overtime.',
-          variant: 'destructive',
-        });
-      } else {
-        // Show the success scan-confirm dialog with the reopened shift info
-        setScanConfirmData({
-          employeeName: res?.employee_name || overtimeConfirmData.employeeName,
-          action: res?.action || 'Clock In (Overtime)',
-          time: res?.time || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }),
-        });
-        clearLogsCache();
-        await fetchLogs({ force: true });
-        setScanConfirmOpen(true);
-      }
-    } catch (e: any) {
-      const apiErr = e?.response?.data?.message || e?.message || 'Failed to reopen shift for overtime.';
-      toast({
-        title: 'Error',
-        description: apiErr,
-        variant: 'destructive',
-      });
-    } finally {
-      setOvertimeConfirming(false);
-      setOvertimeConfirmOpen(false);
-      setOvertimeConfirmData(null);
-    }
-  };
-
-  const handleOvertimeCancel = () => {
-    setOvertimeConfirmOpen(false);
-    setOvertimeConfirmData(null);
-    resetScanProcessingState();
-    // Restart the scanner after cancellation
-    setIsScanning(true);
+    await onOvertimeConfirm(overtimeConfirmData);
   };
 
   const handleEarlyOutConfirm = async () => {
-    if (!earlyOutPromptData) return;
-    setEarlyOutConfirming(true);
-    try {
-      const res = await clockApi(earlyOutPromptData.userId, { confirm_early_out: true });
-      if (res?.status === 'error') {
-        toast({
-          title: 'Error',
-          description: res?.message || 'Failed to clock out early.',
-          variant: 'destructive',
-        });
-      } else {
-        clearLogsCache();
-        await fetchLogs({ force: true });
-        setScanConfirmData({
-          employeeName: res?.employee_name || earlyOutPromptData.employeeName,
-          action: res?.action || 'Clock Out',
-          time: res?.time || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }),
-        });
-        setScanConfirmOpen(true);
-      }
-    } catch (e: any) {
-      const apiErr = e?.response?.data?.message || e?.message || 'Failed to clock out early.';
-      toast({
-        title: 'Error',
-        description: apiErr,
-        variant: 'destructive',
-      });
-    } finally {
-      setEarlyOutConfirming(false);
+    if (earlyOutPromptData?.source === 'manual') {
       setEarlyOutConfirmOpen(false);
       setEarlyOutPromptData(null);
-      resetScanProcessingState();
-      setIsScanning(true);
+      return;
     }
-  };
-
-  const handleEarlyOutCancel = () => {
-    setEarlyOutConfirmOpen(false);
-    setEarlyOutPromptData(null);
-    resetScanProcessingState();
-    setIsScanning(true);
-  };
-
-  const handleModalOutsideClick = () => {
-    console.log('Outside click detected - triggering shake effect');
-    setIsModalShaking(true);
-    setTimeout(() => setIsModalShaking(false), 600);
+    await onEarlyOutConfirm(earlyOutPromptData);
   };
 
   const canManageLogs = (): boolean => {
@@ -1193,286 +502,142 @@ export default function TimeClockPage() {
     }
   };
 
+  const handleApproveEarlyOut = (log: TimeClockLog) => {
+    setSelectedEarlyOutLog(log);
+    setEarlyOutActionNotes('');
+    setEarlyOutApproveModalOpen(true);
+  };
+
+  const handleRejectEarlyOut = (log: TimeClockLog) => {
+    setSelectedEarlyOutLog(log);
+    setEarlyOutActionNotes('');
+    setEarlyOutRejectModalOpen(true);
+  };
+
+  const confirmApproveEarlyOut = async () => {
+    if (!selectedEarlyOutLog?.earlyOutRequestId) {
+      toast({
+        title: 'Error',
+        description: 'Early-out request record not found for this log.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setEarlyOutSubmitting(true);
+      await approveEarlyOutRequest(selectedEarlyOutLog.earlyOutRequestId, earlyOutActionNotes || undefined);
+      toast({
+        title: 'Early Out Approved',
+        description: `Early-out request for ${selectedEarlyOutLog.employee} has been approved.`,
+      });
+      setEarlyOutApproveModalOpen(false);
+      setSelectedEarlyOutLog(null);
+      setEarlyOutActionNotes('');
+      clearLogsCache();
+      await fetchLogs({ force: true });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.message || error?.message || 'Failed to approve early-out request.',
+        variant: 'destructive',
+      });
+    } finally {
+      setEarlyOutSubmitting(false);
+    }
+  };
+
+  const confirmRejectEarlyOut = async () => {
+    if (!selectedEarlyOutLog?.earlyOutRequestId) {
+      toast({
+        title: 'Error',
+        description: 'Early-out request record not found for this log.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!earlyOutActionNotes.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please provide a rejection reason.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setEarlyOutSubmitting(true);
+      await rejectEarlyOutRequest(selectedEarlyOutLog.earlyOutRequestId, earlyOutActionNotes.trim());
+      toast({
+        title: 'Early Out Rejected',
+        description: `Early-out request for ${selectedEarlyOutLog.employee} has been rejected.`,
+      });
+      setEarlyOutRejectModalOpen(false);
+      setSelectedEarlyOutLog(null);
+      setEarlyOutActionNotes('');
+      clearLogsCache();
+      await fetchLogs({ force: true });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.message || error?.message || 'Failed to reject early-out request.',
+        variant: 'destructive',
+      });
+    } finally {
+      setEarlyOutSubmitting(false);
+    }
+  };
+
 
   return (
     <div className="container mx-auto py-6 px-4 overflow-x-hidden">
       <div className="flex flex-col lg:flex-row gap-6 items-start w-full max-w-full overflow-x-hidden">
-        {/* Left Section: Collapsible QR Scanner Panel */}
-        <div
-          className={`shrink-0 min-w-0 transition-all duration-300 ease-in-out ${
-            isScannerPanelCollapsed ? 'w-full lg:w-14' : 'w-full lg:w-[320px]'
-          }`}
-        >
-          <Card className="h-fit overflow-hidden">
-            <CardHeader className={`flex flex-row items-center ${isScannerPanelCollapsed ? 'justify-center p-2' : 'justify-between'}`}>
-              {!isScannerPanelCollapsed && <CardTitle>QR Scanner</CardTitle>}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsScannerPanelCollapsed(prev => !prev)}
-                aria-label={isScannerPanelCollapsed ? 'Expand scanner panel' : 'Collapse scanner panel'}
-              >
-                {isScannerPanelCollapsed ? (
-                  <ChevronRight className="h-4 w-4" />
-                ) : (
-                  <ChevronLeft className="h-4 w-4" />
-                )}
-              </Button>
-            </CardHeader>
-
-            {!isScannerPanelCollapsed && (
-              <CardContent className="space-y-4">
-                {!isScanning ? (
-                  <div className="flex flex-col items-center justify-center py-8 space-y-4">
-                    <div className="text-center">
-                      <Smartphone className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Click the button below to start scanning
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleStartScanning}
-                      className="w-full"
-                      size="lg"
-                    >
-                      Start Scanner
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="w-full max-w-[300px] mx-auto relative">
-                      <div id="timeclock-qr-reader" className="w-full [&_img]:mx-auto [&>div]:flex [&>div]:flex-col [&>div]:items-center" />
-                      {isProcessingScan && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
-                          <div className="text-center text-white">
-                            <Clock className="h-8 w-8 animate-spin mx-auto mb-2" />
-                            <p className="text-sm font-medium">Processing...</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <p className="text-sm text-muted-foreground text-center">
-                      Scan to Clock In/Out
-                    </p>
-                  </>
-                )}
-
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-medium">
-                    Today: {formatDateTime(currentTime)}
-                  </p>
-                </div> 
-              </CardContent>
-            )}
-          </Card>
-        </div>
+        <QrScannerPanel
+          isScannerPanelCollapsed={isScannerPanelCollapsed}
+          setIsScannerPanelCollapsed={setIsScannerPanelCollapsed}
+          isScanning={isScanning}
+          isProcessingScan={isProcessingScan}
+          onStartScanning={handleStartScanning}
+          currentTime={currentTime}
+        />
 
         {/* Main Section: Time Clock Records */}
         <div className="flex-1 min-w-0 w-full">
        <Card className="w-full">
         <CardHeader>
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4 w-full min-w-0">
-            {/* Export Button */}
-            <Button 
-              variant="default" 
-              className="bg-green-600 hover:bg-green-700 shrink-0"
-              onClick={handleExport}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            {/* Search Input */}
-            <Input
-              placeholder="Search Name"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full sm:flex-1 sm:min-w-[100px]"
-            />
-            {/* Date Range Picker */}
-            <DateRangePicker
-              date={dateRange}
-              onDateChange={setDateRange}
-              placeholder="Select Date Range"
-              className="w-full sm:flex-1 sm:min-w-[120px]"
-            />
-            {/* Shift Filter */}
-            <Select value={selectedShift} onValueChange={setSelectedShift}>
-              <SelectTrigger className="w-full sm:max-w-[110px] sm:min-w-[60px]">
-                <SelectValue placeholder="All Shifts" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Shifts</SelectItem>
-                <SelectItem value="morning">Morning</SelectItem>
-                <SelectItem value="afternoon">Afternoon</SelectItem>
-                <SelectItem value="evening">Evening</SelectItem>
-              </SelectContent>
-            </Select>
-            {/* Refresh Button */}
-            <Button
-              className="w-full sm:w-auto flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white sm:flex-none shrink-0"
-              variant="default" 
-              onClick={handleRefresh}
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Clear Filters
-            </Button>
-            {/* Add Log Button */}
-            {canManageLogs() && (
-              <Button 
-                variant="default" 
-                className="bg-blue-600 hover:bg-blue-700 shrink-0"
-                onClick={handleAddLog}
-              >
-                <CirclePlus className="h-4 w-4 mr-2" />
-                Add Log
-              </Button>
-            )}
-
-          </div>
-
-          {canManageLogs() && (
-            <div className="pt-3">
-              <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-                <TabsList className={`grid w-full mb-6 ${tabsGridClass}`}>
-                  <TabsTrigger value="active" className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    Active
-                  </TabsTrigger>
-                  <TabsTrigger value="early_out" className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4" />
-                    Early Out
-                  </TabsTrigger>
-                  <TabsTrigger value="archive" className="flex items-center gap-2">
-                    <Archive className="h-4 w-4" />
-                    Archive
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-          )}
+          <TimeClockToolbar
+            loading={loading}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            selectedShift={selectedShift}
+            onShiftChange={setSelectedShift}
+            onExport={handleExport}
+            onClearFilters={handleRefresh}
+            canManageLogs={canManageLogs()}
+            onAddLog={handleAddLog}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            earlyOutPendingCount={earlyOutPendingCount}
+          />
         </CardHeader>
 
         <CardContent>
-          {/* Table */}
-           <div className="rounded-md border w-full overflow-x-auto">
-             <Table className="min-w-[980px]">
-               <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
-                 <TableRow>
-                   <TableHead>Date</TableHead>
-                   {activeTab === 'archive' && <TableHead>Days Left</TableHead>}
-                   <TableHead>Employee</TableHead>
-                   <TableHead>Branch</TableHead>
-                   <TableHead>Shift</TableHead>
-                   <TableHead>Clock In</TableHead>
-                   <TableHead>Clock Out</TableHead>
-                   <TableHead>Late</TableHead>
-                   <TableHead>Overtime</TableHead>
-                   <TableHead>Actual Work Hours</TableHead>
-                   <TableHead>Total Work Hours</TableHead>
-                   {canManageLogs() && <TableHead>Action</TableHead>}
-                 </TableRow>
-               </TableHeader>
-               <TableBody className="[&_td]:text-[11px]">
-                 {loading ? (
-                   <TableRow>
-                    <TableCell colSpan={canManageLogs() ? 11 : 10} className="text-center py-8">
-                       <Loader size="sm" />
-                     </TableCell>
-                   </TableRow>
-                 ) : logs.length > 0 ? (
-                   logs.map((log) => (
-                     <TableRow
-                       key={log.id}
-                       className={activeTab === 'active' && log.earlyOutRequestStatus === 'pending' ? 'bg-red-50/70 hover:bg-red-100/70 dark:bg-red-950/20 dark:hover:bg-red-950/30' : undefined}
-                     >
-                       <TableCell>{log.date}</TableCell>
-                       {activeTab === 'archive' && (
-                         <TableCell>{toDaysLeft(log.deletedAt) ?? '-'}</TableCell>
-                       )}
-                       <TableCell className="font-medium">{log.employee}</TableCell>
-                       <TableCell>
-                         <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 text-[10px] font-medium rounded-md px-2 py-0.5">
-                           {log.branch}
-                         </Badge>
-                       </TableCell>
-                       <TableCell>
-                         <span className={SHIFT_COLOR_CLASSES[log.shift] || ''}>
-                           {log.shift}
-                         </span>
-                       </TableCell>
-                       <TableCell><TimeDisplay value={log.clockIn} /></TableCell>
-                       <TableCell><TimeDisplay value={log.clockOut} /></TableCell>
-                       <TableCell>{log.late}</TableCell>
-                       <TableCell>{log.overtime}</TableCell>
-                       <TableCell>{log.actualHours}</TableCell>
-                       <TableCell>{log.totalWorkHours}</TableCell>
-                       {canManageLogs() && (
-                         <TableCell>
-                           <DropdownMenu>
-                             <DropdownMenuTrigger asChild>
-                               <Button variant="ghost" size="icon" className="h-8 w-8">
-                                 <MoreVertical className="h-4 w-4" />
-                               </Button>
-                             </DropdownMenuTrigger>
-                             <DropdownMenuContent align="end">
-                               {activeTab === 'archive' ? (
-                                 <>
-                                   <DropdownMenuItem onClick={() => handleRestoreLog(log)}>
-                                     Restore
-                                   </DropdownMenuItem>
-                                   <DropdownMenuItem
-                                     onClick={() => handleForceDeleteLog(log)}
-                                     className="text-destructive"
-                                   >
-                                     Delete permanently
-                                   </DropdownMenuItem>
-                                 </>
-                               ) : (
-                                 <>
-                               <DropdownMenuItem onClick={() => handleEditLog(log)}>
-                                 <Edit className="mr-2 h-4 w-4" />
-                                 Edit
-                               </DropdownMenuItem>
-                               <DropdownMenuItem 
-                                 onClick={() => handleDeleteLog(log)}
-                                 className="text-destructive"
-                               >
-                                 <Trash2 className="mr-2 h-4 w-4" />
-                                 Delete
-                               </DropdownMenuItem>
-                                 </>
-                               )}
-                             </DropdownMenuContent>
-                           </DropdownMenu>
-                         </TableCell>
-                       )}
-                     </TableRow>
-                   ))
-                 ) : (
-                   <TableRow>
-                    <TableCell colSpan={canManageLogs() ? 11 : 10} className="p-0">
-                       {hasDateFilter ? (
-                         <EmptyState
-                           icon={Clock}
-                           title="No data found"
-                           description="No time clock records exist within the selected date range. Try a different range."
-                         />
-                       ) : (
-                         <EmptyState
-                           icon={Clock}
-                           title="No time clock records found"
-                           description="There are no clock-in/clock-out records for this branch yet. Employees will appear here once they clock in."
-                         />
-                       )}
-                     </TableCell>
-                   </TableRow>
-                 )}
-               </TableBody>
-             </Table>
-           </div>
+          <TimeClockTable
+            loading={loading}
+            logs={logs}
+            activeTab={activeTab}
+            canManageLogs={canManageLogs()}
+            hasDateFilter={hasDateFilter}
+            onEditLog={handleEditLog}
+            onDeleteLog={handleDeleteLog}
+            onRestoreLog={handleRestoreLog}
+            onForceDeleteLog={handleForceDeleteLog}
+            onApproveEarlyOut={handleApproveEarlyOut}
+            onRejectEarlyOut={handleRejectEarlyOut}
+          />
 
           {/* Pagination */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
@@ -1614,9 +779,20 @@ export default function TimeClockPage() {
           mode={logModalMode}
           log={activeLog}
           onClose={() => setIsLogModalOpen(false)}
-          onSuccess={async () => {
+          onSuccess={async (result) => {
             clearLogsCache();
             await fetchLogs({ force: true });
+            if (result?.earlyOutWarning) {
+              setEarlyOutPromptData({
+                userId: activeLog?.userId ?? 0,
+                employeeName: result.earlyOutWarning.employee_name,
+                attemptedClockOut: result.earlyOutWarning.attempted_clock_out,
+                scheduledClockOut: result.earlyOutWarning.scheduled_clock_out,
+                remainingMinutes: Number(result.earlyOutWarning.remaining_minutes || 0),
+                source: 'manual',
+              });
+              setEarlyOutConfirmOpen(true);
+            }
           }}
         />
       )}
@@ -1691,15 +867,117 @@ export default function TimeClockPage() {
         title="Early clock-out detected"
         description={
           earlyOutPromptData
-            ? `${earlyOutPromptData.employeeName}, this clock-out is ${earlyOutPromptData.remainingMinutes} minute(s) earlier than your scheduled out (${earlyOutPromptData.scheduledClockOut}). Early clock-out is subject to disciplinary action and requires admin approval before payroll processing.`
+            ? `${earlyOutPromptData.employeeName}, this clock-out is ${earlyOutPromptData.remainingMinutes.toFixed(2)} minute(s) earlier than your scheduled out (${earlyOutPromptData.scheduledClockOut}). Early clock-out is subject to disciplinary action and requires admin approval before payroll processing.`
             : 'This clock-out is earlier than scheduled and requires approval.'
         }
-        confirmText={earlyOutConfirming ? 'Processing...' : 'Proceed Clock Out'}
-        cancelText="Cancel"
+        confirmText={earlyOutPromptData?.source === 'manual' ? 'Okay' : (earlyOutConfirming ? 'Processing...' : 'Proceed Clock Out')}
+        cancelText={earlyOutPromptData?.source === 'manual' ? 'Close' : 'Cancel'}
         onConfirm={handleEarlyOutConfirm}
         variant="warning"
-        loading={earlyOutConfirming}
+        loading={earlyOutPromptData?.source === 'manual' ? false : earlyOutConfirming}
       />
+
+      <Dialog open={earlyOutApproveModalOpen} onOpenChange={setEarlyOutApproveModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Approve Early Out Request</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to approve this early-out request?
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedEarlyOutLog && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-muted rounded-md">
+                <p className="text-sm"><strong>Employee:</strong> {selectedEarlyOutLog.employee}</p>
+                <p className="text-sm"><strong>Date:</strong> {selectedEarlyOutLog.date}</p>
+                <p className="text-sm"><strong>Shift:</strong> {selectedEarlyOutLog.shift}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Notes (Optional)</label>
+                <Textarea
+                  value={earlyOutActionNotes}
+                  onChange={(e) => setEarlyOutActionNotes(e.target.value.slice(0, 1000))}
+                  placeholder="Optionally add approval notes (maximum 1000 characters)."
+                  className="mt-1"
+                  rows={3}
+                  maxLength={1000}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">{earlyOutActionNotes.length}/1000 characters</p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEarlyOutApproveModalOpen(false)}
+              disabled={earlyOutSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmApproveEarlyOut}
+              className="bg-green-600 hover:bg-green-700"
+              disabled={earlyOutSubmitting}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              {earlyOutSubmitting ? 'Approving...' : 'Approve'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={earlyOutRejectModalOpen} onOpenChange={setEarlyOutRejectModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject Early Out Request</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reject this early-out request?
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedEarlyOutLog && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-muted rounded-md">
+                <p className="text-sm"><strong>Employee:</strong> {selectedEarlyOutLog.employee}</p>
+                <p className="text-sm"><strong>Date:</strong> {selectedEarlyOutLog.date}</p>
+                <p className="text-sm"><strong>Shift:</strong> {selectedEarlyOutLog.shift}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Rejection Reason *</label>
+                <Textarea
+                  value={earlyOutActionNotes}
+                  onChange={(e) => setEarlyOutActionNotes(e.target.value.slice(0, 1000))}
+                  placeholder="Clearly explain why this request is being rejected (maximum 1000 characters)."
+                  className="mt-1"
+                  rows={3}
+                  maxLength={1000}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">{earlyOutActionNotes.length}/1000 characters</p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEarlyOutRejectModalOpen(false)}
+              disabled={earlyOutSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmRejectEarlyOut}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={earlyOutSubmitting || !earlyOutActionNotes.trim()}
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              {earlyOutSubmitting ? 'Rejecting...' : 'Reject'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -39,6 +39,17 @@ export async function checkEmailAvailability(
     })
 
     const data = await response.json()
+    if (!response.ok) {
+      const validationMessage =
+        data?.errors?.email?.[0] ||
+        data?.message ||
+        'Unable to verify email availability'
+      return {
+        available: false,
+        message: validationMessage,
+      }
+    }
+
     return {
       available: data.available,
       message: data.message || (data.available ? 'Email is available' : 'Email is not available'),
