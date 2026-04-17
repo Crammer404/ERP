@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { DateRange } from 'react-day-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { 
   Select,
@@ -22,14 +21,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   Pagination,
   PaginationContent,
   PaginationItem,
@@ -40,29 +31,14 @@ import {
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { Download, Loader2, RefreshCw, Clock } from 'lucide-react';
 import { EmployeeIdCard } from '../employee-id/components/employee-id';
-import { Loader } from '@/components/ui/loader';
-import { EmptyState } from '@/components/ui/empty-state';
 import { useToast } from '@/hooks/use-toast';
-import { exportAttendance, getAttendanceLogs, DtrLogResponseItem } from '@/services/hrms/dtr';
+import { exportAttendance, getAttendanceLogs } from '@/services/hrms/dtr';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
-import { TimeDisplay } from '../time-clock/components/time-display';
-
-// Data type used by the table
-interface AttendanceRecord {
-  id: number;
-  date: string;
-  employee: string;
-  branch: string;
-  shift: string;
-  clockIn: string;
-  clockOut: string;
-  late: string;
-  overtime: string;
-  totalWorkHours: string;
-  actualWorkHours: string;
-}
+import { TimeClockTable } from '../time-clock/components/time-clock-table';
+import { LogDetailsModal } from '../time-clock/components/log-details-modal';
+import type { TimeClockLog } from '../time-clock/types';
+import { mapTimeClockLog } from '../time-clock/utils/log-mappers';
 
 export default function AttendancePage() {
   const { toast } = useToast();
@@ -72,7 +48,7 @@ export default function AttendancePage() {
   const [selectedShift, setSelectedShift] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [records, setRecords] = useState<TimeClockLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -82,122 +58,14 @@ export default function AttendancePage() {
   const leftPanelRef = useRef<HTMLDivElement | null>(null);
   const employeeIdDownloadRef = useRef<(() => Promise<void>) | null>(null);
   const [downloadingEmployeeId, setDownloadingEmployeeId] = useState(false);
-
-  const mapLog = (item: DtrLogResponseItem): AttendanceRecord => {
-    const toTime = (ts: string | null): string => {
-      if (!ts) return '-';
-      const d = new Date(ts);
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-    };
-
-    const toDate = (dateStr: string): string => {
-      const d = new Date(dateStr);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      }
-      // Fallback if backend sends formatted date already
-      return item.date;
-    };
-
-    const formatHoursAndMinutes = (
-      raw: number | string | null | undefined,
-      fallback?: number | string | null | undefined
-    ): string => {
-      const toNum = (v: any): number | null => {
-        if (v === null || v === undefined) return null;
-        const n = typeof v === 'number' ? v : parseFloat(String(v));
-        return isNaN(n) ? null : n;
-      };
-
-      const primary = toNum(raw);
-      const secondary = toNum(fallback);
-      const value = primary ?? secondary ?? 0;
-      if (!value || value <= 0) return '0h 0min';
-
-      let hours = 0;
-      let minutes = 0;
-
-      if (Number.isInteger(value) && value >= 60) {
-        hours = Math.floor(value / 60);
-        minutes = Math.round(value % 60);
-      } else if (!Number.isInteger(value) && value < 48) {
-        hours = Math.floor(value);
-        minutes = Math.round((value - hours) * 60);
-      } else {
-        hours = Math.floor(value / 60);
-        minutes = Math.round(value % 60);
-      }
-
-      if (minutes >= 60) {
-        hours += Math.floor(minutes / 60);
-        minutes = minutes % 60;
-      }
-
-      return `${hours}h ${minutes}min`;
-    };
-
-    const toNum2 = (value: any): number | null => {
-      if (value === null || value === undefined) return null;
-      const parsed = typeof value === 'number' ? value : parseFloat(String(value));
-      return Number.isNaN(parsed) ? null : parsed;
-    };
-
-    const formatLateMinutes = (
-      late: number | string | null | undefined,
-      grace: number | string | null | undefined
-    ): string => {
-      const lateMinutes = toNum2(late) ?? 0;
-      const graceMinutes = toNum2(grace) ?? 0;
-
-      if (lateMinutes <= 0) return '-';
-      if (graceMinutes > 0 && lateMinutes <= graceMinutes) return '-';
-
-      return `${lateMinutes} min`;
-    };
-
-    const formatOvertimeMinutes = (
-      overtime: number | string | null | undefined,
-      grace: number | string | null | undefined
-    ): string => {
-      const overtimeMin = toNum2(overtime) ?? 0;
-      const graceMin = toNum2(grace) ?? 0;
-
-      if (overtimeMin <= 0) return '-';
-      if (graceMin > 0 && overtimeMin <= graceMin) return '-';
-
-      return `${overtimeMin} min`;
-    };
-
-    const nestedFirst = (item.user as any)?.user_info?.first_name;
-    const nestedLast = (item.user as any)?.user_info?.last_name;
-    const employeeName = item.user?.name
-      || [item.user?.first_name, item.user?.last_name].filter(Boolean).join(' ')
-      || [nestedFirst, nestedLast].filter(Boolean).join(' ')
-      || `#${item.user_id}`;
-
-    // Get branch name from first branch_user
-    const branchName = item.user?.branch_users?.[0]?.branch?.name || '-';
-
-    return {
-      id: item.id,
-      date: toDate(item.date),
-      employee: employeeName,
-      branch: branchName,
-      shift: item.shift || '-',
-      clockIn: toTime(item.clock_in),
-      clockOut: toTime(item.clock_out),
-      late: formatLateMinutes(item.late_minutes, item.grace_late_minutes),
-      overtime: formatOvertimeMinutes(item.overtime_minutes, item.grace_overtime_minutes),
-      totalWorkHours: formatHoursAndMinutes(item.total_work_hours),
-      actualWorkHours: formatHoursAndMinutes(item.actual_hours, item.cleaned_total_work_hours),
-    };
-  };
+  const [selectedLog, setSelectedLog] = useState<TimeClockLog | null>(null);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
       const res = await getAttendanceLogs();
-      setRecords((res || []).map(mapLog));
+      setRecords((res || []).map(mapTimeClockLog));
     } catch (e: any) {
       const apiErr = e?.response?.data?.message || e?.message || 'Failed to load attendance records';
       toast({
@@ -232,7 +100,7 @@ export default function AttendancePage() {
     let matchesDateRange = true;
     if (dateRange?.from || dateRange?.to) {
       try {
-        const recordDate = new Date(record.date);
+        const recordDate = new Date(record.dateRaw || record.date);
         if (dateRange.from && recordDate < dateRange.from) {
           matchesDateRange = false;
         }
@@ -254,7 +122,8 @@ export default function AttendancePage() {
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
-  const isTableEmpty = !loading && paginatedRecords.length === 0;
+  const hasDateFilter = Boolean(dateRange?.from || dateRange?.to);
+  const isTableEmpty = !loading && filteredRecords.length === 0;
 
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(parseInt(value));
@@ -354,6 +223,11 @@ export default function AttendancePage() {
       second: '2-digit',
       hour12: true
     });
+  };
+
+  const handleViewLog = (log: TimeClockLog) => {
+    setSelectedLog(log);
+    setViewModalOpen(true);
   };
 
   useEffect(() => {
@@ -472,69 +346,21 @@ export default function AttendancePage() {
             </CardHeader>
 
             <CardContent className={cn(isTableEmpty && 'flex flex-1 min-h-0 flex-col')}>
-              {/* Table */}
-              <div className={cn('rounded-md border w-full overflow-x-auto', isTableEmpty && 'flex-1 min-h-[280px] flex flex-col')}>
-                <Table className={cn('min-w-[900px]', isTableEmpty && 'shrink-0')}>
-                  <TableHeader className="[&_th]:text-[11px] [&_th]:font-medium">
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Branch</TableHead>
-                      <TableHead>Shift</TableHead>
-                      <TableHead>Clock In</TableHead>
-                      <TableHead>Clock Out</TableHead>
-                      <TableHead>Late</TableHead>
-                      <TableHead>Overtime</TableHead>
-                      <TableHead>Actual Work Hours</TableHead>
-                      <TableHead>Total Work Hours</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  {!isTableEmpty && (
-                    <TableBody className="[&_td]:text-[11px]">
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={10} className="text-center py-8">
-                          <Loader size="sm" />
-                        </TableCell>
-                      </TableRow>
-                    ) : paginatedRecords.length > 0 ? (
-                      paginatedRecords.map((record) => (
-                        <TableRow key={record.id}>
-                          <TableCell>{record.date}</TableCell>
-                          <TableCell className="font-medium">{record.employee}</TableCell>
-                          <TableCell>
-                            <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 text-[10px] font-medium rounded-md px-2 py-0.5">
-                              {record.branch}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <span className={SHIFT_COLOR_CLASSES[record.shift] || ''}>
-                              {record.shift}
-                            </span>
-                          </TableCell>
-                          <TableCell><TimeDisplay value={record.clockIn} /></TableCell>
-                          <TableCell><TimeDisplay value={record.clockOut} /></TableCell>
-                          <TableCell>{record.late}</TableCell>
-                          <TableCell>{record.overtime}</TableCell>
-                          <TableCell>{record.actualWorkHours}</TableCell>
-                          <TableCell>{record.totalWorkHours}</TableCell>
-                        </TableRow>
-                      ))
-                    ) : null}
-                    </TableBody>
-                  )}
-                </Table>
-                {isTableEmpty && (
-                  <div className="flex flex-1 items-center justify-center">
-                    <EmptyState
-                      icon={Clock}
-                      title="No attendance records found"
-                      description="There are no attendance records for this branch yet. Records will appear here once employees clock in."
-                      className="py-0"
-                    />
-                  </div>
-                )}
-              </div>
+              <TimeClockTable
+                loading={loading}
+                logs={paginatedRecords}
+                activeTab="active"
+                canManageLogs={true}
+                actionMode="view"
+                hasDateFilter={hasDateFilter}
+                onViewLog={handleViewLog}
+                onEditLog={() => {}}
+                onDeleteLog={() => {}}
+                onRestoreLog={() => {}}
+                onForceDeleteLog={() => {}}
+                onApproveEarlyOut={() => {}}
+                onRejectEarlyOut={() => {}}
+              />
 
               {/* Pagination */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
@@ -668,6 +494,19 @@ export default function AttendancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <LogDetailsModal
+        open={viewModalOpen}
+        onOpenChange={(open) => {
+          setViewModalOpen(open);
+          if (!open) {
+            setSelectedLog(null);
+          }
+        }}
+        log={selectedLog}
+        title="Attendance Log Details"
+        description="Detailed information of the attendance log."
+      />
     </div>
   );
 }

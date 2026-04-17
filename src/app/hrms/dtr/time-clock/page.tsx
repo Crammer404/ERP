@@ -33,6 +33,7 @@ import { ScanConfirmDialog, ScanErrorDialog, OvertimeConfirmDialog } from './com
 import { TimeClockToolbar } from './components/time-clock-toolbar';
 import { QrScannerPanel } from './components/qr-scanner-panel';
 import { TimeClockTable } from './components/time-clock-table';
+import { LogDetailsModal } from './components/log-details-modal';
 import type { TimeClockLog } from './types';
 import { useTimeClockLogs } from './hooks/use-time-clock-logs';
 import { useTimeClockDialogs } from './hooks/use-time-clock-dialogs';
@@ -63,6 +64,8 @@ export default function TimeClockPage() {
   const [earlyOutSubmitting, setEarlyOutSubmitting] = useState(false);
   const [earlyOutActionNotes, setEarlyOutActionNotes] = useState('');
   const [selectedEarlyOutLog, setSelectedEarlyOutLog] = useState<TimeClockLog | null>(null);
+  const [selectedViewLog, setSelectedViewLog] = useState<TimeClockLog | null>(null);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
 
   const today = new Date();
   const {
@@ -514,6 +517,11 @@ export default function TimeClockPage() {
     setEarlyOutRejectModalOpen(true);
   };
 
+  const handleViewLog = (log: TimeClockLog) => {
+    setSelectedViewLog(log);
+    setViewModalOpen(true);
+  };
+
   const confirmApproveEarlyOut = async () => {
     if (!selectedEarlyOutLog?.earlyOutRequestId) {
       toast({
@@ -631,6 +639,7 @@ export default function TimeClockPage() {
             activeTab={activeTab}
             canManageLogs={canManageLogs()}
             hasDateFilter={hasDateFilter}
+            onViewLog={handleViewLog}
             onEditLog={handleEditLog}
             onDeleteLog={handleDeleteLog}
             onRestoreLog={handleRestoreLog}
@@ -978,6 +987,19 @@ export default function TimeClockPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <LogDetailsModal
+        open={viewModalOpen}
+        onOpenChange={(open) => {
+          setViewModalOpen(open);
+          if (!open) {
+            setSelectedViewLog(null);
+          }
+        }}
+        log={selectedViewLog}
+        title="Time Clock Log Details"
+        description="Detailed information of the selected time clock log."
+      />
     </div>
   );
 }

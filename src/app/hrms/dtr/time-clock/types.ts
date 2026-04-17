@@ -23,6 +23,9 @@ export interface TimeClockLog {
   earlyOutRequestId: number | null;
   earlyOutRequestStatus: 'pending' | 'approved' | 'rejected' | null;
   earlyOutRemainingMinutes: number;
+  earlyOutReviewNotes: string;
+  earlyOutReason: string;
+  earlyOutReviewedAt: string;
   scheduledClockOut: string;
   actualClockOut: string;
   reviewedBy: string;

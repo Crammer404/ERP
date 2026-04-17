@@ -49,6 +49,9 @@ export interface DtrLogResponseItem {
     id: number;
     status?: 'pending' | 'approved' | 'rejected' | null;
     remaining_minutes?: number | null;
+    review_notes?: string | null;
+    reason?: string | null;
+    reviewed_at?: string | null;
   } | null;
   early_out_request_status?: 'pending' | 'approved' | 'rejected' | null;
   early_out_remaining_minutes?: number | null;

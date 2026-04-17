@@ -37,13 +37,18 @@ export async function checkEmailAvailability(
       headers: API_CONFIG.DEFAULT_HEADERS,
       body: JSON.stringify({ email }),
     })
-
-    const data = await response.json()
+    const raw = await response.text()
+    let data: any = null
+    try {
+      data = raw ? JSON.parse(raw) : null
+    } catch {
+      data = null
+    }
     if (!response.ok) {
       const validationMessage =
         data?.errors?.email?.[0] ||
         data?.message ||
-        'Unable to verify email availability'
+        (raw ? `Server error (${response.status}): ${raw.slice(0, 120)}` : `Server error (${response.status})`)
       return {
         available: false,
         message: validationMessage,
@@ -76,8 +81,19 @@ export async function checkTenantNameAvailability(
       headers: API_CONFIG.DEFAULT_HEADERS,
       body: JSON.stringify({ tenant_name: tenantName }),
     })
-
-    const data = await response.json()
+    const raw = await response.text()
+    let data: any = null
+    try {
+      data = raw ? JSON.parse(raw) : null
+    } catch {
+      data = null
+    }
+    if (!response.ok) {
+      return {
+        available: false,
+        message: data?.message || (raw ? `Server error (${response.status}): ${raw.slice(0, 120)}` : `Server error (${response.status})`),
+      }
+    }
     return {
       available: data.available,
       message: data.message || (data.available ? 'Store name is available' : 'Store name is already registered'),

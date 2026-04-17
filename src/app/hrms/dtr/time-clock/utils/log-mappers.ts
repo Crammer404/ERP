@@ -94,7 +94,11 @@ export const formatStatusLabel = (status: string | null): string => {
 };
 
 export const mapTimeClockLog = (item: DtrLogResponseItem): TimeClockLog => {
-  const isEarlyOutRequestRow = typeof item.request_id === 'number';
+  const isEarlyOutRequestRow =
+    typeof item.request_id === 'number' &&
+    !item.user &&
+    !!item.employee_name &&
+    !!item.actual_clock_out_at;
 
   if (isEarlyOutRequestRow) {
     const employeeName = item.employee_name || `#${item.user_id}`;
@@ -107,8 +111,8 @@ export const mapTimeClockLog = (item: DtrLogResponseItem): TimeClockLog => {
       deletedAt: null,
       employee: employeeName,
       branch: item.branch_name || '-',
-      scheduleName: '-',
-      shift: '-',
+      scheduleName: item.schedule_name || '-',
+      shift: item.shift || '-',
       clockIn: '-',
       clockOut: '-',
       late: '-',
@@ -121,6 +125,9 @@ export const mapTimeClockLog = (item: DtrLogResponseItem): TimeClockLog => {
       earlyOutRequestId: item.request_id ?? item.id,
       earlyOutRequestStatus: (item.status as 'pending' | 'approved' | 'rejected' | null) || null,
       earlyOutRemainingMinutes: Number(item.remaining_minutes || 0),
+      earlyOutReviewNotes: item.early_out_request?.review_notes || '',
+      earlyOutReason: item.early_out_request?.reason || '',
+      earlyOutReviewedAt: item.early_out_request?.reviewed_at || '',
       scheduledClockOut: formatTimeOnly(item.scheduled_clock_out_at || null),
       actualClockOut: toTime(item.actual_clock_out_at || null),
       reviewedBy: item.reviewed_by_name || '-',
@@ -160,9 +167,12 @@ export const mapTimeClockLog = (item: DtrLogResponseItem): TimeClockLog => {
     earlyOutRequestId: item.early_out_request?.id ?? null,
     earlyOutRequestStatus: item.early_out_request_status || null,
     earlyOutRemainingMinutes: item.early_out_remaining_minutes || 0,
+    earlyOutReviewNotes: item.early_out_request?.review_notes || '',
+    earlyOutReason: item.early_out_request?.review_notes || item.early_out_request?.reason || '',
+    earlyOutReviewedAt: item.early_out_request?.reviewed_at || '',
     scheduledClockOut: '-',
     actualClockOut: '-',
-    reviewedBy: '-',
+    reviewedBy: item.reviewed_by_name || '-',
   };
 };
 

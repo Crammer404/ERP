@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { MoreVertical, Edit, Trash2, CheckCircle, XCircle, Eye } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Clock } from 'lucide-react';
@@ -19,6 +19,7 @@ interface TimeClockTableProps {
   logs: TimeClockLog[];
   activeTab: TimeClockTab;
   canManageLogs: boolean;
+  actionMode?: 'manage' | 'view' | 'none';
   hasDateFilter: boolean;
   onEditLog: (log: TimeClockLog) => void;
   onDeleteLog: (log: TimeClockLog) => void;
@@ -26,13 +27,15 @@ interface TimeClockTableProps {
   onForceDeleteLog: (log: TimeClockLog) => void;
   onApproveEarlyOut: (log: TimeClockLog) => void;
   onRejectEarlyOut: (log: TimeClockLog) => void;
+  onViewLog?: (log: TimeClockLog) => void;
 }
 
 export function TimeClockTable(props: TimeClockTableProps) {
   const isEarlyOutTab = props.activeTab === 'early_out';
+  const canShowActionColumn = props.actionMode === 'none' ? false : props.canManageLogs;
   const loadingColSpan = isEarlyOutTab
-    ? (props.canManageLogs ? 8 : 7)
-    : (props.canManageLogs ? 13 : 12);
+    ? (canShowActionColumn ? 8 : 7)
+    : (canShowActionColumn ? 13 : 12);
   const renderStatusTag = (status: string | null) => {
     const normalized = (status || '').toLowerCase();
     if (normalized === 'approved') {
@@ -49,9 +52,31 @@ export function TimeClockTable(props: TimeClockTableProps) {
   };
   const renderStandardStatus = (log: TimeClockLog) => {
     const normalizedStatus = (log.status || '').toLowerCase();
-    const isApprovedEarlyOut = normalizedStatus === 'early_out' && log.earlyOutRequestStatus === 'approved';
-    if (isApprovedEarlyOut) {
-      return <span className="text-green-600 font-medium">Early Out</span>;
+    const normalizedEarlyOutStatus = (log.earlyOutRequestStatus || '').toLowerCase();
+    const isEarlyOut = normalizedStatus === 'early_out';
+
+    if (isEarlyOut && normalizedEarlyOutStatus === 'approved') {
+      return (
+        <span className="font-medium">
+          Early Out - <span className="text-green-600">Approve</span>
+        </span>
+      );
+    }
+
+    if (isEarlyOut && normalizedEarlyOutStatus === 'rejected') {
+      return (
+        <span className="font-medium">
+          Early Out - <span className="text-red-600">Reject</span>
+        </span>
+      );
+    }
+
+    if (isEarlyOut && normalizedEarlyOutStatus === 'pending') {
+      return (
+        <span className="font-medium">
+          Early Out - <span className="text-yellow-600">Pending</span>
+        </span>
+      );
     }
 
     return formatStatusLabel(log.status);
@@ -71,7 +96,7 @@ export function TimeClockTable(props: TimeClockTableProps) {
                 <TableHead>Actual Clock Out</TableHead>
                 <TableHead>Remaining Minutes</TableHead>
                 <TableHead>Reviewed By</TableHead>
-                {props.canManageLogs && <TableHead>Action</TableHead>}
+                {canShowActionColumn && <TableHead>Action</TableHead>}
               </>
             ) : (
               <>
@@ -87,7 +112,7 @@ export function TimeClockTable(props: TimeClockTableProps) {
                 <TableHead>Overtime</TableHead>
                 <TableHead>Actual Work Hours</TableHead>
                 <TableHead>Total Work Hours</TableHead>
-                {props.canManageLogs && <TableHead>Action</TableHead>}
+                {canShowActionColumn && <TableHead>Action</TableHead>}
               </>
             )}
           </TableRow>
@@ -137,7 +162,7 @@ export function TimeClockTable(props: TimeClockTableProps) {
                     <TableCell>{log.totalWorkHours}</TableCell>
                   </>
                 )}
-                {props.canManageLogs && (
+                {canShowActionColumn && (
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -146,7 +171,13 @@ export function TimeClockTable(props: TimeClockTableProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        {props.activeTab === 'archive' ? (
+                        {props.onViewLog && props.activeTab === 'active' && (
+                          <DropdownMenuItem onClick={() => props.onViewLog?.(log)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            View
+                          </DropdownMenuItem>
+                        )}
+                        {props.actionMode === 'view' ? null : props.activeTab === 'archive' ? (
                           <>
                             <DropdownMenuItem onClick={() => props.onRestoreLog(log)}>Restore</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => props.onForceDeleteLog(log)} className="text-destructive">
