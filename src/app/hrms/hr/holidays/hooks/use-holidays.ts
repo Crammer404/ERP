@@ -97,6 +97,31 @@ export function useHolidays() {
     void fetchHolidayData(holidayYear);
   }, [holidayYear]);
 
+  useEffect(() => {
+    const refreshForContextChange = () => {
+      // Context changed (branch/tenant): discard any staged preview and refetch active-branch rows.
+      setHasSyncedPreview(false);
+      setPreviewHolidays([]);
+      void fetchHolidayData(holidayYear);
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'branch_context' || event.key === 'tenant_context') {
+        refreshForContextChange();
+      }
+    };
+
+    window.addEventListener('branchChanged', refreshForContextChange);
+    window.addEventListener('tenantChanged', refreshForContextChange);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('branchChanged', refreshForContextChange);
+      window.removeEventListener('tenantChanged', refreshForContextChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [holidayYear]);
+
   const syncOrUpdateDb = async () => {
     try {
       setHolidaySyncing(true);

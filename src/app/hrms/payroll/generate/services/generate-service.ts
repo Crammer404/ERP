@@ -131,7 +131,12 @@ export const generateService = {
     return await api(API_ENDPOINTS.PAYROLL.PAYSLIP.EMPLOYEE_PAYSLIPS);
   },
 
-  async exportPayslipsExcel(id: number): Promise<void> {
+  async exportPayslipsExcel(
+    id: number,
+    options?: {
+      onProgress?: (state: { percent: number; phase: 'preparing' | 'downloading' | 'saving' }) => void;
+    }
+  ): Promise<void> {
     const endpoint = API_ENDPOINTS.PAYROLL.REPORTS.EXPORT.replace('{id}', id.toString());
     let tenantId = '';
     let branchId = '';
@@ -144,21 +149,47 @@ export const generateService = {
       branchId = '';
     }
 
-    const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        'X-Tenant-ID': tenantId,
-        'X-Branch-ID': branchId,
-      },
-    });
+    const onProgress = options?.onProgress;
+    let waitingTimer: ReturnType<typeof setInterval> | null = null;
+    let waitingValue = 0;
+
+    const startPreparingPulse = () => {
+      onProgress?.({ percent: 0, phase: 'preparing' });
+      waitingTimer = setInterval(() => {
+        waitingValue = Math.min(waitingValue + 1.25, 36);
+        onProgress?.({ percent: Math.round(waitingValue), phase: 'preparing' });
+      }, 320);
+    };
+
+    const stopPreparingPulse = () => {
+      if (waitingTimer) {
+        clearInterval(waitingTimer);
+        waitingTimer = null;
+      }
+    };
+
+    startPreparingPulse();
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          'X-Tenant-ID': tenantId,
+          'X-Branch-ID': branchId,
+        },
+      });
+    } finally {
+      stopPreparingPulse();
+    }
 
     if (!response.ok) {
       let errorMessage = 'Failed to export payslips.';
       try {
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
           const data = await response.json();
           errorMessage = data?.message || errorMessage;
         } else {
@@ -171,11 +202,11 @@ export const generateService = {
       throw new Error(errorMessage);
     }
 
-    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    const contentTypeHeader = (response.headers.get('content-type') || '').toLowerCase();
     const isBinarySpreadsheet =
-      contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
-      contentType.includes('application/octet-stream');
-    const isHtmlOrJson = contentType.includes('text/html') || contentType.includes('application/json');
+      contentTypeHeader.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+      contentTypeHeader.includes('application/octet-stream');
+    const isHtmlOrJson = contentTypeHeader.includes('text/html') || contentTypeHeader.includes('application/json');
 
     if (isHtmlOrJson && !isBinarySpreadsheet) {
       let details = 'Server returned a non-Excel response.';
@@ -197,7 +228,64 @@ export const generateService = {
       }
     }
 
-    const blob = await response.blob();
+    onProgress?.({ percent: 40, phase: 'downloading' });
+
+    const contentLengthRaw = response.headers.get('content-length');
+    const totalBytes = contentLengthRaw ? parseInt(contentLengthRaw, 10) : 0;
+    const body = response.body;
+
+    let blob: Blob;
+
+    if (body && typeof body.getReader === 'function' && Number.isFinite(totalBytes) && totalBytes > 0) {
+      const reader = body.getReader();
+      const chunks: BlobPart[] = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value?.byteLength) {
+          chunks.push(value);
+          received += value.byteLength;
+          const pct = 40 + Math.min(58, Math.round((received / totalBytes) * 58));
+          onProgress?.({ percent: Math.min(pct, 98), phase: 'downloading' });
+        }
+      }
+
+      onProgress?.({ percent: 99, phase: 'saving' });
+      const mime =
+        contentTypeHeader.includes('spreadsheet') || contentTypeHeader.includes('excel')
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : response.headers.get('content-type') || 'application/octet-stream';
+      blob = new Blob(chunks, { type: mime });
+    } else if (body && typeof body.getReader === 'function') {
+      const reader = body.getReader();
+      const chunks: BlobPart[] = [];
+      let displayed = 40;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value?.byteLength) {
+          chunks.push(value);
+          displayed = Math.min(96, displayed + 2.5);
+          onProgress?.({ percent: Math.round(displayed), phase: 'downloading' });
+        }
+      }
+
+      onProgress?.({ percent: 99, phase: 'saving' });
+      const mime =
+        contentTypeHeader.includes('spreadsheet') || contentTypeHeader.includes('excel')
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : response.headers.get('content-type') || 'application/octet-stream';
+      blob = new Blob(chunks, { type: mime });
+    } else {
+      blob = await response.blob();
+      onProgress?.({ percent: 95, phase: 'downloading' });
+    }
+
+    onProgress?.({ percent: 100, phase: 'saving' });
+
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

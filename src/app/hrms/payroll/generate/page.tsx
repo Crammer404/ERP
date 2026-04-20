@@ -37,6 +37,14 @@ import { PaginationInfos } from '@/components/ui/pagination-info';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
 import { PayslipTemplate, type PayslipData as PayslipTemplateData } from '@/components/forms/payslip/payslip-template';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 
 // Frontend interface matching the table display
 interface PayrollReport {
@@ -103,6 +111,11 @@ export default function GeneratePayrollPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
   const [exportingId, setExportingId] = useState<number | null>(null);
+  const [exportProgressOpen, setExportProgressOpen] = useState(false);
+  const [exportProgressPercent, setExportProgressPercent] = useState(0);
+  const [exportProgressPhase, setExportProgressPhase] = useState<
+    'preparing' | 'downloading' | 'saving'
+  >('preparing');
   const { toast } = useToast();
   const [payslipsToPrint, setPayslipsToPrint] = useState<PayslipTemplateData[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -394,9 +407,18 @@ export default function GeneratePayrollPage() {
   };
 
   const handleExportExcel = async (report: PayrollReport) => {
+    setExportProgressOpen(true);
+    setExportProgressPercent(0);
+    setExportProgressPhase('preparing');
+    setExportingId(report.id);
     try {
-      setExportingId(report.id);
-      await generateService.exportPayslipsExcel(report.id);
+      await generateService.exportPayslipsExcel(report.id, {
+        onProgress: ({ percent, phase }) => {
+          setExportProgressPercent(percent);
+          setExportProgressPhase(phase);
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 400));
       toast({
         title: 'Success',
         description: 'Payslips exported to Excel successfully.',
@@ -409,9 +431,17 @@ export default function GeneratePayrollPage() {
         variant: 'destructive',
       });
     } finally {
+      setExportProgressOpen(false);
       setExportingId(null);
     }
   };
+
+  const exportPhaseLabel =
+    exportProgressPhase === 'preparing'
+      ? 'Preparing file on the server…'
+      : exportProgressPhase === 'downloading'
+        ? 'Downloading Excel…'
+        : 'Saving to your device…';
 
   const handleCloseDeleteModal = () => {
     setDeleteTarget(null);
@@ -781,6 +811,32 @@ export default function GeneratePayrollPage() {
           errors={deleteErrors}
         />
       )}
+
+      <Dialog
+        open={exportProgressOpen}
+        onOpenChange={(open) => {
+          if (!open && exportingId === null) {
+            setExportProgressOpen(false);
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onPointerDownOutside={(e) => exportingId !== null && e.preventDefault()}
+          onEscapeKeyDown={(e) => exportingId !== null && e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Exporting payslips</DialogTitle>
+            <DialogDescription>{exportPhaseLabel}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Progress value={exportProgressPercent} className="h-3" />
+            <p className="text-sm text-muted-foreground text-center tabular-nums">
+              {exportProgressPercent}%
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

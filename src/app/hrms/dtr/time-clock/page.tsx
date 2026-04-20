@@ -441,7 +441,7 @@ export default function TimeClockPage() {
   const canManageLogs = (): boolean => {
     if (!user?.role_name) return false;
     const roleName = user.role_name.toLowerCase();
-    return roleName === 'super admin' || roleName === 'system admin' || roleName === 'tenant manager' || roleName === 'owner';
+    return roleName === 'super admin' || roleName === 'owner' || roleName === 'tenant manager' || roleName === 'branch manager';
   };
 
   const handleAddLog = () => {
