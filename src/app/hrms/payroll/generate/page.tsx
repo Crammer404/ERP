@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,9 +27,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Printer, Trash2, Search, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { MoreVertical, Printer, Trash2, Search, RefreshCw, FileSpreadsheet, ChevronDown, Pencil } from 'lucide-react';
 import GeneratePayrollDialog from './components/generate-payroll';
-import { generateService, type PayrollReport as ServicePayrollReport } from './services/generate-service';
+import { generateService, type PayslipData } from './services/generate-service';
 import { useToast } from '@/hooks/use-toast';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { Loader } from '@/components/ui/loader';
@@ -41,72 +41,20 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
+import { Label } from '@/components/ui/label';
+import { PayslipDropdownTable } from './components/payslip-dropdown-table';
+import { EditablePayslipFields, PayrollReport } from './types';
+import { formatGeneratedDateTime, formatLocalDate } from './utils/payroll-view-helpers';
+import { usePayrollReports } from './hooks/use-payroll-reports';
 
-// Frontend interface matching the table display
-interface PayrollReport {
-  id: number;
-  dateRange: string;
-  payrollType: string;
-  employeeCount: number;
-  totalBasicPay: number;
-  totalNightDiff: number;
-  totalOvertime: number;
-  totalOtherEarnings: number;
-  totalOtherDeductions: number;
-  totalSSS: number;
-  totalPhilHealth: number;
-  totalPagIBIG: number;
-  totalIncomeTax: number;
-  totalGrossPay: number;
-  totalDeductions: number;
-  totalNetPay: number;
-  generatedBy: string;
-}
-
-// Map backend response to frontend interface
-const mapBackendToFrontend = (backend: ServicePayrollReport): PayrollReport => {
-  return {
-    id: backend.id,
-    dateRange: backend.date_range,
-    payrollType: backend.payroll_type,
-    employeeCount: backend.total_employees,
-    totalBasicPay: backend.total_basic_pay,
-    totalNightDiff: backend.total_night_differential,
-    totalOvertime: backend.total_overtime,
-    totalOtherEarnings: backend.total_other_earnings,
-    totalOtherDeductions: backend.total_other_deductions,
-    totalSSS: backend.total_sss,
-    totalPhilHealth: backend.total_philhealth,
-    totalPagIBIG: backend.total_pagibig,
-    totalIncomeTax: backend.total_income_tax,
-    totalGrossPay: backend.total_gross,
-    totalDeductions: backend.total_deductions,
-    totalNetPay: backend.total_net,
-    generatedBy: backend.generated_by,
-  };
-};
-
-// Use local timezone when converting picked dates to YYYY-MM-DD.
-// `toISOString()` converts to UTC and can shift the calendar day by -1/+1 depending on timezone.
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 export default function GeneratePayrollPage() {
-  // Initialize with empty array - NO dummy data
-  const [reports, setReports] = useState<PayrollReport[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<PayrollReport | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
@@ -116,142 +64,95 @@ export default function GeneratePayrollPage() {
   const [exportProgressPhase, setExportProgressPhase] = useState<
     'preparing' | 'downloading' | 'saving'
   >('preparing');
+  const [expandedReportId, setExpandedReportId] = useState<number | null>(null);
+  const [payslipsByReportId, setPayslipsByReportId] = useState<Record<number, PayslipData[]>>({});
+  const [payslipLoadingByReportId, setPayslipLoadingByReportId] = useState<Record<number, boolean>>({});
+  const [payslipErrorByReportId, setPayslipErrorByReportId] = useState<Record<number, string | null>>({});
   const { toast } = useToast();
   const [payslipsToPrint, setPayslipsToPrint] = useState<PayslipTemplateData[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
   const printRef = useRef<HTMLDivElement | null>(null);
   const { defaultCurrency } = useCurrency();
-  
-  // Ensure we never use dummy data - always start empty
-  if (reports.length > 0 && !loading && reports.some(r => r.dateRange.includes('2025-02-31'))) {
-    console.warn('⚠️ Invalid date detected in reports - this might be dummy data');
-  }
-
-  // Fetch reports from API - REAL DATA FROM DATABASE
-  const fetchReports = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      console.log('🔍 Fetching payroll reports from API (REAL DATABASE DATA)...');
-      console.log('API Endpoint:', '/hrms/payroll/reports/data');
-      
-      const data = await generateService.getReports();
-      console.log('✅ Raw API response from database:', data);
-      console.log('📊 Number of records:', Array.isArray(data) ? data.length : 'Invalid format');
-      
-      if (!Array.isArray(data)) {
-        console.error('❌ Invalid response format:', data);
-        setError('Invalid response format from server');
-        setReports([]);
-        return;
-      }
-      
-      if (data.length === 0) {
-        console.log('ℹ️ No payroll reports found in database');
-        setReports([]);
-        return;
-      }
-      
-      const mappedReports = data.map(mapBackendToFrontend);
-      console.log('✅ Mapped reports from database:', mappedReports);
-      console.log('📋 First report sample:', mappedReports[0]);
-      setReports(mappedReports);
-    } catch (err: any) {
-      console.error('❌ Failed to fetch payroll reports from API:', err);
-      console.error('Error details:', {
-        message: err?.message,
-        response: err?.response?.data,
-        status: err?.response?.status,
-      });
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to load payroll reports';
-      setError(errorMessage);
-      setReports([]); // Clear reports on error
+  const [editingPayslip, setEditingPayslip] = useState<PayslipData | null>(null);
+  const [editPayslipForm, setEditPayslipForm] = useState<EditablePayslipFields>({
+    basic_pay: 0,
+    overtime_pay: 0,
+    night_diff: 0,
+    income_tax: 0,
+    sss: 0,
+    pagibig: 0,
+    philhealth: 0,
+    gross: 0,
+    net: 0,
+  });
+  const [savingPayslip, setSavingPayslip] = useState(false);
+  const [deletePayslipTarget, setDeletePayslipTarget] = useState<{ reportId: number; payslip: PayslipData } | null>(null);
+  const [deletePayslipLoading, setDeletePayslipLoading] = useState(false);
+  const [deletePayslipErrors, setDeletePayslipErrors] = useState<Record<string, string>>({});
+  const {
+    currentPage,
+    setCurrentPage,
+    loading,
+    error,
+    searchTerm,
+    itemsPerPage,
+    totalItems,
+    totalPages,
+    from,
+    to,
+    paginatedReports,
+    fetchReports,
+    handleSearchChange,
+    handleItemsPerPageChange,
+    refresh,
+  } = usePayrollReports({
+    onError: (message) =>
       toast({
         title: 'Error',
-        description: errorMessage,
+        description: message,
         variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Initialize data - fetch from API on mount
-  useEffect(() => {
-    // Always fetch from API, never use dummy data
-    fetchReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Keep reports in sync with active tenant/branch selector changes
-  useEffect(() => {
-    const handleContextChange = () => {
-      setCurrentPage(1);
-      fetchReports();
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'branch_context' || e.key === 'tenant_context') {
-        handleContextChange();
-      }
-    };
-
-    window.addEventListener('branchChanged', handleContextChange);
-    window.addEventListener('tenantChanged', handleContextChange);
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('branchChanged', handleContextChange);
-      window.removeEventListener('tenantChanged', handleContextChange);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Search + Pagination
-  const filteredReports = useMemo(() => {
-    if (!searchTerm.trim()) return reports;
-    const q = searchTerm.toLowerCase();
-    return reports.filter((r) =>
-      r.dateRange.toLowerCase().includes(q) ||
-      r.payrollType.toLowerCase().includes(q) ||
-      r.generatedBy.toLowerCase().includes(q)
-    );
-  }, [reports, searchTerm]);
-
-  const totalItems = filteredReports.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-  const from = totalItems ? (currentPage - 1) * itemsPerPage + 1 : null;
-  const to = totalItems ? Math.min(currentPage * itemsPerPage, totalItems) : null;
-
-  const paginatedReports = filteredReports.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+      }),
+  });
 
   const formatCurrency = (amount: number) => {
     const symbol = defaultCurrency?.symbol || '₱';
     return `${symbol} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    setCurrentPage(1);
-  };
-
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
 
-  const handleItemsPerPageChange = (value: string) => {
-    const per = parseInt(value, 10);
-    const safe = Number.isFinite(per) && per > 0 ? per : 10;
-    setItemsPerPage(safe);
-    setCurrentPage(1);
+  const loadPayslipsForReport = async (reportId: number, force = false) => {
+    if (!force && payslipsByReportId[reportId]) return;
+
+    setPayslipLoadingByReportId((prev) => ({ ...prev, [reportId]: true }));
+    setPayslipErrorByReportId((prev) => ({ ...prev, [reportId]: null }));
+    try {
+      const response = await generateService.viewPayslips(reportId);
+      setPayslipsByReportId((prev) => ({
+        ...prev,
+        [reportId]: response.payslips || [],
+      }));
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to load payslips for this payroll report.';
+      setPayslipErrorByReportId((prev) => ({ ...prev, [reportId]: message }));
+    } finally {
+      setPayslipLoadingByReportId((prev) => ({ ...prev, [reportId]: false }));
+    }
   };
 
-  const handleRefresh = () => {
-    fetchReports();
+  const handleToggleRow = async (reportId: number) => {
+    if (expandedReportId === reportId) {
+      setExpandedReportId(null);
+      return;
+    }
+
+    setExpandedReportId(reportId);
+    await loadPayslipsForReport(reportId);
   };
 
   const handlePrint = async (report: PayrollReport) => {
@@ -355,7 +256,7 @@ export default function GeneratePayrollPage() {
           companyAddress: '',
           logoUrl,
           employeeName: p.employee_name,
-          designation: p.role,
+          designation: p.position || 'N/A',
           branch: p.branch,
           payrollType: p.payroll_type,
           payPeriod: p.date_range,
@@ -391,13 +292,192 @@ export default function GeneratePayrollPage() {
       setPayslipsToPrint(mapped);
       setIsPrinting(true);
     } catch (err: any) {
-      console.error('Failed to load payslips for printing:', err);
       toast({
         title: 'Error',
         description:
           err?.response?.data?.message || 'Failed to load payslips for printing',
         variant: 'destructive',
       });
+    }
+  };
+
+  const mapPayslipToTemplate = (p: PayslipData, companyName = '', logoUrl?: string): PayslipTemplateData => {
+    const otherEarnings = (p.earnings || []).map((e) => ({
+      label: e.description,
+      amount: e.total || 0,
+    }));
+
+    const otherDeductions = (p.deductions || []).map((d) => ({
+      label: d.description,
+      amount: d.total || 0,
+    }));
+
+    const totalEarnings = p.gross ?? 0;
+    const totalDeductions =
+      (p.income_tax || 0) +
+      (p.sss || 0) +
+      (p.pagibig || 0) +
+      (p.philhealth || 0) +
+      otherDeductions.reduce((sum, d) => sum + d.amount, 0);
+
+    const workedDays = Number(p.worked_days ?? 0);
+    const regularHoursWorked = Number(p.regular_hours_worked ?? 0);
+    const lateDays = Number(p.late_days ?? 0);
+    const lateMinutes = Number(p.late_minutes ?? 0);
+    const overtimeDays = Number(p.overtime_days ?? 0);
+    const overtimeMinutes = Number(p.overtime_minutes ?? 0);
+
+    const summaryRows: Array<{ leftLabel: string; leftValue: string; rightLabel: string; rightValue: string }> = [];
+    if (workedDays !== 0 || regularHoursWorked !== 0) {
+      summaryRows.push({
+        leftLabel: 'Days worked',
+        leftValue: String(workedDays),
+        rightLabel: 'Regular hours worked',
+        rightValue: `${regularHoursWorked} hrs`,
+      });
+    }
+    if (lateDays !== 0 || lateMinutes !== 0) {
+      summaryRows.push({
+        leftLabel: 'Days late',
+        leftValue: String(lateDays),
+        rightLabel: 'Late minutes',
+        rightValue: `${lateMinutes} min`,
+      });
+    }
+    if (overtimeDays !== 0 || overtimeMinutes !== 0) {
+      summaryRows.push({
+        leftLabel: 'Days overtime',
+        leftValue: String(overtimeDays),
+        rightLabel: 'Overtime minutes',
+        rightValue: `${overtimeMinutes} min`,
+      });
+    }
+
+    return {
+      companyName,
+      companyAddress: '',
+      logoUrl,
+      employeeName: p.employee_name,
+      designation: p.position || 'N/A',
+      branch: p.branch,
+      payrollType: p.payroll_type,
+      payPeriod: p.date_range,
+      generatedDate: p.pay_date || p.date_end,
+      daysWorked: workedDays,
+      summaryRows,
+      basicPay: p.basic_pay || 0,
+      overtimePay: p.overtime_pay || 0,
+      nightDifferential: p.night_diff || 0,
+      otherEarnings,
+      incomeTax: p.income_tax || 0,
+      sss: p.sss || 0,
+      pagibig: p.pagibig || 0,
+      philhealth: p.philhealth || 0,
+      otherDeductions,
+      totalEarnings,
+      totalDeductions,
+      netPay: p.net || totalEarnings - totalDeductions,
+      currencySymbol: defaultCurrency?.symbol || '₱',
+      primaryColor: '#111827',
+      showLogo: !!logoUrl,
+    };
+  };
+
+  const handlePrintSinglePayslip = async (reportId: number, payslipId: number) => {
+    try {
+      const response = await generateService.viewPayslips(reportId);
+      const target = (response.payslips || []).find((p) => p.id === payslipId);
+      if (!target) {
+        toast({
+          title: 'Not found',
+          description: 'Selected payslip is no longer available.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const single = mapPayslipToTemplate(target, response.company?.name || '', response.company?.logo || undefined);
+      setPayslipsToPrint([single]);
+      setIsPrinting(true);
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err?.response?.data?.message || 'Failed to print payslip.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const openEditPayslipDialog = (payslip: PayslipData) => {
+    setEditingPayslip(payslip);
+    setEditPayslipForm({
+      basic_pay: Number(payslip.basic_pay || 0),
+      overtime_pay: Number(payslip.overtime_pay || 0),
+      night_diff: Number(payslip.night_diff || 0),
+      income_tax: Number(payslip.income_tax || 0),
+      sss: Number(payslip.sss || 0),
+      pagibig: Number(payslip.pagibig || 0),
+      philhealth: Number(payslip.philhealth || 0),
+      gross: Number(payslip.gross || 0),
+      net: Number(payslip.net || 0),
+    });
+  };
+
+  const handleSavePayslipEdit = async () => {
+    if (!editingPayslip) return;
+
+    try {
+      setSavingPayslip(true);
+      await generateService.updatePayslip({
+        payslip_id: editingPayslip.id,
+        ...editPayslipForm,
+      });
+
+      toast({
+        title: 'Success',
+        description: 'Payslip updated successfully.',
+      });
+
+      if (expandedReportId) {
+        await loadPayslipsForReport(expandedReportId, true);
+      }
+      fetchReports();
+      setEditingPayslip(null);
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err?.response?.data?.message || 'Failed to update payslip.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingPayslip(false);
+    }
+  };
+
+  const handleDeleteSinglePayslip = async (reportId: number, payslipId: number) => {
+    try {
+      setDeletePayslipLoading(true);
+      setDeletePayslipErrors({});
+      await generateService.deletePayslip(payslipId);
+      toast({
+        title: 'Success',
+        description: 'Payslip deleted successfully.',
+      });
+
+      if (expandedReportId === reportId) {
+        await loadPayslipsForReport(reportId, true);
+      }
+      fetchReports();
+    } catch (err: any) {
+      const message = err?.response?.data?.message || 'Failed to delete payslip.';
+      setDeletePayslipErrors({ general: message });
+      toast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletePayslipLoading(false);
     }
   };
 
@@ -424,7 +504,6 @@ export default function GeneratePayrollPage() {
         description: 'Payslips exported to Excel successfully.',
       });
     } catch (err: any) {
-      console.error('Failed to export payslips:', err);
       toast({
         title: 'Error',
         description: err?.message || 'Failed to export payslips.',
@@ -463,7 +542,6 @@ export default function GeneratePayrollPage() {
       handleCloseDeleteModal();
       fetchReports();
     } catch (err: any) {
-      console.error('Failed to delete report:', err);
       const message =
         err?.response?.data?.message ||
         err?.message ||
@@ -514,13 +592,12 @@ export default function GeneratePayrollPage() {
         include_cola: payload.includeCola ? 1 : 0,
       };
 
-      console.log('🚀 Generating payroll with payload:', generatePayload);
-      console.log('📡 API Endpoint:', '/hrms/payroll/reports/generate');
-
       const response = await generateService.generatePayroll(generatePayload);
-      console.log('✅ Payroll generation response:', response);
 
-      const successMessage = 'message' in response ? response.message : 'Payroll generated successfully';
+      const successMessage =
+        response.action === 'updated'
+          ? `Payroll consolidated and updated (${response.merged_users_count ?? payload.userIds.length} employees).`
+          : (response.message || 'Payroll generated successfully');
       toast({
         title: 'Success',
         description: successMessage,
@@ -528,13 +605,6 @@ export default function GeneratePayrollPage() {
       // Refresh the reports list
       fetchReports();
     } catch (err: any) {
-      console.error('❌ Failed to generate payroll:', err);
-      console.error('Error details:', {
-        message: err?.message,
-        response: err?.response?.data,
-        status: err?.response?.status,
-      });
-      
       const errorMessage = err?.response?.data?.message 
         || err?.response?.data?.errors 
         || err?.message 
@@ -608,7 +678,7 @@ export default function GeneratePayrollPage() {
 
             <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
               <Button
-                onClick={handleRefresh}
+                onClick={refresh}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none"
                 disabled={loading}
               >
@@ -653,7 +723,7 @@ export default function GeneratePayrollPage() {
                     <TableHead className="whitespace-nowrap text-right">Total Overtime</TableHead>
                     <TableHead className="whitespace-nowrap text-right">Total Other Earnings</TableHead>
                     <TableHead className="whitespace-nowrap text-right">Total Other Deductions</TableHead>
-                    <TableHead className="whitespace-nowrap text-right">Total SSS</TableHead>
+                    <TableHead className="whitespace-nowrap text-right">Total SSS (Employee Share)</TableHead>
                     <TableHead className="whitespace-nowrap text-right">Total PhilHealth</TableHead>
                     <TableHead className="whitespace-nowrap text-right">Total Pag-IBIG</TableHead>
                     <TableHead className="whitespace-nowrap text-right">Total Income Tax</TableHead>
@@ -661,63 +731,125 @@ export default function GeneratePayrollPage() {
                     <TableHead className="whitespace-nowrap text-right">Total Deductions</TableHead>
                     <TableHead className="whitespace-nowrap text-right">Total Net Pay</TableHead>
                     <TableHead className="whitespace-nowrap">Generated by</TableHead>
+                    <TableHead className="whitespace-nowrap">Generated Date</TableHead>
                     <TableHead className="w-[70px]">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedReports.length > 0 ? (
-                    paginatedReports.map((report) => (
-                      <TableRow key={report.id}>
-                        <TableCell className="whitespace-nowrap">{report.dateRange}</TableCell>
-                        <TableCell className="whitespace-nowrap">{report.payrollType}</TableCell>
-                        <TableCell className="text-right">{report.employeeCount}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalBasicPay)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalNightDiff)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalOvertime)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalOtherEarnings)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalOtherDeductions)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalSSS)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalPhilHealth)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalPagIBIG)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalIncomeTax)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalGrossPay)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(report.totalDeductions)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(report.totalNetPay)}</TableCell>
-                        <TableCell className="whitespace-nowrap">{report.generatedBy}</TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => handleExportExcel(report)}
-                                disabled={exportingId !== null}
-                              >
-                                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                                {exportingId === report.id ? 'Exporting...' : 'Export Excel'}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handlePrint(report)}>
-                                <Printer className="mr-2 h-4 w-4" />
-                                Print
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleDelete(report)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    paginatedReports.map((report) => {
+                      const isExpanded = expandedReportId === report.id;
+                      const isPayslipLoading = Boolean(payslipLoadingByReportId[report.id]);
+                      const payslipError = payslipErrorByReportId[report.id];
+                      const payslips = payslipsByReportId[report.id] || [];
+
+                      return (
+                        <Fragment key={`group-${report.id}`}>
+                          <TableRow
+                            className={cn('cursor-pointer', isExpanded ? 'bg-muted/40' : '')}
+                            onClick={() => handleToggleRow(report.id)}
+                          >
+                            <TableCell className="whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <ChevronDown
+                                  className={cn(
+                                    'h-4 w-4 text-muted-foreground transition-transform',
+                                    isExpanded ? 'rotate-180' : ''
+                                  )}
+                                />
+                                <span>{report.dateRange}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">{report.payrollType}</TableCell>
+                            <TableCell className="text-right">{report.employeeCount}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalBasicPay)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalNightDiff)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalOvertime)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalOtherEarnings)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalOtherDeductions)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalSSS)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalPhilHealth)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalPagIBIG)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalIncomeTax)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalGrossPay)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(report.totalDeductions)}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(report.totalNetPay)}</TableCell>
+                            <TableCell className="whitespace-nowrap">{report.generatedBy}</TableCell>
+                            <TableCell className="whitespace-nowrap">{formatGeneratedDateTime(report.generatedDate)}</TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => handleExportExcel(report)}
+                                    disabled={exportingId !== null}
+                                  >
+                                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                                    {exportingId === report.id ? 'Exporting...' : 'Export Excel'}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handlePrint(report)}>
+                                    <Printer className="mr-2 h-4 w-4" />
+                                    Print
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleDelete(report)}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+
+                          {isExpanded && (
+                            <TableRow className="bg-muted/20">
+                              <TableCell colSpan={18} className="px-2 py-2">
+                                <div className="rounded-md border bg-background p-3">
+                                  {isPayslipLoading && (
+                                    <div className="py-4 flex justify-center">
+                                      <Loader size="sm" />
+                                    </div>
+                                  )}
+
+                                  {!isPayslipLoading && payslipError && (
+                                    <p className="text-sm text-destructive">{payslipError}</p>
+                                  )}
+
+                                  {!isPayslipLoading && !payslipError && payslips.length === 0 && (
+                                    <p className="text-sm text-muted-foreground">
+                                      No payslips found for this payroll report.
+                                    </p>
+                                  )}
+
+                                  {!isPayslipLoading && !payslipError && payslips.length > 0 && (
+                                    <PayslipDropdownTable
+                                      reportId={report.id}
+                                      payslips={payslips}
+                                      formatCurrency={formatCurrency}
+                                      onPrint={handlePrintSinglePayslip}
+                                      onEdit={openEditPayslipDialog}
+                                      onDelete={(reportId, payslip) => {
+                                        setDeletePayslipErrors({});
+                                        setDeletePayslipTarget({ reportId, payslip });
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={17} className="p-0">
+                      <TableCell colSpan={18} className="p-0">
                         <EmptyStates.PayrollReports/>
                       </TableCell>
                     </TableRow>
@@ -809,6 +941,72 @@ export default function GeneratePayrollPage() {
           title="Delete Payroll Report"
           itemName={deleteTarget.dateRange}
           errors={deleteErrors}
+          contentClassName="border-2 border-destructive/70"
+        />
+      )}
+
+      <Dialog open={!!editingPayslip} onOpenChange={(open) => !open && setEditingPayslip(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Payslip</DialogTitle>
+            <DialogDescription>
+              Update selected payslip values for {editingPayslip?.employee_name || 'employee'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            {([
+              ['basic_pay', 'Basic Pay'],
+              ['overtime_pay', 'Overtime Pay'],
+              ['night_diff', 'Night Differential'],
+              ['income_tax', 'Income Tax'],
+              ['sss', 'SSS'],
+              ['pagibig', 'Pagibig'],
+              ['philhealth', 'PhilHealth'],
+              ['gross', 'Gross'],
+              ['net', 'Net'],
+            ] as Array<[keyof EditablePayslipFields, string]>).map(([field, label]) => (
+              <div key={field} className="space-y-1">
+                <Label className="text-xs">{label}</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={String(editPayslipForm[field] ?? 0)}
+                  onChange={(e) =>
+                    setEditPayslipForm((prev) => ({
+                      ...prev,
+                      [field]: Number(e.target.value || 0),
+                    }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingPayslip(null)} disabled={savingPayslip}>
+              Cancel
+            </Button>
+            <Button onClick={handleSavePayslipEdit} disabled={savingPayslip}>
+              {savingPayslip ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {deletePayslipTarget && (
+        <DeleteConfirmModal
+          isOpen={!!deletePayslipTarget}
+          onClose={() => {
+            if (deletePayslipLoading) return;
+            setDeletePayslipTarget(null);
+            setDeletePayslipErrors({});
+          }}
+          onConfirm={() => handleDeleteSinglePayslip(deletePayslipTarget.reportId, deletePayslipTarget.payslip.id)}
+          loading={deletePayslipLoading}
+          title="Delete Payslip"
+          itemName={deletePayslipTarget.payslip.employee_name}
+          errors={deletePayslipErrors}
+          contentClassName="border-2 border-destructive/70"
         />
       )}
 

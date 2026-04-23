@@ -28,6 +28,7 @@ export const API_ENDPOINTS = {
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
     ME: '/auth/me',
+    ACCOUNT_STATUS_STREAM: '/auth/account-status/stream',
     SEND_OTP: '/auth/send-otp',
     VERIFY_OTP: '/auth/verify-otp',
   },
@@ -147,6 +148,8 @@ export const API_ENDPOINTS = {
       VIEW: '/hrms/payroll/reports/view-json/{id}',
       EXPORT: '/hrms/payroll/reports/export/{id}',
       USERS: '/hrms/payroll/reports/users',
+      PAYSLIP_UPDATE: '/hrms/payroll/reports/payslip/update',
+      PAYSLIP_DELETE: '/hrms/payroll/reports/payslip/delete',
     },
     PAYSLIP: {
       EMPLOYEE_PAYSLIPS: '/hrms/payroll/payslip/employeePayslips',

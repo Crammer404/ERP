@@ -41,6 +41,13 @@ export interface ResetPasswordResponse {
   message: string;
 }
 
+export class AccountDisabledError extends Error {
+  constructor(message: string = 'Your account has been temporarily disabled. Please contact the administrator.') {
+    super(message);
+    this.name = 'AccountDisabledError';
+  }
+}
+
 export const authService = {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
     const response = await api(API_ENDPOINTS.AUTH.LOGIN, {
@@ -206,6 +213,18 @@ export const authService = {
         }
       } catch (error) {
         console.error(`Error refreshing user data (attempt ${attempt}/${maxRetries}):`, error);
+        const status = Number((error as any)?.response?.status || 0);
+        const message = String((error as any)?.response?.data?.message || (error as any)?.message || '').toLowerCase();
+
+        if (
+          status === 403 &&
+          (message.includes('disabled') || message.includes('inactive'))
+        ) {
+          this.clearCachedData();
+          throw new AccountDisabledError(
+            (error as any)?.response?.data?.message || 'Your account has been temporarily disabled. Please contact the administrator.'
+          );
+        }
 
         if (attempt === maxRetries || (error instanceof Error && error.message.includes('401'))) {
           console.error('AuthService: Final attempt failed or unauthorized - clearing cache');

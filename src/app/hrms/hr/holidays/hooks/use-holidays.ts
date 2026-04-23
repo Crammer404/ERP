@@ -71,12 +71,38 @@ export function useHolidays() {
     return `${year}-${month}-${day}`;
   };
 
+  const hasBranchContext = (): boolean => {
+    try {
+      const raw = localStorage.getItem('branch_context');
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      return Boolean(parsed?.id);
+    } catch {
+      return false;
+    }
+  };
+
+  const isBranchContextTransientError = (error: any): boolean => {
+    const status = Number(error?.status || error?.response?.status || 0);
+    const message = String(error?.message || error?.response?.data?.message || '').toLowerCase();
+    return status === 400 && message.includes('branch context required');
+  };
+
   const fetchHolidayData = async (year: number) => {
+    if (!hasBranchContext()) {
+      // Tenant/branch selector can briefly clear branch context during transitions.
+      // Skip fetch to avoid flashing transient 400 errors.
+      return;
+    }
+
     try {
       setHolidayLoading(true);
       const response = await holidaysService.list(year);
       setHolidays(response.holidays || []);
     } catch (error: any) {
+      if (isBranchContextTransientError(error) && !hasBranchContext()) {
+        return;
+      }
       toast({
         title: 'Error',
         description: error?.message || 'Failed to load holidays',
@@ -102,6 +128,7 @@ export function useHolidays() {
       // Context changed (branch/tenant): discard any staged preview and refetch active-branch rows.
       setHasSyncedPreview(false);
       setPreviewHolidays([]);
+      setHolidays([]);
       void fetchHolidayData(holidayYear);
     };
 

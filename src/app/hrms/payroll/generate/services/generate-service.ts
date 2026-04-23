@@ -19,6 +19,7 @@ export interface PayrollReport {
   total_deductions: number;
   total_net: number;
   generated_by: string;
+  generated_at?: string;
 }
 
 export interface GeneratePayrollRequest {
@@ -28,6 +29,14 @@ export interface GeneratePayrollRequest {
   payroll_type: string;
   statutory_include?: number;
   include_cola?: number;
+}
+
+export interface GeneratePayrollResponse {
+  success: boolean;
+  message?: string;
+  action?: 'created' | 'updated';
+  payroll_count_id?: number;
+  merged_users_count?: number;
 }
 
 export interface PayrollReportUser {
@@ -40,13 +49,16 @@ export interface PayrollReportUser {
 }
 
 export interface PayslipData {
+  id: number;
   employee_name: string;
-  role: string;
+  profile_pic?: string | null;
+  position: string;
   branch: string;
   date_range: string;
   date_start: string;
   date_end: string;
   pay_date: string;
+  generated_at?: string;
   payroll_type: string;
   worked_days?: number;
   regular_hours_worked?: number;
@@ -94,7 +106,7 @@ export const generateService = {
     return [];
   },
 
-  async generatePayroll(data: GeneratePayrollRequest): Promise<{ success: boolean; message?: string }> {
+  async generatePayroll(data: GeneratePayrollRequest): Promise<GeneratePayrollResponse> {
     return await api(API_ENDPOINTS.PAYROLL.REPORTS.GENERATE, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -111,6 +123,31 @@ export const generateService = {
   async viewPayslips(id: number): Promise<ViewPayslipsResponse> {
     const endpoint = API_ENDPOINTS.PAYROLL.REPORTS.VIEW.replace('{id}', id.toString());
     return await api(endpoint);
+  },
+
+  async updatePayslip(payload: {
+    payslip_id: number;
+    basic_pay: number;
+    overtime_pay: number;
+    night_diff: number;
+    income_tax: number;
+    sss: number;
+    pagibig: number;
+    philhealth: number;
+    gross: number;
+    net: number;
+  }): Promise<{ success: boolean; message?: string }> {
+    return await api(API_ENDPOINTS.PAYROLL.REPORTS.PAYSLIP_UPDATE, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deletePayslip(payslipId: number): Promise<{ success: boolean; message?: string }> {
+    return await api(API_ENDPOINTS.PAYROLL.REPORTS.PAYSLIP_DELETE, {
+      method: 'POST',
+      body: JSON.stringify({ payslip_id: payslipId }),
+    });
   },
 
   async getReportUsers(): Promise<PayrollReportUser[]> {

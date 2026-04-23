@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '../providers/auth-provider';
 import { Loader } from '@/components/ui/loader';
+import { isAuthenticated } from '@/services/api';
 
 const publicRoutes = [
   '/',
@@ -40,11 +41,12 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   const resolvedPath = normalizePath(pathname);
   const isPublic = isPublicRoute(resolvedPath);
   const shouldRedirect = shouldRedirectAuthUser(resolvedPath);
+  const hasToken = isAuthenticated();
 
   useEffect(() => {
     if (loading) return;
 
-    if (!user && !isPublic && resolvedPath !== '/login') {
+    if ((!user || !hasToken) && !isPublic && resolvedPath !== '/login') {
       router.replace('/login');
       return;
     }
@@ -54,9 +56,9 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-  }, [user, loading, resolvedPath, isPublic, shouldRedirect, router]);
+  }, [user, loading, resolvedPath, isPublic, shouldRedirect, router, hasToken]);
 
-  if (loading && !isPublic) {
+  if ((loading || (!hasToken && !isPublic)) && !isPublic) {
     return <Loader overlay size="lg" />;
   }
 

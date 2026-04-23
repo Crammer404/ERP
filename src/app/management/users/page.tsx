@@ -880,7 +880,7 @@ export default function UserPage() {
             </div>
           </div>
 
-          <div className="mb-4">
+          <div className="pt-3">
             <Tabs
               value={statusTab}
               onValueChange={(value) => {
@@ -891,9 +891,9 @@ export default function UserPage() {
                 fetchUsers(1, itemsPerPage, searchTerm, nextTab === 'inactive');
               }}
             >
-              <TabsList className="w-full sm:w-auto">
-                <TabsTrigger value="active">Active</TabsTrigger>
-                <TabsTrigger value="inactive">Inactive</TabsTrigger>
+              <TabsList className="grid w-full mb-6 grid-cols-2">
+                <TabsTrigger value="active" className="flex items-center justify-center gap-2">Active</TabsTrigger>
+                <TabsTrigger value="inactive" className="flex items-center justify-center gap-2">Inactive</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -945,7 +945,7 @@ export default function UserPage() {
                         })()}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={user.is_active ? 'default' : 'secondary'}>
+                        <Badge variant={user.is_active ? 'default' : 'destructive'}>
                           {user.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>

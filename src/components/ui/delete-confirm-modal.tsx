@@ -20,6 +20,7 @@ interface DeleteConfirmModalProps {
   cancelButtonText?: string;
   itemName?: string;
   errors?: Record<string, string>;
+  contentClassName?: string;
 }
 
 export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
@@ -32,7 +33,8 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   confirmButtonText = "Delete",
   cancelButtonText = "Cancel",
   itemName,
-  errors = {}
+  errors = {},
+  contentClassName
 }) => {
   const displayTitle = itemName ? `${title} "${itemName}"` : title;
   const displayDescription = itemName 
@@ -41,7 +43,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className={contentClassName}>
         <DialogHeader>
           <DialogTitle>{displayTitle}</DialogTitle>
           <DialogDescription>

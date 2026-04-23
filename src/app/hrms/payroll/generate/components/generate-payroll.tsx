@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DateRange } from 'react-day-picker';
 import {
+  endOfMonth,
+  endOfWeek,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -56,27 +62,61 @@ interface GeneratePayrollDialogProps {
 
 const DEFAULT_PAYROLL_TYPES = ['Semi-Monthly', 'Monthly', 'Weekly'];
 
-const formatRange = (range?: DateRange) => {
-  if (!range?.from || !range?.to) return '';
-
-  return `${range.from.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })} - ${range.to.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })}`;
-};
-
-// Use local timezone when converting picked dates to YYYY-MM-DD.
-// `toISOString()` converts to UTC and can shift the calendar day by -1/+1 depending on timezone.
 const formatLocalDate = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const weekRangeContaining = (d: Date): DateRange => {
+  const from = startOfWeek(d, { weekStartsOn: 1 });
+  const to = endOfWeek(d, { weekStartsOn: 1 });
+  return { from, to };
+};
+
+const semiMonthlyRangeContaining = (d: Date): DateRange => {
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const day = d.getDate();
+  if (day <= 15) {
+    return { from: new Date(y, m, 1), to: new Date(y, m, 15) };
+  }
+  return { from: new Date(y, m, 16), to: endOfMonth(d) };
+};
+
+const monthlyRangeContaining = (d: Date): DateRange => ({
+  from: startOfMonth(d),
+  to: endOfMonth(d),
+});
+
+const payrollTypeKey = (type: string) =>
+  type.trim().toLowerCase().replace(/\s+/g, '-');
+
+const normalizeRangeForPayrollType = (
+  type: string,
+  range: DateRange | undefined
+): DateRange | undefined => {
+  if (!range?.from) return undefined;
+  const anchor = range.to ?? range.from;
+  switch (payrollTypeKey(type)) {
+    case 'weekly':
+      return weekRangeContaining(anchor);
+    case 'semi-monthly':
+      return semiMonthlyRangeContaining(anchor);
+    case 'monthly':
+      return monthlyRangeContaining(anchor);
+    default:
+      return range;
+  }
+};
+
+const defaultRangeForPayrollType = (type: string): DateRange => {
+  const today = new Date();
+  return normalizeRangeForPayrollType(type, {
+    from: today,
+    to: today,
+  }) ?? { from: today, to: today };
 };
 
 const GeneratePayrollDialog = ({
@@ -120,8 +160,6 @@ const GeneratePayrollDialog = ({
         setLoadingUsers(true);
         setUsersError(null);
 
-        // Fetch ALL employees for the active branch.
-        // The backend users listing endpoint is paginated, so grabbing only page 1/per_page=200 truncates the list.
         const PER_PAGE = 200;
         const MAX_PAGES = 50; // safety guard
 
@@ -140,13 +178,11 @@ const GeneratePayrollDialog = ({
             continue;
           }
 
-          // If backend pagination metadata is present, respect it.
           if (Number.isFinite(lastPage) && page < lastPage) {
             page += 1;
             continue;
           }
 
-          // Fallback: if we received a full page, try one more.
           if ((pageUsers || []).length === PER_PAGE) {
             page += 1;
             continue;
@@ -197,7 +233,6 @@ const GeneratePayrollDialog = ({
     fetchUsers();
   }, [open, users]);
 
-  // Ensure selected users remain valid when list changes
   useEffect(() => {
     setSelectedUserIds((prev) =>
       prev.filter((id) => availableUsers.some((user) => user.id === id))
@@ -237,14 +272,12 @@ const GeneratePayrollDialog = ({
     if (visibleUserIds.length === 0) return;
 
     if (checked) {
-      // Add all visible employees (respect any existing selections outside the filter).
       setSelectedUserIds((prev) => {
         const next = new Set(prev);
         visibleUserIds.forEach((id) => next.add(id));
         return Array.from(next);
       });
     } else {
-      // Remove only the visible employees.
       const visibleSet = new Set(visibleUserIds);
       setSelectedUserIds((prev) => prev.filter((id) => !visibleSet.has(id)));
     }
@@ -276,14 +309,21 @@ const GeneratePayrollDialog = ({
     }
   }, [open, defaultPayrollType]);
 
+  useEffect(() => {
+    if (!open) return;
+    setDateRange(defaultRangeForPayrollType(payrollType));
+  }, [open, payrollType]);
+
+  const handlePayrollRangeChange = (range: DateRange | undefined) => {
+    setDateRange(normalizeRangeForPayrollType(payrollType, range));
+  };
+
   const handleClose = () => {
     setOpen(false);
   };
 
   const handleConfirm = async () => {
-    // Validate before submitting
     if (!dateRange?.from || !dateRange?.to) {
-      // Let parent handle validation error display
       if (onGenerate) {
         await onGenerate({
           payrollType,
@@ -297,7 +337,6 @@ const GeneratePayrollDialog = ({
     }
 
     if (selectedUserIds.length === 0) {
-      // Let parent handle validation error display
       if (onGenerate) {
         await onGenerate({
           payrollType,
@@ -477,7 +516,7 @@ const GeneratePayrollDialog = ({
                   <div className="flex flex-col sm:flex-row gap-2">
                     <DateRangePicker
                       date={dateRange}
-                      onDateChange={setDateRange}
+                      onDateChange={handlePayrollRangeChange}
                       className="flex-1"
                     />
                     <Button

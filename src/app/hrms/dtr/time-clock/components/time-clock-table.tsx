@@ -58,7 +58,7 @@ export function TimeClockTable(props: TimeClockTableProps) {
     if (isEarlyOut && normalizedEarlyOutStatus === 'approved') {
       return (
         <span className="font-medium">
-          Early Out - <span className="text-green-600">Approve</span>
+          Early Out - <span className="text-green-600">Approved</span>
         </span>
       );
     }
@@ -66,7 +66,7 @@ export function TimeClockTable(props: TimeClockTableProps) {
     if (isEarlyOut && normalizedEarlyOutStatus === 'rejected') {
       return (
         <span className="font-medium">
-          Early Out - <span className="text-red-600">Reject</span>
+          Early Out - <span className="text-red-600">Rejected</span>
         </span>
       );
     }
