@@ -768,6 +768,10 @@ export default function UserPage() {
     }
   };
 
+  /**
+   * Confirms disable in UI → userService.disable (DELETE). Realtime modal is triggered
+   * on the *target user's* session via Laravel → Pusher → Echo in auth-provider (not here).
+   */
   const handleDisable = async () => {
     if (!modalState.user) return;
 
@@ -776,6 +780,12 @@ export default function UserPage() {
 
     try {
       await userService.disable(modalState.user.id);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.info(
+          `[Users] Disable OK for user id ${modalState.user.id}. Pusher broadcast is sent by Laravel after this API call; open that user's session to see the modal (this admin tab listens on a different channel).`
+        );
+      }
 
       closeModal();
       forceRefresh();

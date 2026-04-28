@@ -1,15 +1,18 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getToken, isAuthenticated } from '@/services/api';
+import { isAuthenticated } from '@/services/api';
 import { authService } from '@/services';
 import { AccountDisabledError } from '@/services/auth/authService';
 import type { User } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { API_CONFIG, API_ENDPOINTS } from '@/config/api.config';
+import { createAccountStatusEcho, destroyEchoInstance } from '@/lib/echo';
+
+const ACCOUNT_DISABLED_DEFAULT_MESSAGE =
+  'Your session has been closed and your account has been disabled. Please contact your administrator if you need access.';
 
 interface AuthContextType {
   user: User | null;
@@ -24,21 +27,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [disabledDialogOpen, setDisabledDialogOpen] = useState(false);
-  const [disabledDialogMessage, setDisabledDialogMessage] = useState(
-    'Your account has been temporarily disabled. Please contact the administrator.'
-  );
+  const [disabledDialogMessage, setDisabledDialogMessage] = useState(ACCOUNT_DISABLED_DEFAULT_MESSAGE);
   const router = useRouter();
   const hasHandledDisabledRef = useRef(false);
   const hasHandledAuthInvalidRef = useRef(false);
+  const echoInstanceRef = useRef<ReturnType<typeof createAccountStatusEcho>>(null);
 
-  const showDisabledDialog = async (message?: string) => {
+  const disconnectEcho = useCallback(() => {
+    if (echoInstanceRef.current) {
+      destroyEchoInstance(echoInstanceRef.current);
+      echoInstanceRef.current = null;
+    }
+  }, []);
+
+  /** Must reset after logout / login so Echo can subscribe again (refs survive SPA navigation). */
+  const resetAuthGuardRefs = useCallback(() => {
+    hasHandledDisabledRef.current = false;
+    hasHandledAuthInvalidRef.current = false;
+  }, []);
+
+  const showDisabledDialog = useCallback(async (message?: string) => {
     if (hasHandledDisabledRef.current) return;
     hasHandledDisabledRef.current = true;
-    setDisabledDialogMessage(
-      message || 'Your account has been temporarily disabled. Please contact the administrator.'
-    );
+    setDisabledDialogMessage(message || ACCOUNT_DISABLED_DEFAULT_MESSAGE);
     setDisabledDialogOpen(true);
-  };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -134,102 +147,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('accountDisabled', handleAccountDisabled as EventListener);
       window.removeEventListener('authInvalid', handleAuthInvalid as EventListener);
     };
-  }, []);
+  }, [showDisabledDialog]);
 
   useEffect(() => {
-    if (!user || !isAuthenticated() || hasHandledDisabledRef.current) return;
+    type BroadcastPayload = { status?: string; message?: string; user_id?: number };
 
-    const token = getToken();
-    if (!token) return;
+    if (!user?.id || !isAuthenticated() || hasHandledDisabledRef.current) {
+      disconnectEcho();
+      return;
+    }
 
-    const safeParse = (raw: string | null) => {
-      try {
-        return raw ? JSON.parse(raw) : null;
-      } catch {
-        return null;
+    const echo = createAccountStatusEcho();
+    if (!echo) return;
+
+    echoInstanceRef.current = echo;
+
+    const channelName = `users.${user.id}.account-status`;
+    const channel = echo.channel(channelName);
+    channel.listen('.account.status.changed', async (payload: BroadcastPayload) => {
+      if (payload?.status === 'disabled') {
+        await showDisabledDialog(payload.message);
       }
-    };
-    const tenantContext = safeParse(localStorage.getItem('tenant_context'));
-    const branchContext = safeParse(localStorage.getItem('branch_context'));
+    });
 
-    const controller = new AbortController();
-
-    const connect = async () => {
-      while (!controller.signal.aborted && !hasHandledDisabledRef.current) {
-        try {
-          const response = await fetch(`${API_CONFIG.BASE_URL}${API_ENDPOINTS.AUTH.ACCOUNT_STATUS_STREAM}`, {
-            method: 'GET',
-            headers: {
-              Accept: 'text/event-stream',
-              Authorization: `Bearer ${token}`,
-              ...(tenantContext?.id ? { 'X-Tenant-ID': String(tenantContext.id) } : {}),
-              ...(branchContext?.id ? { 'X-Branch-ID': String(branchContext.id) } : {}),
-            },
-            cache: 'no-store',
-            signal: controller.signal,
-          });
-
-          if (!response.ok || !response.body) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            continue;
-          }
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-
-          while (!controller.signal.aborted) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const chunks = buffer.split('\n\n');
-            buffer = chunks.pop() ?? '';
-
-            for (const chunk of chunks) {
-              const lines = chunk.split('\n');
-              let eventType = '';
-              let dataPayload = '';
-
-              for (const line of lines) {
-                if (line.startsWith('event:')) {
-                  eventType = line.slice(6).trim();
-                } else if (line.startsWith('data:')) {
-                  dataPayload += line.slice(5).trim();
-                }
-              }
-
-              if (eventType !== 'account-status' || !dataPayload) continue;
-
-              try {
-                const payload = JSON.parse(dataPayload) as { status?: string; message?: string };
-                if (payload.status === 'disabled') {
-                  await showDisabledDialog(payload.message);
-                }
-              } catch {
-                // Ignore malformed stream payloads.
-              }
-            }
-          }
-        } catch {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-      }
-    };
-
-    void connect();
+    if (process.env.NODE_ENV === 'development') {
+      channel.subscribed(() => {
+        console.info('[Pusher] Subscribed to', channelName, '— events appear here when Laravel broadcasts to this user id.');
+      });
+      channel.error((status: unknown) => {
+        console.error('[Pusher] Channel error:', channelName, status);
+      });
+    }
 
     return () => {
-      controller.abort();
+      try {
+        echo.leaveChannel(channelName);
+      } catch {
+        // ignore
+      }
+      destroyEchoInstance(echo);
+      if (echoInstanceRef.current === echo) {
+        echoInstanceRef.current = null;
+      }
     };
-  }, [user]);
+  }, [user?.id, showDisabledDialog, disconnectEcho]);
 
   const login = (userData: User) => {
+    resetAuthGuardRefs();
     setUser(userData);
     router.replace('/dashboard');
   };
 
   const logout = async () => {
+    disconnectEcho();
+    resetAuthGuardRefs();
     try {
       await authService.logout();
     } catch (error) {
@@ -242,6 +213,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleDisabledDialogAcknowledge = async () => {
     setDisabledDialogOpen(false);
+    disconnectEcho();
+    resetAuthGuardRefs();
     await authService.logout().catch(() => {});
     setUser(null);
     router.replace('/login');
@@ -255,7 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       <Dialog open={disabledDialogOpen} onOpenChange={() => {}}>
         <DialogContent className="[&>button]:hidden border-destructive" aria-describedby="account-disabled-description">
           <DialogHeader>
-            <DialogTitle>Account Disabled</DialogTitle>
+            <DialogTitle>Session closed</DialogTitle>
             <DialogDescription id="account-disabled-description">
               {disabledDialogMessage}
             </DialogDescription>

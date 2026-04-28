@@ -42,7 +42,9 @@ export interface ResetPasswordResponse {
 }
 
 export class AccountDisabledError extends Error {
-  constructor(message: string = 'Your account has been temporarily disabled. Please contact the administrator.') {
+  constructor(
+    message: string = 'Your session has been closed and your account has been disabled. Please contact your administrator if you need access.'
+  ) {
     super(message);
     this.name = 'AccountDisabledError';
   }
@@ -222,7 +224,8 @@ export const authService = {
         ) {
           this.clearCachedData();
           throw new AccountDisabledError(
-            (error as any)?.response?.data?.message || 'Your account has been temporarily disabled. Please contact the administrator.'
+            (error as any)?.response?.data?.message ||
+              'Your session has been closed and your account has been disabled. Please contact your administrator if you need access.'
           );
         }
 

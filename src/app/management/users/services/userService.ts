@@ -143,6 +143,16 @@ export const userService = {
     }
   },
 
+  /**
+   * Disable user (admin action).
+   *
+   * Flow (no Pusher calls from this file — that is intentional):
+   * 1. DELETE /management/users/{id} → Laravel UserController::destroy
+   * 2. Server sets is_active false, revokes tokens, then dispatches UserAccountStatusChanged
+   * 3. Laravel broadcasts to Pusher (HTTP from PHP → Pusher cloud)
+   * 4. The *disabled user's* browser (AuthProvider + Echo) is subscribed to channel
+   *    `users.{id}.account-status` and shows the modal — not the admin's browser.
+   */
   async disable(id: number): Promise<void> {
     await api(`${API_ENDPOINTS.USERS.BASE}/${id}`, {
       method: "DELETE",

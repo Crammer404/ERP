@@ -387,18 +387,31 @@ export function SiteHeader() {
   
   const handleTenantChange = async (tenantId: string) => {
     setSelectedTenant(tenantId);
-    
+
+    // Reset branch context immediately to avoid stale tenant+branch requests
+    // while the new branch list is still loading.
+    setSelectedBranch('');
+    setBranches([]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('branch_context');
+      window.dispatchEvent(
+        new CustomEvent('branchChanged', {
+          detail: { branchId: null, branch: null },
+        })
+      );
+    }
+
     // Update tenant context in localStorage
     const tenant = tenants.find(t => t.id.toString() === tenantId);
     if (tenant) {
       tenantContextService.storeTenantContext(tenant);
-      
+
       // Dispatch custom event to notify other components about tenant change
       window.dispatchEvent(new CustomEvent('tenantChanged', {
         detail: { tenantId: parseInt(tenantId), tenant }
       }));
     }
-    
+
     // Load branches for the selected tenant immediately
     // The loadBranchesForTenant function will check for cached branch
     await loadBranchesForTenant(parseInt(tenantId));

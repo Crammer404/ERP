@@ -37,6 +37,65 @@ const getStoredBranchContext = (): any => {
   }
 };
 
+const waitForBranchContext = async (timeoutMs = 2000): Promise<any | null> => {
+  const existing = getStoredBranchContext();
+  if (existing?.id) {
+    return existing;
+  }
+
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return await new Promise((resolve) => {
+    let resolved = false;
+
+    const cleanup = () => {
+      window.removeEventListener('branchChanged', onBranchChanged as EventListener);
+      window.removeEventListener('storage', onStorage);
+    };
+
+    const finish = (value: any | null) => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(value);
+    };
+
+    const onBranchChanged = () => {
+      const latest = getStoredBranchContext();
+      if (latest?.id) {
+        finish(latest);
+      }
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== 'branch_context') return;
+      const latest = getStoredBranchContext();
+      if (latest?.id) {
+        finish(latest);
+      }
+    };
+
+    window.addEventListener('branchChanged', onBranchChanged as EventListener);
+    window.addEventListener('storage', onStorage);
+
+    setTimeout(() => {
+      finish(getStoredBranchContext());
+    }, timeoutMs);
+  });
+};
+
+const isBranchOptionalEndpoint = (endpoint: string): boolean => {
+  const normalized = endpoint.split('?')[0];
+
+  if (normalized === '/auth/users/context') return true;
+  if (normalized === '/auth/users/branches') return true;
+  if (normalized.startsWith('/management/tenants')) return true;
+
+  return false;
+};
+
 const setStoredToken = (newToken: string): void => {
   if (typeof window === "undefined") return;
   localStorage.setItem("token", newToken);
@@ -106,7 +165,12 @@ export const api = async (endpoint: string, options: RequestInit = {}) => {
 
   const isFormData = options.body instanceof FormData;
   const tenantContext = getStoredTenantContext();
-  const branchContext = getStoredBranchContext();
+  let branchContext = getStoredBranchContext();
+  if (tenantContext?.id && !branchContext?.id && !isBranchOptionalEndpoint(endpoint)) {
+    // Tenant switches can temporarily clear branch context while branches are refetched.
+    // Wait briefly so requests don't race and fail with transient 400 responses.
+    branchContext = await waitForBranchContext();
+  }
 
   const requestPromise = (async () => {
     try {
@@ -152,7 +216,7 @@ export const api = async (endpoint: string, options: RequestInit = {}) => {
                 detail: {
                   message:
                     parsedErrorData?.message ||
-                    'Your account has been temporarily disabled. Please contact the administrator.',
+                    'Your session has been closed and your account has been disabled. Please contact your administrator if you need access.',
                 },
               })
             );

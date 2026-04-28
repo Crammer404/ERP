@@ -28,7 +28,6 @@ export const API_ENDPOINTS = {
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
     ME: '/auth/me',
-    ACCOUNT_STATUS_STREAM: '/auth/account-status/stream',
     SEND_OTP: '/auth/send-otp',
     VERIFY_OTP: '/auth/verify-otp',
   },
