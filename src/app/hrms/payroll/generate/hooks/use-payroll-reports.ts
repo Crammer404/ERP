@@ -15,10 +15,77 @@ export function usePayrollReports({ onError }: UsePayrollReportsOptions) {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const fetchReports = async () => {
+  const hasTenantWithoutBranchContext = () => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const tenantId = JSON.parse(localStorage.getItem('tenant_context') || '{}')?.id;
+      const branchId = JSON.parse(localStorage.getItem('branch_context') || '{}')?.id;
+      return Boolean(tenantId) && !Boolean(branchId);
+    } catch {
+      return false;
+    }
+  };
+
+  const hasBranchContext = () => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const branchId = JSON.parse(localStorage.getItem('branch_context') || '{}')?.id;
+      return Boolean(branchId);
+    } catch {
+      return false;
+    }
+  };
+
+  const waitForBranchContext = async (timeoutMs = 6000): Promise<boolean> => {
+    if (typeof window === 'undefined') return false;
+    if (hasBranchContext()) return true;
+
+    return await new Promise((resolve) => {
+      let settled = false;
+
+      const cleanup = () => {
+        window.removeEventListener('branchChanged', onBranchChanged as EventListener);
+        window.removeEventListener('storage', onStorage);
+      };
+
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(value);
+      };
+
+      const onBranchChanged = () => {
+        finish(hasBranchContext());
+      };
+
+      const onStorage = (event: StorageEvent) => {
+        if (event.key !== 'branch_context') return;
+        finish(hasBranchContext());
+      };
+
+      window.addEventListener('branchChanged', onBranchChanged as EventListener);
+      window.addEventListener('storage', onStorage);
+
+      setTimeout(() => {
+        finish(hasBranchContext());
+      }, timeoutMs);
+    });
+  };
+
+  const fetchReports = async (retryOnContextReady = true) => {
     try {
       setLoading(true);
       setError(null);
+
+      // Tenant switching can briefly clear branch context; wait before requesting reports.
+      if (hasTenantWithoutBranchContext()) {
+        const ready = await waitForBranchContext();
+        if (!ready) {
+          setLoading(false);
+          return;
+        }
+      }
 
       const data = await generateService.getReports();
       if (!Array.isArray(data)) {
@@ -35,6 +102,17 @@ export function usePayrollReports({ onError }: UsePayrollReportsOptions) {
       setReports(data.map((item) => mapBackendToFrontend(item, formatReportDateRange)));
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to load payroll reports';
+      const isMissingBranchContext =
+        String(message).toLowerCase().includes('branch context required');
+
+      if (retryOnContextReady && isMissingBranchContext) {
+        const ready = await waitForBranchContext();
+        if (ready) {
+          await fetchReports(false);
+          return;
+        }
+      }
+
       setError(message);
       setReports([]);
       onError(message);

@@ -47,6 +47,64 @@ export default function ColaPage() {
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [activeEntry, setActiveEntry] = useState<ColaEntry | null>(null);
 
+  const hasTenantWithoutBranchContext = () => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const tenantId = JSON.parse(localStorage.getItem('tenant_context') || '{}')?.id;
+      const branchId = JSON.parse(localStorage.getItem('branch_context') || '{}')?.id;
+      return Boolean(tenantId) && !Boolean(branchId);
+    } catch {
+      return false;
+    }
+  };
+
+  const hasBranchContext = () => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const branchId = JSON.parse(localStorage.getItem('branch_context') || '{}')?.id;
+      return Boolean(branchId);
+    } catch {
+      return false;
+    }
+  };
+
+  const waitForBranchContext = async (timeoutMs = 6000): Promise<boolean> => {
+    if (typeof window === 'undefined') return false;
+    if (hasBranchContext()) return true;
+
+    return await new Promise((resolve) => {
+      let settled = false;
+
+      const cleanup = () => {
+        window.removeEventListener('branchChanged', onBranchChanged as EventListener);
+        window.removeEventListener('storage', onStorage);
+      };
+
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(value);
+      };
+
+      const onBranchChanged = () => {
+        finish(hasBranchContext());
+      };
+
+      const onStorage = (event: StorageEvent) => {
+        if (event.key !== 'branch_context') return;
+        finish(hasBranchContext());
+      };
+
+      window.addEventListener('branchChanged', onBranchChanged as EventListener);
+      window.addEventListener('storage', onStorage);
+
+      setTimeout(() => {
+        finish(hasBranchContext());
+      }, timeoutMs);
+    });
+  };
+
   const employeeName = (row: ColaEntry): string => {
     const first = row.first_name ?? '';
     const last = row.last_name ?? '';
@@ -108,15 +166,35 @@ export default function ColaPage() {
     }
   };
 
-  const fetchEntries = async () => {
+  const fetchEntries = async (retryOnContextReady = true) => {
     setLoading(true);
     try {
+      if (hasTenantWithoutBranchContext()) {
+        const ready = await waitForBranchContext();
+        if (!ready) {
+          setLoading(false);
+          return;
+        }
+      }
+
       const data = await colaService.getAll();
       setEntries(data);
     } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to load COLA';
+      const isMissingBranchContext =
+        String(message).toLowerCase().includes('branch context required');
+
+      if (retryOnContextReady && isMissingBranchContext) {
+        const ready = await waitForBranchContext();
+        if (ready) {
+          await fetchEntries(false);
+          return;
+        }
+      }
+
       toast({
         title: 'Error',
-        description: err?.response?.data?.message || err?.message || 'Failed to load COLA',
+        description: message,
         variant: 'destructive',
       });
       setEntries([]);

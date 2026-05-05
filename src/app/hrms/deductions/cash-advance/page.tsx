@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { DollarSign, MoreVertical, Plus, Trash2, Edit, Search, RefreshCw, CirclePlus } from 'lucide-react';
+import { DollarSign, MoreVertical, Trash2, Edit, Search, RefreshCw, CirclePlus, Circle, CheckCircle2 } from 'lucide-react';
+import { format } from 'date-fns';
 import { cashAdvanceService, type CashAdvance, type CreateCashAdvanceRequest, type UpdateCashAdvanceRequest } from './services/cash-advance-service';
 import { useToast } from "@/hooks/use-toast";
 import { Loader } from '@/components/ui/loader';
@@ -16,6 +18,7 @@ import { PaginationInfos } from '@/components/ui/pagination-info';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
 import { CashAdvanceFormModal } from './components/cash-advance-form-modal';
 import { userService } from '@/services';
+import { tenantContextService } from '@/services/tenant/tenantContextService';
 
 interface PaginationResponse {
   current_page: number;
@@ -44,7 +47,7 @@ const getStatusBadgeClass = (status: string): string => {
     case 'paid':
       return 'bg-green-100 text-green-800';
     case 'cancelled':
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-red-100 text-red-800';
     default:
       return 'bg-gray-100 text-gray-800';
   }
@@ -62,6 +65,13 @@ const getStatusLabel = (status: string): string => {
       return status;
   }
 };
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'cancelled', label: 'Cancelled' },
+] as const;
 
 export default function CashAdvancePage() {
   const [cashAdvances, setCashAdvances] = useState<CashAdvance[]>([]);
@@ -81,6 +91,10 @@ export default function CashAdvancePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTER_OPTIONS)[number]['value']>('all');
+  const [activeBranchId, setActiveBranchId] = useState<number | null>(
+    tenantContextService.getStoredBranchContext()?.id ?? null
+  );
   
   const [modalState, setModalState] = useState<{
     type: 'add' | 'edit' | 'delete' | null;
@@ -127,16 +141,17 @@ export default function CashAdvancePage() {
     });
   };
 
-  const getCacheKey = (page: number, perPage: number, search: string) => {
-    return `${page}-${perPage}-${search}`;
+  const getCacheKey = (page: number, perPage: number, search: string, status: string, branchId: number | null) => {
+    return `${page}-${perPage}-${search}-${status}-${branchId ?? 'all-branches'}`;
   };
 
   const clearCache = () => {
     setCashAdvanceCache(new Map());
   };
 
-  const fetchCashAdvances = async (page: number = currentPage, perPage: number = itemsPerPage, search: string = searchTerm, forceRefresh: boolean = false) => {
-    const cacheKey = getCacheKey(page, perPage, search);
+  const fetchCashAdvances = async (page: number = currentPage, perPage: number = itemsPerPage, search: string = searchTerm, status: string = statusFilter, forceRefresh: boolean = false) => {
+    const currentBranchId = tenantContextService.getStoredBranchContext()?.id ?? null;
+    const cacheKey = getCacheKey(page, perPage, search, status, currentBranchId);
     
     if (!forceRefresh && cashAdvanceCache.has(cacheKey)) {
       const cachedData = cashAdvanceCache.get(cacheKey)!;
@@ -149,9 +164,13 @@ export default function CashAdvancePage() {
     setLoading(true);
     try {
       const allCashAdvances = await cashAdvanceService.getAll();
-      
+
+      const branchFiltered = currentBranchId
+        ? allCashAdvances.filter((ca) => ca.branch_id === currentBranchId)
+        : allCashAdvances;
+
       const filtered = search.trim()
-        ? allCashAdvances.filter(ca => {
+        ? branchFiltered.filter(ca => {
             const searchLower = search.toLowerCase();
             return (
               ca.code.toLowerCase().includes(searchLower) ||
@@ -161,12 +180,15 @@ export default function CashAdvancePage() {
               ca.status.toLowerCase().includes(searchLower)
             );
           })
-        : allCashAdvances;
+        : branchFiltered;
+      const statusFiltered = status === 'all'
+        ? filtered
+        : filtered.filter((ca) => ca.status === status);
 
-      const total = filtered.length;
+      const total = statusFiltered.length;
       const from = (page - 1) * perPage + 1;
       const to = Math.min(page * perPage, total);
-      const paginatedCashAdvances = filtered.slice((page - 1) * perPage, page * perPage);
+      const paginatedCashAdvances = statusFiltered.slice((page - 1) * perPage, page * perPage);
       const lastPage = Math.ceil(total / perPage);
 
       const paginationData: PaginationResponse = {
@@ -227,8 +249,31 @@ export default function CashAdvancePage() {
 
   useEffect(() => {
     fetchSupportingData();
-    fetchCashAdvances(currentPage, itemsPerPage, searchTerm);
-  }, [currentPage, itemsPerPage, searchTerm]);
+    fetchCashAdvances(currentPage, itemsPerPage, searchTerm, statusFilter);
+  }, [currentPage, itemsPerPage, searchTerm, statusFilter, activeBranchId]);
+
+  useEffect(() => {
+    const syncBranchContext = () => {
+      const nextBranchId = tenantContextService.getStoredBranchContext()?.id ?? null;
+      setActiveBranchId((prev) => (prev === nextBranchId ? prev : nextBranchId));
+      clearCache();
+      setCurrentPage(1);
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'branch_context' || event.key === 'tenant_context') {
+        syncBranchContext();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('branchChanged', syncBranchContext);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('branchChanged', syncBranchContext);
+    };
+  }, []);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -245,11 +290,16 @@ export default function CashAdvancePage() {
     setCurrentPage(1);
   };
 
+  const handleStatusFilter = (status: (typeof STATUS_FILTER_OPTIONS)[number]['value']) => {
+    setStatusFilter(status);
+    setCurrentPage(1);
+  };
+
   const handleRefresh = () => {
     clearCache();
     setCashAdvances([]);
     setTimeout(() => {
-      fetchCashAdvances(currentPage, itemsPerPage, searchTerm, true);
+      fetchCashAdvances(currentPage, itemsPerPage, searchTerm, statusFilter, true);
     }, 100);
   };
 
@@ -259,7 +309,7 @@ export default function CashAdvancePage() {
     setCashAdvanceCache(new Map());
     
     try {
-      await fetchCashAdvances(currentPage, itemsPerPage, searchTerm, true);
+      await fetchCashAdvances(currentPage, itemsPerPage, searchTerm, statusFilter, true);
     } catch (error) {
       console.error('Force refresh failed:', error);
       setCashAdvances([]);
@@ -327,7 +377,7 @@ export default function CashAdvancePage() {
       closeModal();
       resetForm();
       forceRefresh();
-      showToast("success", "Cash Advance Updated", "The cash advance details were successfully updated.");
+      showToast("success", "Cash Advance Updated", "The cash advance status was successfully updated.");
     } catch (err: any) {
       handleApiError(err, "Failed to update cash advance");
     } finally {
@@ -392,6 +442,31 @@ export default function CashAdvancePage() {
               </Button>
             </div>
           </div>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {STATUS_FILTER_OPTIONS.map((option) => (
+              <Badge
+                key={option.value}
+                variant={statusFilter === option.value ? "default" : "outline"}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleStatusFilter(option.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleStatusFilter(option.value);
+                  }
+                }}
+                className="cursor-pointer px-4 py-2 text-sm"
+              >
+                {statusFilter === option.value ? (
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                ) : (
+                  <Circle className="mr-2 h-4 w-4" />
+                )}
+                {option.label}
+              </Badge>
+            ))}
+          </div>
           {loading ? (
             <div className="flex justify-center py-8">
               <Loader size="md" />
@@ -408,11 +483,11 @@ export default function CashAdvancePage() {
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Code</TableHead>
+                    <TableHead>Date Issued</TableHead>
                     <TableHead>Employee</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Outstanding Balance</TableHead>
-                    <TableHead>Date Issued</TableHead>
-                    <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -420,15 +495,15 @@ export default function CashAdvancePage() {
                   {cashAdvances.map(cashAdvance => (
                     <TableRow key={cashAdvance.id} className="hover:bg-transparent">
                       <TableCell className="font-mono">{cashAdvance.code}</TableCell>
+                      <TableCell>{format(new Date(cashAdvance.date_issued), 'MMM d, yyyy')}</TableCell>
                       <TableCell>{getEmployeeName(cashAdvance)}</TableCell>
+                      <TableCell>
+                        <Badge className={getStatusBadgeClass(cashAdvance.status)}>
+                          {getStatusLabel(cashAdvance.status)}
+                        </Badge>
+                      </TableCell>
                       <TableCell>₱{cashAdvance.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                       <TableCell>₱{cashAdvance.outstanding_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                      <TableCell>{new Date(cashAdvance.date_issued).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded text-xs ${getStatusBadgeClass(cashAdvance.status)}`}>
-                          {getStatusLabel(cashAdvance.status)}
-                        </span>
-                      </TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -439,7 +514,7 @@ export default function CashAdvancePage() {
                           <DropdownMenuContent align="center">
                             <DropdownMenuItem onClick={() => openModal('edit', cashAdvance)}>
                               <Edit className="h-4 w-4 mr-2" />
-                              Edit
+                              Update
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => openModal('delete', cashAdvance)}

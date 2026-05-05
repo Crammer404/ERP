@@ -17,7 +17,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { managementService, Employee } from '@/services/management/managementService';
-import { dtrService } from '@/services/dtr/dtrService';
+import { dtrService } from '../services/schedule-service';
 import { useToast } from '@/hooks/use-toast';
 
 interface AssignEmployeesModalProps {

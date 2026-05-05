@@ -1,5 +1,5 @@
-import type { DtrLogResponseItem } from '@/services/hrms/dtr';
 import type { TimeClockLog } from '../types';
+import type { DtrLogResponseItem } from '../types';
 
 const formatHoursAndMinutes = (
   raw: number | string | null | undefined,
@@ -42,6 +42,11 @@ const formatLateMinutes = (
   const graceMinutes = Number(grace ?? 0);
   if (lateMinutes <= 0) return '-';
   if (graceMinutes > 0 && lateMinutes <= graceMinutes) return '-';
+  if (lateMinutes > 60) {
+    const hours = Math.floor(lateMinutes / 60);
+    const minutes = lateMinutes % 60;
+    return `${hours}h ${minutes}min`;
+  }
   return `${lateMinutes} min`;
 };
 
@@ -53,6 +58,11 @@ const formatOvertimeMinutes = (
   const graceMin = Number(grace ?? 0);
   if (overtimeMin <= 0) return '-';
   if (graceMin > 0 && overtimeMin <= graceMin) return '-';
+  if (overtimeMin > 60) {
+    const hours = Math.floor(overtimeMin / 60);
+    const minutes = overtimeMin % 60;
+    return `${hours}h ${minutes}min`;
+  }
   return `${overtimeMin} min`;
 };
 

@@ -32,7 +32,7 @@ import { PaginationInfos } from '@/components/ui/pagination-info';
 import { Download, Loader2, RefreshCw, Clock } from 'lucide-react';
 import { EmployeeIdCard } from '../employee-id/components/employee-id';
 import { useToast } from '@/hooks/use-toast';
-import { exportAttendance, getAttendanceLogs } from '@/services/hrms/dtr';
+import { exportAttendance, getAttendanceLogs } from './services/attendance-service';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { TimeClockTable } from '../time-clock/components/time-clock-table';

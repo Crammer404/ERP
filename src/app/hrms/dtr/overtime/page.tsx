@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { DateRange } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +36,7 @@ import {
   rejectOvertime,
   MyOvertimeRecord,
   OvertimeRequestRecord
-} from '@/services/hrms/dtr';
+} from './services/overtime-service';
 import { managementService, Employee } from '@/services/management/managementService';
 import { ManagerApprovalTab } from './components/manager-approval-tab';
 import { EmployeesOvertimeTab } from './components/employees-overtime-tab';
@@ -309,6 +309,7 @@ export default function OvertimePage() {
   
   // Manager Approval Tab States
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedShift, setSelectedShift] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -353,6 +354,7 @@ export default function OvertimePage() {
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [approveSubmitting, setApproveSubmitting] = useState(false);
   const [rejectSubmitting, setRejectSubmitting] = useState(false);
+  const latestApprovalRequestRef = useRef(0);
 
   // New overtime request form
   const [newRequest, setNewRequest] = useState({
@@ -404,22 +406,32 @@ export default function OvertimePage() {
     }
   }, [activeTab, availableTabs, hasOvertimeTabAccess]);
 
-  const fetchApprovalRecords = async () => {
+  const fetchApprovalRecords = async (overrides?: {
+    status?: string;
+    search?: string;
+    dateRange?: DateRange | undefined;
+  }) => {
+    const requestId = ++latestApprovalRequestRef.current;
     setLoading(true);
     try {
       const params: any = {};
-      if (selectedStatus !== 'all') params.status = selectedStatus;
-      if (searchTerm) params.search = searchTerm;
-      if (dateRange?.from) {
-        params.start_date = dateRange.from.toISOString().split('T')[0];
+      const status = overrides?.status ?? selectedStatus;
+      const search = overrides?.search ?? debouncedSearchTerm;
+      const range = overrides?.dateRange ?? dateRange;
+      if (status !== 'all') params.status = status;
+      if (search) params.search = search;
+      if (range?.from) {
+        params.start_date = range.from.toISOString().split('T')[0];
       }
-      if (dateRange?.to) {
-        params.end_date = dateRange.to.toISOString().split('T')[0];
+      if (range?.to) {
+        params.end_date = range.to.toISOString().split('T')[0];
       }
       
       const data = await getOvertimeRequests(params);
+      if (requestId !== latestApprovalRequestRef.current) return;
       setApprovalRecords(data);
     } catch (e: any) {
+      if (requestId !== latestApprovalRequestRef.current) return;
       const errorMsg = e?.response?.data?.message || e?.message || 'Failed to load overtime records';
       toast({
         title: 'Error',
@@ -427,7 +439,9 @@ export default function OvertimePage() {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      if (requestId === latestApprovalRequestRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -501,24 +515,27 @@ export default function OvertimePage() {
     fetchEmployeeOptions();
   }, [canViewEmployeesOvertime]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+      setCurrentPage(1);
+    }, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchTerm]);
+
   // Initial load
   useEffect(() => {
-    if (activeTab === 'approval' && canViewManagerApproval) {
-      fetchApprovalRecords();
-      return;
-    }
-
     if (activeTab === 'myOvertime' && canViewMyOvertime) {
       fetchMyOvertimeRecords();
     }
-  }, [activeTab, canViewManagerApproval, canViewMyOvertime]);
+  }, [activeTab, canViewMyOvertime]);
 
   // Refetch when filters change for approval tab
   useEffect(() => {
     if (activeTab === 'approval' && canViewManagerApproval) {
       fetchApprovalRecords();
     }
-  }, [activeTab, canViewManagerApproval, selectedStatus, searchTerm, dateRange]);
+  }, [activeTab, canViewManagerApproval, selectedStatus, debouncedSearchTerm, dateRange]);
 
   useEffect(() => {
     if (activeTab !== 'employeesOvertime' || !canViewEmployeesOvertime) {
@@ -671,6 +688,7 @@ export default function OvertimePage() {
 
   const handleRefresh = () => {
     setSearchTerm('');
+    setDebouncedSearchTerm('');
     setSelectedShift('all');
     setDateRange(undefined);
     setSelectedStatus('all');

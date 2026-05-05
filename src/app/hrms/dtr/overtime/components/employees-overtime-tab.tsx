@@ -39,7 +39,7 @@ import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Employee } from '@/services/management/managementService';
-import { MyOvertimeRecord } from '@/services/hrms/dtr';
+import type { MyOvertimeRecord } from '../services/overtime-service';
 import { ShiftFilter } from '../../../../../components/ui/shift-filter';
 import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
 import { TimeDisplay } from '../../time-clock/components/time-display';

@@ -1,14 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { DateRange } from 'react-day-picker';
-import {
-  endOfMonth,
-  endOfWeek,
-  startOfMonth,
-  startOfWeek,
-} from 'date-fns';
+import { format } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -29,29 +22,35 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { FileText, Search } from 'lucide-react';
-import { type CheckedState } from '@radix-ui/react-checkbox';
-import { userService, UserEntity } from '@/app/management/users/services/userService';
-import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
+import { CheckCircle2, Circle, FileText, MoreVertical, RefreshCw, Search, X, CheckCircle, XCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Loader } from '@/components/ui/loader';
-import { getOvertimeRequests, getTimeClockLogs } from '@/services/hrms/dtr';
-import { ROUTES } from '@/config/api.config';
-
-export interface GeneratePayrollUser {
-  id: number;
-  name: string;
-  role?: string;
-}
-
-export interface GeneratePayrollPayload {
-  payrollType: string;
-  payrollRange?: DateRange;
-  userIds: number[];
-  includeStatutoryDeductions: boolean;
-  includeCola: boolean;
-}
+import {
+  DEFAULT_PAYROLL_TYPES,
+  WIZARD_STEPS,
+  GeneratePayrollPayload,
+  GeneratePayrollUser,
+  formatRequestedHoursLabel,
+  useGeneratePayrollModal,
+} from '../hooks/use-generate-payroll';
 
 interface GeneratePayrollDialogProps {
   onGenerate?: (payload: GeneratePayrollPayload) => Promise<void> | void;
@@ -60,64 +59,6 @@ interface GeneratePayrollDialogProps {
   triggerLabel?: string;
 }
 
-const DEFAULT_PAYROLL_TYPES = ['Semi-Monthly', 'Monthly', 'Weekly'];
-
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const weekRangeContaining = (d: Date): DateRange => {
-  const from = startOfWeek(d, { weekStartsOn: 1 });
-  const to = endOfWeek(d, { weekStartsOn: 1 });
-  return { from, to };
-};
-
-const semiMonthlyRangeContaining = (d: Date): DateRange => {
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
-  if (day <= 15) {
-    return { from: new Date(y, m, 1), to: new Date(y, m, 15) };
-  }
-  return { from: new Date(y, m, 16), to: endOfMonth(d) };
-};
-
-const monthlyRangeContaining = (d: Date): DateRange => ({
-  from: startOfMonth(d),
-  to: endOfMonth(d),
-});
-
-const payrollTypeKey = (type: string) =>
-  type.trim().toLowerCase().replace(/\s+/g, '-');
-
-const normalizeRangeForPayrollType = (
-  type: string,
-  range: DateRange | undefined
-): DateRange | undefined => {
-  if (!range?.from) return undefined;
-  const anchor = range.to ?? range.from;
-  switch (payrollTypeKey(type)) {
-    case 'weekly':
-      return weekRangeContaining(anchor);
-    case 'semi-monthly':
-      return semiMonthlyRangeContaining(anchor);
-    case 'monthly':
-      return monthlyRangeContaining(anchor);
-    default:
-      return range;
-  }
-};
-
-const defaultRangeForPayrollType = (type: string): DateRange => {
-  const today = new Date();
-  return normalizeRangeForPayrollType(type, {
-    from: today,
-    to: today,
-  }) ?? { from: today, to: today };
-};
 
 const GeneratePayrollDialog = ({
   onGenerate,
@@ -125,354 +66,84 @@ const GeneratePayrollDialog = ({
   payrollTypes = DEFAULT_PAYROLL_TYPES,
   triggerLabel = 'Generate Payroll',
 }: GeneratePayrollDialogProps) => {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const defaultPayrollType = useMemo(
-    () => payrollTypes[0] ?? 'Monthly',
-    [payrollTypes]
-  );
-
-  const [payrollType, setPayrollType] = useState(defaultPayrollType);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
-  const [includeStatutory, setIncludeStatutory] = useState(true);
-  const [includeCola, setIncludeCola] = useState(true);
-  const [availableUsers, setAvailableUsers] = useState<GeneratePayrollUser[]>(users ?? []);
-  const [employeeSearch, setEmployeeSearch] = useState('');
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [usersError, setUsersError] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showPendingOvertimeDialog, setShowPendingOvertimeDialog] = useState(false);
-  const [showPendingEarlyOutDialog, setShowPendingEarlyOutDialog] = useState(false);
-
-  useEffect(() => {
-    if (users) {
-      setAvailableUsers(users);
-    }
-  }, [users]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (users) return;
-
-    const fetchUsers = async () => {
-      try {
-        setLoadingUsers(true);
-        setUsersError(null);
-
-        const PER_PAGE = 200;
-        const MAX_PAGES = 50; // safety guard
-
-        let page = 1;
-        const fetchedUsers: UserEntity[] = [];
-
-        while (page <= MAX_PAGES) {
-          const { users: pageUsers, pagination } = await userService.getAll(page, PER_PAGE);
-          fetchedUsers.push(...(pageUsers || []));
-
-          const hasMore = Boolean(pagination?.has_more_pages);
-          const lastPage = pagination?.last_page ?? 1;
-
-          if (hasMore) {
-            page += 1;
-            continue;
-          }
-
-          if (Number.isFinite(lastPage) && page < lastPage) {
-            page += 1;
-            continue;
-          }
-
-          if ((pageUsers || []).length === PER_PAGE) {
-            page += 1;
-            continue;
-          }
-
-          break;
-        }
-
-        const positions: PayrollPosition[] = await positionService.getAll();
-        const positionsById = positions.reduce<Record<number, string>>((acc, position) => {
-          acc[position.id] = position.name;
-          return acc;
-        }, {});
-        const mapped: GeneratePayrollUser[] = (fetchedUsers || []).map(
-          (user: UserEntity) => {
-            const firstName = user.user_info?.first_name ?? '';
-            const lastName = user.user_info?.last_name ?? '';
-            const displayName =
-              [firstName, lastName].filter(Boolean).join(' ').trim() ||
-              user.name ||
-              user.email;
-
-            const positionId = Number(user.user_info?.payroll_positions_id);
-            const positionName =
-              Number.isFinite(positionId) && positionId > 0
-                ? positionsById[positionId] || ''
-                : '';
-
-            return {
-              id: user.id,
-              name: displayName,
-              role: positionName || undefined,
-            };
-          }
-        );
-        setAvailableUsers(mapped);
-      } catch (error: any) {
-        console.error('Failed to load users for payroll dialog:', error);
-        setUsersError(
-          error?.message || 'Failed to load users. Please try again.'
-        );
-        setAvailableUsers([]);
-      } finally {
-        setLoadingUsers(false);
-      }
-    };
-
-    fetchUsers();
-  }, [open, users]);
-
-  useEffect(() => {
-    setSelectedUserIds((prev) =>
-      prev.filter((id) => availableUsers.some((user) => user.id === id))
-    );
-  }, [availableUsers]);
-
-  const filteredUsers = useMemo(() => {
-    const q = employeeSearch.trim().toLowerCase();
-    if (!q) return availableUsers;
-
-    return availableUsers.filter((u) => {
-      const idStr = String(u.id);
-      return (
-        idStr.includes(q) ||
-        u.name.toLowerCase().includes(q) ||
-        (u.role ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [availableUsers, employeeSearch]);
-
-  const visibleUserIds = useMemo(() => filteredUsers.map((u) => u.id), [filteredUsers]);
-  const visibleSelectedCount = useMemo(
-    () => visibleUserIds.filter((id) => selectedUserIds.includes(id)).length,
-    [visibleUserIds, selectedUserIds]
-  );
-
-  const selectAllState: CheckedState =
-    visibleUserIds.length === 0
-      ? false
-      : visibleSelectedCount === 0
-        ? false
-        : visibleSelectedCount === visibleUserIds.length
-          ? true
-          : 'indeterminate';
-
-  const handleToggleAll = (checked: boolean) => {
-    if (visibleUserIds.length === 0) return;
-
-    if (checked) {
-      setSelectedUserIds((prev) => {
-        const next = new Set(prev);
-        visibleUserIds.forEach((id) => next.add(id));
-        return Array.from(next);
-      });
-    } else {
-      const visibleSet = new Set(visibleUserIds);
-      setSelectedUserIds((prev) => prev.filter((id) => !visibleSet.has(id)));
-    }
-  };
-
-  const handleToggleUser = (userId: number, checked: boolean) => {
-    setSelectedUserIds((prev) => {
-      if (checked) {
-        return [...prev, userId];
-      }
-      return prev.filter((id) => id !== userId);
-    });
-  };
-
-  const resetForm = () => {
-    setPayrollType(defaultPayrollType);
-    setDateRange(undefined);
-    setSelectedUserIds([]);
-    setIncludeStatutory(true);
-    setIncludeCola(true);
-    setEmployeeSearch('');
-  };
-
-  useEffect(() => {
-    if (!open) {
-      resetForm();
-    } else {
-      setPayrollType(defaultPayrollType);
-    }
-  }, [open, defaultPayrollType]);
-
-  useEffect(() => {
-    if (!open) return;
-    setDateRange(defaultRangeForPayrollType(payrollType));
-  }, [open, payrollType]);
-
-  const handlePayrollRangeChange = (range: DateRange | undefined) => {
-    setDateRange(normalizeRangeForPayrollType(payrollType, range));
-  };
-
-  const handleClose = () => {
-    setOpen(false);
-  };
-
-  const handleConfirm = async () => {
-    if (!dateRange?.from || !dateRange?.to) {
-      if (onGenerate) {
-        await onGenerate({
-          payrollType,
-          payrollRange: dateRange,
-          userIds: selectedUserIds,
-          includeStatutoryDeductions: includeStatutory,
-          includeCola,
-        });
-      }
-      return; // Don't close if validation fails
-    }
-
-    if (selectedUserIds.length === 0) {
-      if (onGenerate) {
-        await onGenerate({
-          payrollType,
-          payrollRange: dateRange,
-          userIds: selectedUserIds,
-          includeStatutoryDeductions: includeStatutory,
-          includeCola,
-        });
-      }
-      return; // Don't close if validation fails
-    }
-
-    const hasNoPendingOvertime = await (async () => {
-      if (!dateRange?.from || !dateRange?.to || selectedUserIds.length === 0) {
-        return true;
-      }
-
-      try {
-        const params: {
-          status: string;
-          start_date: string;
-          end_date: string;
-        } = {
-          status: 'pending',
-          start_date: formatLocalDate(dateRange.from),
-          end_date: formatLocalDate(dateRange.to),
-        };
-
-        const pendingRecords = await getOvertimeRequests(params);
-        const selectedUserSet = new Set(selectedUserIds);
-        const blocking = pendingRecords.filter((record) =>
-          selectedUserSet.has(record.employee_id)
-        );
-
-        if (blocking.length > 0) {
-          setShowPendingOvertimeDialog(true);
-          return false;
-        }
-
-        return true;
-      } catch (error) {
-        console.error('Failed to check pending overtime before payroll generation:', error);
-        return true;
-      }
-    })();
-
-    if (!hasNoPendingOvertime) {
-      return;
-    }
-
-    const hasNoPendingEarlyOut = await (async () => {
-      if (!dateRange?.from || !dateRange?.to || selectedUserIds.length === 0) {
-        return true;
-      }
-
-      try {
-        const selectedUserSet = new Set(selectedUserIds);
-        const startDate = formatLocalDate(dateRange.from);
-        const endDate = formatLocalDate(dateRange.to);
-        const perPage = 100;
-        let page = 1;
-        let hasNext = true;
-
-        while (hasNext) {
-          const response: any = await getTimeClockLogs({
-            page,
-            per_page: perPage,
-            start_date: startDate,
-            end_date: endDate,
-            early_out: true,
-          });
-
-          const records: any[] = Array.isArray(response?.data)
-            ? response.data
-            : (Array.isArray(response) ? response : []);
-
-          const hasBlocking = records.some((record: any) =>
-            String(record?.status || '').toLowerCase() === 'pending' &&
-            selectedUserSet.has(Number(record?.user_id || 0))
-          );
-
-          if (hasBlocking) {
-            setShowPendingEarlyOutDialog(true);
-            return false;
-          }
-
-          const lastPage = Number(response?.meta?.last_page || 1);
-          const currentPage = Number(response?.meta?.current_page || page);
-          hasNext = currentPage < lastPage;
-          page += 1;
-        }
-
-        return true;
-      } catch (error) {
-        console.error('Failed to check pending early-out before payroll generation:', error);
-        return true;
-      }
-    })();
-
-    if (!hasNoPendingEarlyOut) {
-      return;
-    }
-
-    try {
-      setIsGenerating(true);
-      if (onGenerate) {
-        await onGenerate({
-          payrollType,
-          payrollRange: dateRange,
-          userIds: selectedUserIds,
-          includeStatutoryDeductions: includeStatutory,
-          includeCola,
-        });
-        handleClose();
-      }
-    } catch (error: any) {
-      const errorMessage = String(
-        error?.response?.data?.message ||
-        error?.message ||
-        ''
-      ).toLowerCase();
-
-      if (errorMessage.includes('pending early clock-out requests')) {
-        setShowPendingEarlyOutDialog(true);
-        return;
-      }
-
-      console.error('Error generating payroll:', error);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleClearRange = () => {
-    setDateRange(undefined);
-  };
+  const {
+    open,
+    setOpen,
+    availablePayrollTypes,
+    payrollType,
+    setPayrollType,
+    dateRange,
+    handlePayrollRangeChange,
+    handleClearRange,
+    selectedUserIds,
+    includeStatutory,
+    setIncludeStatutory,
+    includeCola,
+    setIncludeCola,
+    includeCashAdvance,
+    setIncludeCashAdvance,
+    availableUsers,
+    employeeSearch,
+    setEmployeeSearch,
+    loadingUsers,
+    usersError,
+    isGenerating,
+    isStepChecking,
+    currentStep,
+    stepError,
+    showGenerateConfirm,
+    setShowGenerateConfirm,
+    showPendingOvertimeDialog,
+    setShowPendingOvertimeDialog,
+    showPendingEarlyOutDialog,
+    setShowPendingEarlyOutDialog,
+    pendingOvertimeRecords,
+    pendingEarlyOutRecords,
+    pendingOvertimeLoading,
+    pendingEarlyOutLoading,
+    payrollTypeForSubmit,
+    totalSteps,
+    cashAdvanceWindow,
+    activeStepMeta,
+    activeBranchName,
+    selectedRangeLabel,
+    isStepConditionSatisfied,
+    filteredUsers,
+    selectAllState,
+    handleToggleAll,
+    handleToggleUser,
+    handleClose,
+    fetchPendingOvertimeRecords,
+    fetchPendingEarlyOutRecords,
+    handleApproveOvertimeFromStep,
+    handleRejectOvertimeFromStep,
+    selectedOvertimeRecord,
+    approveOvertimeModalOpen,
+    setApproveOvertimeModalOpen,
+    rejectOvertimeModalOpen,
+    setRejectOvertimeModalOpen,
+    overtimePayType,
+    setOvertimePayType,
+    overtimeActionNotes,
+    setOvertimeActionNotes,
+    approveOvertimeSubmitting,
+    rejectOvertimeSubmitting,
+    openApproveOvertimeModalFromStep,
+    openRejectOvertimeModalFromStep,
+    confirmApproveOvertimeFromStep,
+    confirmRejectOvertimeFromStep,
+    handleApproveEarlyOutFromStep,
+    handleRejectEarlyOutFromStep,
+    handleGenerate,
+    handleNextStep,
+    handleBackStep,
+    goToOvertime,
+    goToTimeClock,
+  } = useGeneratePayrollModal({
+    users,
+    payrollTypes,
+    onGenerate,
+  });
 
   return (
     <>
@@ -481,28 +152,93 @@ const GeneratePayrollDialog = ({
         {triggerLabel}
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-full max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>Payroll Details</DialogTitle>
-          <DialogDescription>
-            Configure the payroll coverage, employees, and deductions for this
-            run.
-          </DialogDescription>
-        </DialogHeader>
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+      >
+        <DialogContent
+          className="w-full max-w-5xl h-[80vh] max-h-[80vh] flex flex-col [&>button]:hidden"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <div className="flex items-center justify-between border-b pb-3">
+            <div>
+              <DialogTitle className="text-base font-semibold leading-none tracking-tight">
+                {activeStepMeta.title}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground mt-1">
+                {activeStepMeta.subtitle}
+              </DialogDescription>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleClose}
+              aria-label="Close modal"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
 
-          <div className="py-2 space-y-6">
-            <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-              {/* Left column - payroll configuration */}
-              <div className="space-y-6">
-                <div className="space-y-2">
+          <div className="border rounded-lg p-4 bg-muted/30">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              {WIZARD_STEPS.map((step, index) => {
+                const isCompleted = step.id < currentStep;
+                const isActive = step.id === currentStep;
+                return (
+                  <div key={step.id} className="flex items-center shrink-0">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`h-7 w-7 rounded-full flex items-center justify-center border ${
+                          isCompleted
+                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                            : isActive
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'bg-background border-muted-foreground/40 text-muted-foreground'
+                        }`}
+                      >
+                        {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-3 w-3 fill-current" />}
+                      </div>
+                      <div className="leading-tight">
+                        <p className={`text-xs font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          Step {step.id}
+                        </p>
+                        <p className={`text-[11px] ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {step.title}
+                        </p>
+                      </div>
+                    </div>
+                    {index < WIZARD_STEPS.length - 1 && (
+                      <div className="w-8 sm:w-12 h-[2px] bg-border mx-2" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 h-1.5 bg-border rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          <div className= "flex-1 overflow-y-auto">
+            <div className="w-full mx-auto">
+              {stepError && (
+                <p className="text-sm text-destructive">{stepError}</p>
+              )}
+
+            {currentStep === 1 && (
+              <div className="w-full max-w-3xl mx-auto space-y-4 py-2">
+                <div className="w-full min-w-[260px] max-w-2xl mx-auto space-y-2">
                   <Label>Select Payroll Type</Label>
                   <Select value={payrollType} onValueChange={setPayrollType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select payroll type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {payrollTypes.map((type) => (
+                      {availablePayrollTypes.map((type) => (
                         <SelectItem key={type} value={type}>
                           {type}
                         </SelectItem>
@@ -511,9 +247,9 @@ const GeneratePayrollDialog = ({
                   </Select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="w-full min-w-[260px] max-w-2xl mx-auto space-y-2">
                   <Label>Payroll Range</Label>
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2 items-stretch">
                     <DateRangePicker
                       date={dateRange}
                       onDateChange={handlePayrollRangeChange}
@@ -529,43 +265,248 @@ const GeneratePayrollDialog = ({
                     </Button>
                   </div>
                 </div>
+              </div>
+            )}
 
-                <div className="space-y-2 border rounded-md p-4">
-                  <Label>Statutory Deductions</Label>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium">
-                        Include Statutory Deductions (SSS, PhilHealth, Pag-IBIG)
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Toggle to include government-mandated deductions in this payroll run.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={includeStatutory}
-                      onCheckedChange={setIncludeStatutory}
-                    />
-                  </div>
+            {currentStep === 2 && (
+              <div className="space-y-2 p-4">
+                <Label>Pending Overtime Check</Label>
+                <p className="text-sm">
+                  <span className="font-bold text-amber-500">{pendingOvertimeRecords.length}</span> pending overtime requests in{' '}
+                  <span className="font-medium text-amber-500">{activeBranchName}</span> on{' '}
+                  <span className="font-medium text-amber-500">{selectedRangeLabel}</span>.
+                </p>
+                <div className="flex items-center justify-between">
+                  {pendingOvertimeRecords.length > 0 && (
+                    <p className="font-bold text-xs text-amber-600">
+                      Approve or reject all <span className="font-bold text-amber-500">{pendingOvertimeRecords.length}</span> pending records to proceed.
+                    </p>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="ml-auto flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+                    onClick={fetchPendingOvertimeRecords}
+                    disabled={pendingOvertimeLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${pendingOvertimeLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
                 </div>
-
-                <div className="space-y-2 border rounded-md p-4">
-                  <Label>COLA Allowance</Label>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium">
-                        Include COLA in this payroll run
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Adds per-employee COLA to earnings and Gross.
-                      </p>
-                    </div>
-                    <Switch checked={includeCola} onCheckedChange={setIncludeCola} />
-                  </div>
+                <div className="rounded-md border max-h-[280px] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Requested Hours</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingOvertimeLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-6">
+                            <Loader size="sm" />
+                          </TableCell>
+                        </TableRow>
+                      ) : pendingOvertimeRecords.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                            No pending overtime requests found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        pendingOvertimeRecords.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>{record.date_formatted}</TableCell>
+                            <TableCell>{record.employee}</TableCell>
+                            <TableCell>{formatRequestedHoursLabel(record.requested_hours)}</TableCell>
+                            <TableCell className="max-w-[220px] truncate">{record.reason || '-'}</TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => openApproveOvertimeModalFromStep(record)}
+                                    className="text-green-600 focus:text-green-600"
+                                  >
+                                    Approve
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => openRejectOvertimeModalFromStep(record)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    Reject
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
+            )}
 
-              {/* Right column - employee selection */}
-              <div className="space-y-3">
+            {currentStep === 3 && (
+              <div className="space-y-2 border rounded-md p-4">
+                <Label>Pending Early Out Check</Label>
+                <p className="text-sm text-muted-foreground">
+                  Pending early-out requests in the active branch and selected payroll range.
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Pending: {pendingEarlyOutRecords.length}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchPendingEarlyOutRecords}
+                    disabled={pendingEarlyOutLoading}
+                  >
+                    {pendingEarlyOutLoading ? 'Refreshing...' : 'Refresh'}
+                  </Button>
+                </div>
+                {pendingEarlyOutRecords.length > 0 && (
+                  <p className="text-xs text-amber-600">
+                    Approve or reject all pending records to proceed.
+                  </p>
+                )}
+                <div className="rounded-md border max-h-[280px] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Scheduled Out</TableHead>
+                        <TableHead>Actual Out</TableHead>
+                        <TableHead>Remaining Minutes</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingEarlyOutLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-6">
+                            <Loader size="sm" />
+                          </TableCell>
+                        </TableRow>
+                      ) : pendingEarlyOutRecords.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                            No pending early-out requests found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        pendingEarlyOutRecords.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>{record.date}</TableCell>
+                            <TableCell>{record.employee_name || '-'}</TableCell>
+                            <TableCell>{record.scheduled_clock_out_at || '-'}</TableCell>
+                            <TableCell>{record.actual_clock_out_at || '-'}</TableCell>
+                            <TableCell>{record.remaining_minutes ?? '-'}</TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => handleApproveEarlyOutFromStep(record)}
+                                    disabled={!record.request_id}
+                                  >
+                                    Approve
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleRejectEarlyOutFromStep(record)}
+                                    disabled={!record.request_id}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    Reject
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 4 && (
+              <div className="space-y-2 border rounded-md p-4">
+                <Label>COLA Allowance</Label>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">
+                      Include COLA in this payroll run
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Adds per-employee COLA to earnings and Gross.
+                    </p>
+                  </div>
+                  <Switch checked={includeCola} onCheckedChange={setIncludeCola} />
+                </div>
+              </div>
+            )}
+
+            {currentStep === 5 && (
+              <div className="space-y-2 border rounded-md p-4">
+                <Label>Cash Advance Inclusion</Label>
+                <p className="text-sm text-muted-foreground">
+                  Included cash advance window based on payroll cutoff:
+                </p>
+                <p className="text-sm font-medium">
+                  {cashAdvanceWindow
+                    ? `${format(cashAdvanceWindow.startDate, 'MMM d, yyyy')} - ${format(cashAdvanceWindow.endDate, 'MMM d, yyyy')}`
+                    : 'Please set payroll range first'}
+                </p>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <p className="text-sm">Include cash advance deductions in this run</p>
+                  <Switch
+                    checked={includeCashAdvance}
+                    onCheckedChange={setIncludeCashAdvance}
+                  />
+                </div>
+              </div>
+            )}
+
+            {currentStep === 6 && (
+              <div className="space-y-2 border rounded-md p-4">
+                <Label>Statutory Deductions</Label>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">
+                      Include Statutory Deductions (SSS, PhilHealth, Pag-IBIG)
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Toggle to include government-mandated deductions in this payroll run.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={includeStatutory}
+                    onCheckedChange={setIncludeStatutory}
+                  />
+                </div>
+              </div>
+            )}
+
+              {currentStep === 7 && (
+                <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
                     <Label>Select Employees</Label>
@@ -647,27 +588,82 @@ const GeneratePayrollDialog = ({
                     )}
                   </div>
                 </ScrollArea>
-              </div>
+                </div>
+              )}
             </div>
           </div>
 
-        <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between sm:space-x-2">
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={handleClose}
-            disabled={isGenerating}
-          >
-            Cancel
-          </Button>
-          <Button 
-            type="button" 
-            onClick={handleConfirm}
-            disabled={isGenerating || !dateRange?.from || !dateRange?.to || selectedUserIds.length === 0}
-          >
-            {isGenerating ? 'Generating...' : 'Confirm'}
-          </Button>
+        <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between sm:space-x-2 mt-auto pt-4 border-t">
+          <div className="flex items-center gap-2 ml-auto">
+            {currentStep === 1 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClose}
+                disabled={isGenerating}
+              >
+                Cancel
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={(event) => handleBackStep(event)}
+                disabled={isGenerating || isStepChecking}
+              >
+                Back
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleNextStep}
+              disabled={isGenerating || isStepChecking || !isStepConditionSatisfied}
+            >
+              {isStepChecking
+                ? 'Checking...'
+                : currentStep === totalSteps
+                  ? 'Confirm'
+                  : 'Next'}
+            </Button>
+          </div>
         </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showGenerateConfirm} onOpenChange={setShowGenerateConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Payroll Generation</DialogTitle>
+            <DialogDescription>
+              Review the details below before generating payroll.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p><span className="font-medium">Payroll Type:</span> {payrollTypeForSubmit}</p>
+            <p>
+              <span className="font-medium">Payroll Range:</span>{' '}
+              {dateRange?.from && dateRange?.to
+                ? `${format(dateRange.from, 'MMM d, yyyy')} - ${format(dateRange.to, 'MMM d, yyyy')}`
+                : 'Not set'}
+            </p>
+            <p><span className="font-medium">Employees:</span> {selectedUserIds.length}</p>
+            <p><span className="font-medium">Include COLA:</span> {includeCola ? 'Yes' : 'No'}</p>
+            <p><span className="font-medium">Include Cash Advance:</span> {includeCashAdvance ? 'Yes' : 'No'}</p>
+            <p><span className="font-medium">Include Statutory:</span> {includeStatutory ? 'Yes' : 'No'}</p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowGenerateConfirm(false)}
+              disabled={isGenerating}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleGenerate} disabled={isGenerating}>
+              {isGenerating ? 'Generating...' : 'Generate'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -683,11 +679,7 @@ const GeneratePayrollDialog = ({
           <DialogFooter>
             <Button
               type="button"
-              onClick={() => {
-                setShowPendingOvertimeDialog(false);
-                setOpen(false);
-                router.push(ROUTES.HRMS.DTR.OVERTIME);
-              }}
+              onClick={goToOvertime}
             >
               Go to Overtime
           </Button>
@@ -707,13 +699,131 @@ const GeneratePayrollDialog = ({
           <DialogFooter>
             <Button
               type="button"
-              onClick={() => {
-                setShowPendingEarlyOutDialog(false);
-                setOpen(false);
-                router.push(ROUTES.HRMS.DTR.TIME_CLOCK);
-              }}
+              onClick={goToTimeClock}
             >
               Go to Time Clock
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={approveOvertimeModalOpen} onOpenChange={setApproveOvertimeModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Approve Overtime Request</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to approve this overtime request?
+            </DialogDescription>
+          </DialogHeader>
+          {selectedOvertimeRecord && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-muted rounded-md space-y-1">
+                <p className="text-sm"><strong>Employee:</strong> {selectedOvertimeRecord.employee}</p>
+                <p className="text-sm"><strong>Date:</strong> {selectedOvertimeRecord.date_formatted}</p>
+                <p className="text-sm"><strong>Hours:</strong> {formatRequestedHoursLabel(selectedOvertimeRecord.requested_hours)}</p>
+                <p className="text-sm"><strong>Reason:</strong> {selectedOvertimeRecord.reason || '-'}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Pay Type *</Label>
+                <RadioGroup
+                  value={overtimePayType}
+                  onValueChange={(value) => setOvertimePayType(value as 'overtime' | 'regular')}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="overtime" id="approve-overtime" />
+                    <Label htmlFor="approve-overtime" className="font-normal cursor-pointer">
+                      Overtime Pay (Premium Rate)
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="regular" id="approve-regular" />
+                    <Label htmlFor="approve-regular" className="font-normal cursor-pointer">
+                      Regular Hours (Regular Rate)
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Notes (Optional)</Label>
+                <Textarea
+                  value={overtimeActionNotes}
+                  onChange={(e) => setOvertimeActionNotes(e.target.value.slice(0, 1000))}
+                  placeholder="Optionally add a short explanation or clarification."
+                  className="mt-1"
+                  rows={3}
+                  maxLength={1000}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setApproveOvertimeModalOpen(false)}
+              disabled={approveOvertimeSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmApproveOvertimeFromStep}
+              className="bg-green-600 hover:bg-green-700"
+              disabled={approveOvertimeSubmitting}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              {approveOvertimeSubmitting ? 'Approving...' : 'Approve'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rejectOvertimeModalOpen} onOpenChange={setRejectOvertimeModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject Overtime Request</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reject this overtime request?
+            </DialogDescription>
+          </DialogHeader>
+          {selectedOvertimeRecord && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-muted rounded-md space-y-1">
+                <p className="text-sm"><strong>Employee:</strong> {selectedOvertimeRecord.employee}</p>
+                <p className="text-sm"><strong>Date:</strong> {selectedOvertimeRecord.date_formatted}</p>
+                <p className="text-sm"><strong>Hours:</strong> {formatRequestedHoursLabel(selectedOvertimeRecord.requested_hours)}</p>
+                <p className="text-sm"><strong>Reason:</strong> {selectedOvertimeRecord.reason || '-'}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Rejection Reason *</Label>
+                <Textarea
+                  value={overtimeActionNotes}
+                  onChange={(e) => setOvertimeActionNotes(e.target.value.slice(0, 1000))}
+                  placeholder="Clearly explain why this request is being rejected."
+                  className="mt-1"
+                  rows={3}
+                  maxLength={1000}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRejectOvertimeModalOpen(false)}
+              disabled={rejectOvertimeSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmRejectOvertimeFromStep}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={!overtimeActionNotes.trim() || rejectOvertimeSubmitting}
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              {rejectOvertimeSubmitting ? 'Rejecting...' : 'Reject'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -204,7 +204,20 @@ export function TimeClockTable(props: TimeClockTableProps) {
                           </>
                         ) : (
                           <>
-                            <DropdownMenuItem onClick={() => props.onEditLog(log)}>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const normalizedEarlyOutStatus = (log.earlyOutRequestStatus || '').toLowerCase();
+                                const isEarlyOutReviewed = (log.status || '').toLowerCase() === 'early_out' && (normalizedEarlyOutStatus === 'approved' || normalizedEarlyOutStatus === 'rejected');
+                                if (!isEarlyOutReviewed) {
+                                  props.onEditLog(log);
+                                }
+                              }}
+                              disabled={
+                                (log.status || '').toLowerCase() === 'early_out' &&
+                                ((log.earlyOutRequestStatus || '').toLowerCase() === 'approved' ||
+                                  (log.earlyOutRequestStatus || '').toLowerCase() === 'rejected')
+                              }
+                            >
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>

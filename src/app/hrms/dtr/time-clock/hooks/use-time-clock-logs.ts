@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DateRange } from 'react-day-picker';
-import { getTimeClockLogs } from '@/services/hrms/dtr';
+import { getTimeClockLogs } from '../services/time-clock-service';
 import type { CachedPageData, TimeClockLog } from '../types';
 import { mapTimeClockLog } from '../utils/log-mappers';
 import { toApiDate } from '../utils/date-utils';

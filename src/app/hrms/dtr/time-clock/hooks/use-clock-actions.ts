@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { clock as clockApi, reopenForOvertime } from '@/services/hrms/dtr';
+import { clock as clockApi, reopenForOvertime } from '../services/time-clock-service';
 import type { OvertimePromptData } from '../components/scan-result-dialog';
 
 interface UseClockActionsOptions {

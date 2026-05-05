@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TimePicker } from '@/components/ui/time-picker';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -36,6 +37,7 @@ export interface ScheduleFormData {
   nightEnd: string;
   gracePeriod: string;
   overtimeThreshold: string;
+  allowAutoSplitLogs: boolean;
   selectedEmployees: string[];
 }
 
@@ -65,6 +67,7 @@ const getDefaultFormData = (): ScheduleFormData => ({
   nightEnd: '',
   gracePeriod: '',
   overtimeThreshold: '',
+  allowAutoSplitLogs: false,
   selectedEmployees: [],
 });
 
@@ -182,7 +185,7 @@ export function AddScheduleModal({
     return `${name} - ${role}`;
   };
 
-  const handleInputChange = (field: keyof ScheduleFormData, value: string | string[]) => {
+  const handleInputChange = (field: keyof ScheduleFormData, value: string | string[] | boolean) => {
     // Clear server-side error
     if (onClearError) {
       onClearError(field);
@@ -637,6 +640,21 @@ export function AddScheduleModal({
                       <p className="text-red-500 text-xs">{allErrors.overtimeThreshold}</p>
                     )}
                   </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 p-4 border rounded-lg bg-muted/30">
+                  <div className="space-y-1">
+                    <Label htmlFor="allow-auto-split-logs">Auto Split Shift Logging</Label>
+                    <p className="text-xs text-muted-foreground">
+                      If enabled, a continuous clock-in/out can be split into multiple shift logs based on configured shift segments.
+                    </p>
+                  </div>
+                  <Switch
+                    id="allow-auto-split-logs"
+                    checked={formData.allowAutoSplitLogs}
+                    onCheckedChange={(checked) => handleInputChange('allowAutoSplitLogs', checked)}
+                    disabled={loading}
+                  />
                 </div>
               </div>
 

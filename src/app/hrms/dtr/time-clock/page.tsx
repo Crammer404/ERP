@@ -25,7 +25,8 @@ import {
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { Download, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { exportTimesheet, deleteManualLog, restoreManualLog, forceDeleteManualLog, approveEarlyOutRequest, rejectEarlyOutRequest } from '@/services/hrms/dtr';
+import { exportTimesheet, deleteManualLog, restoreManualLog, forceDeleteManualLog } from './services/time-clock-service';
+import { approveEarlyOutRequest, rejectEarlyOutRequest } from './services/early-out-service';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ManualLogModal, ManualLogData } from './components/manual-log-modal';
@@ -451,6 +452,16 @@ export default function TimeClockPage() {
   };
 
   const handleEditLog = (log: TimeClockLog) => {
+    const normalizedEarlyOutRequestStatus = (log.earlyOutRequestStatus || '').toLowerCase();
+    if (normalizedEarlyOutRequestStatus === 'approved' || normalizedEarlyOutRequestStatus === 'rejected') {
+      toast({
+        title: 'Editing disabled',
+        description: 'This early-out request has already been approved/rejected. Time log edits are disabled.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const manualLog: ManualLogData = {
       id: log.id,
       userId: log.userId,
@@ -461,6 +472,8 @@ export default function TimeClockPage() {
       shift: log.shift,
       clockInRaw: log.clockInRaw,
       clockOutRaw: log.clockOutRaw,
+      earlyOutRequestStatus: log.earlyOutRequestStatus,
+      earlyOutRequestId: log.earlyOutRequestId,
     };
 
     setLogModalMode('edit');
@@ -532,6 +545,8 @@ export default function TimeClockPage() {
       return;
     }
 
+    const reviewedTimeLogId = selectedEarlyOutLog?.id;
+
     try {
       setEarlyOutSubmitting(true);
       await approveEarlyOutRequest(selectedEarlyOutLog.earlyOutRequestId, earlyOutActionNotes || undefined);
@@ -544,6 +559,12 @@ export default function TimeClockPage() {
       setEarlyOutActionNotes('');
       clearLogsCache();
       await fetchLogs({ force: true });
+
+      // If a manual edit modal is open for the same time log, close it to prevent post-review manipulation.
+      if (isLogModalOpen && activeLog?.id === reviewedTimeLogId) {
+        setIsLogModalOpen(false);
+        setActiveLog(null);
+      }
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -564,6 +585,8 @@ export default function TimeClockPage() {
       });
       return;
     }
+
+    const reviewedTimeLogId = selectedEarlyOutLog?.id;
 
     if (!earlyOutActionNotes.trim()) {
       toast({
@@ -586,6 +609,12 @@ export default function TimeClockPage() {
       setEarlyOutActionNotes('');
       clearLogsCache();
       await fetchLogs({ force: true });
+
+      // If a manual edit modal is open for the same time log, close it to prevent post-review manipulation.
+      if (isLogModalOpen && activeLog?.id === reviewedTimeLogId) {
+        setIsLogModalOpen(false);
+        setActiveLog(null);
+      }
     } catch (error: any) {
       toast({
         title: 'Error',

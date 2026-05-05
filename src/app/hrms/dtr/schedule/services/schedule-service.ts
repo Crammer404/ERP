@@ -1,49 +1,58 @@
-import { api } from '../api';
-import { API_ENDPOINTS } from '../../config/api.config';
+import { api } from '@/services';
+import { API_ENDPOINTS } from '@/config/api.config';
 
-export interface DTR {
+export interface UserScheduleShifts {
+  morning: { start: string | null; end: string | null };
+  afternoon: { start: string | null; end: string | null };
+  night: { start: string | null; end: string | null };
+}
+
+export interface UserScheduleShiftDetail {
+  key: 'morning' | 'afternoon' | 'night';
+  label: string;
+  start: string | null;
+  end: string | null;
+  is_overnight: boolean;
+}
+
+export interface UserScheduleLogItem {
   id: number;
-  user_id: number;
-  branch_id: number;
-  check_in: string;
-  check_out?: string;
-  date: string;
-  total_hours?: number;
-  overtime_hours?: number;
-  created_at: string;
-  updated_at: string;
+  date: string | null;
+  shift: string;
+  shift_key: 'morning' | 'afternoon' | 'night' | null;
+  clock_in: string | null;
+  clock_out: string | null;
 }
 
-export interface CheckInRequest {
-  user_id: number;
-  branch_id: number;
-  check_in: string;
+export interface UserScheduleDetails {
+  schedule_name: string | null;
+  branch_id: number | null;
+  grace_period: number;
+  overtime: number;
+  shifts: UserScheduleShifts;
+  shift_details?: UserScheduleShiftDetail[];
+  start_date?: string | null;
+  shift_logs?: Partial<Record<'morning' | 'afternoon' | 'night', UserScheduleLogItem>>;
+  logs?: UserScheduleLogItem[];
 }
 
-export interface CheckOutRequest {
-  check_out: string;
-}
-
-export interface CreateDTRRequest {
-  user_id: number;
-  branch_id: number;
-  check_in: string;
-  check_out?: string;
-  date: string;
-}
-
-export interface UpdateDTRRequest {
-  check_in?: string;
-  check_out?: string;
-  total_hours?: number;
-  overtime_hours?: number;
-}
+export const getUserScheduleDetails = async (
+  userId: number,
+  date?: string,
+): Promise<{ success: boolean; data?: UserScheduleDetails; message?: string }> => {
+  const params = new URLSearchParams();
+  if (date) params.append('date', date);
+  const query = params.toString();
+  const endpoint = API_ENDPOINTS.DTR.USER_SCHEDULE.DETAILS.replace('{userId}', String(userId));
+  return await api(`${endpoint}${query ? `?${query}` : ''}`, { method: 'GET' });
+};
 
 export interface ScheduleConfigRequest {
   schedule_name: string;
   branch_id: string;
   grace_period: string;
   overtime: string;
+  allow_auto_split_logs?: boolean;
   morning_shift_start: string;
   morning_shift_end: string;
   afternoon_shift_start: string;
@@ -68,60 +77,11 @@ export interface Schedule {
   nightShift: string;
   gracePeriod: number;
   overtimeThreshold: number;
+  allowAutoSplitLogs?: boolean;
   assignedEmployees: AssignedEmployee[];
 }
 
 export const dtrService = {
-  // Get all DTR records
-  async getAll(): Promise<DTR[]> {
-    return await api(API_ENDPOINTS.DTR.BASE);
-  },
-
-  // Get DTR by ID
-  async getById(id: number): Promise<DTR> {
-    return await api(`${API_ENDPOINTS.DTR.BASE}/${id}`);
-  },
-
-  // Check in
-  async checkIn(checkInData: CheckInRequest): Promise<DTR> {
-    return await api(API_ENDPOINTS.DTR.CHECK_IN, {
-      method: 'POST',
-      body: JSON.stringify(checkInData),
-    });
-  },
-
-  // Check out
-  async checkOut(id: number, checkOutData: CheckOutRequest): Promise<DTR> {
-    return await api(`${API_ENDPOINTS.DTR.BASE}/${id}/check-out`, {
-      method: 'POST',
-      body: JSON.stringify(checkOutData),
-    });
-  },
-
-  // Create new DTR record
-  async create(dtrData: CreateDTRRequest): Promise<DTR> {
-    return await api(API_ENDPOINTS.DTR.BASE, {
-      method: 'POST',
-      body: JSON.stringify(dtrData),
-    });
-  },
-
-  // Update DTR record
-  async update(id: number, dtrData: UpdateDTRRequest): Promise<DTR> {
-    return await api(`${API_ENDPOINTS.DTR.BASE}/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(dtrData),
-    });
-  },
-
-  // Delete DTR record
-  async delete(id: number): Promise<void> {
-    return await api(`${API_ENDPOINTS.DTR.BASE}/${id}`, {
-      method: 'DELETE',
-    });
-  },
-
-  // Configuration & Schedule methods
   async getSchedules(): Promise<{ schedules: Schedule[] }> {
     return await api(API_ENDPOINTS.DTR.CONFIGURATION.SCHEDULES);
   },
@@ -161,3 +121,4 @@ export const dtrService = {
     });
   },
 };
+

@@ -64,6 +64,12 @@ export default function GeneratePayrollPage() {
   const [exportProgressPhase, setExportProgressPhase] = useState<
     'preparing' | 'downloading' | 'saving'
   >('preparing');
+  const [generateProgressOpen, setGenerateProgressOpen] = useState(false);
+  const [generateProgressPercent, setGenerateProgressPercent] = useState(0);
+  const [generateProgressPhase, setGenerateProgressPhase] = useState<
+    'preparing' | 'processing' | 'finalizing'
+  >('preparing');
+  const [isGeneratingPayroll, setIsGeneratingPayroll] = useState(false);
   const [expandedReportId, setExpandedReportId] = useState<number | null>(null);
   const [payslipsByReportId, setPayslipsByReportId] = useState<Record<number, PayslipData[]>>({});
   const [payslipLoadingByReportId, setPayslipLoadingByReportId] = useState<Record<number, boolean>>({});
@@ -521,6 +527,12 @@ export default function GeneratePayrollPage() {
       : exportProgressPhase === 'downloading'
         ? 'Downloading Excel…'
         : 'Saving to your device…';
+  const generatePhaseLabel =
+    generateProgressPhase === 'preparing'
+      ? 'Preparing payroll generation...'
+      : generateProgressPhase === 'processing'
+        ? 'Processing payroll records...'
+        : 'Finalizing payroll...';
 
   const handleCloseDeleteModal = () => {
     setDeleteTarget(null);
@@ -563,6 +575,7 @@ export default function GeneratePayrollPage() {
     userIds: number[];
     includeStatutoryDeductions: boolean;
     includeCola: boolean;
+    includeCashAdvance: boolean;
   }) => {
     if (!payload.payrollRange?.from || !payload.payrollRange?.to) {
       toast({
@@ -582,7 +595,28 @@ export default function GeneratePayrollPage() {
       return;
     }
 
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
+      setIsGeneratingPayroll(true);
+      setGenerateProgressOpen(true);
+      setGenerateProgressPercent(0);
+      setGenerateProgressPhase('preparing');
+
+      progressTimer = setInterval(() => {
+        setGenerateProgressPercent((prev) => {
+          if (prev < 25) {
+            setGenerateProgressPhase('preparing');
+            return Math.min(prev + 3, 25);
+          }
+          if (prev < 85) {
+            setGenerateProgressPhase('processing');
+            return Math.min(prev + 2, 85);
+          }
+          setGenerateProgressPhase('finalizing');
+          return Math.min(prev + 1, 95);
+        });
+      }, 220);
+
       const generatePayload = {
         user_ids: payload.userIds,
         start_date: formatLocalDate(payload.payrollRange.from),
@@ -590,9 +624,13 @@ export default function GeneratePayrollPage() {
         payroll_type: payload.payrollType,
         statutory_include: payload.includeStatutoryDeductions ? 1 : 0,
         include_cola: payload.includeCola ? 1 : 0,
+        include_cash_advance: payload.includeCashAdvance ? 1 : 0,
       };
 
       const response = await generateService.generatePayroll(generatePayload);
+      setGenerateProgressPhase('finalizing');
+      setGenerateProgressPercent(100);
+      await new Promise((resolve) => setTimeout(resolve, 350));
 
       const successMessage =
         response.action === 'updated'
@@ -621,6 +659,12 @@ export default function GeneratePayrollPage() {
         variant: 'destructive',
       });
       throw err;
+    } finally {
+      if (progressTimer) {
+        clearInterval(progressTimer);
+      }
+      setIsGeneratingPayroll(false);
+      setGenerateProgressOpen(false);
     }
   };
 
@@ -1031,6 +1075,32 @@ export default function GeneratePayrollPage() {
             <Progress value={exportProgressPercent} className="h-3" />
             <p className="text-sm text-muted-foreground text-center tabular-nums">
               {exportProgressPercent}%
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={generateProgressOpen}
+        onOpenChange={(open) => {
+          if (!open && !isGeneratingPayroll) {
+            setGenerateProgressOpen(false);
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onPointerDownOutside={(e) => isGeneratingPayroll && e.preventDefault()}
+          onEscapeKeyDown={(e) => isGeneratingPayroll && e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Generating payroll</DialogTitle>
+            <DialogDescription>{generatePhaseLabel}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Progress value={generateProgressPercent} className="h-3" />
+            <p className="text-sm text-muted-foreground text-center tabular-nums">
+              {generateProgressPercent}%
             </p>
           </div>
         </DialogContent>

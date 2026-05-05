@@ -29,6 +29,7 @@ export interface GeneratePayrollRequest {
   payroll_type: string;
   statutory_include?: number;
   include_cola?: number;
+  include_cash_advance?: number;
 }
 
 export interface GeneratePayrollResponse {

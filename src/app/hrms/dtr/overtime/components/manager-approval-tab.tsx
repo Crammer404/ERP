@@ -39,7 +39,7 @@ import {
 import { Download, RefreshCw, Clock, MoreVertical, Eye, CheckCircle, XCircle } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
-import { OvertimeRequestRecord } from '@/services/hrms/dtr';
+import type { OvertimeRequestRecord } from '../services/overtime-service';
 import { ShiftFilter } from '../../../../../components/ui/shift-filter';
 import { SHIFT_COLOR_CLASSES } from '@/config/colors.config';
 

@@ -30,17 +30,13 @@ export { addressService } from './user-info/addressService';
 export type { Address, CreateAddressRequest, UpdateAddressRequest } from './user-info/addressService';
 
 
-// DTR service
-export { dtrService } from './dtr/dtrService';
-export type { DTR, CheckInRequest, CheckOutRequest, CreateDTRRequest, UpdateDTRRequest } from './dtr/dtrService';
-
 // Employee service
 export { employeeService } from '../app/hrms/dtr/employee-id/services/employee-service';
 export type { Employee, EmployeeQrRequest, EmployeeQrResponse } from '../app/hrms/dtr/employee-id/services/employee-service';
 
 // Payroll service
 export { payrollService } from './payroll/payrollService';
-export type { Payroll, CreatePayrollRequest, UpdatePayrollRequest, CalculatePayrollRequest } from './payroll/payrollService';
+export type { Payroll, CreatePayrollRequest, UpdatePayrollRequest } from './payroll/payrollService';
 
 // Inventory service
 export { inventoryService } from './inventory/inventoryService';

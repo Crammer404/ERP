@@ -35,11 +35,13 @@ import {
   createManualLog,
   updateManualLog,
   ManualDtrPayload,
-  EarlyOutWarningPayload,
+} from '../services/time-clock-service';
+import { EarlyOutWarningPayload } from '../services/early-out-service';
+import {
   getUserScheduleDetails,
   UserScheduleDetails,
   UserScheduleShiftDetail,
-} from '@/services/hrms/dtr';
+} from '../../schedule/services/schedule-service';
 import {
   managementService,
   Employee,
@@ -80,6 +82,8 @@ export interface ManualLogData {
   shift: string;
   clockInRaw: string | null;
   clockOutRaw: string | null;
+  earlyOutRequestStatus?: 'pending' | 'approved' | 'rejected' | null;
+  earlyOutRequestId?: number | null;
 }
 
 interface ManualLogModalProps {
@@ -294,6 +298,9 @@ export function ManualLogModal({
 }: ManualLogModalProps) {
   const { toast } = useToast();
   const scheduleRequestRef = useRef(0);
+  const normalizedEarlyOutStatus = (log?.earlyOutRequestStatus || '').toLowerCase();
+  const isEarlyOutReviewed = normalizedEarlyOutStatus === 'approved' || normalizedEarlyOutStatus === 'rejected';
+  const isEditLocked = mode === 'edit' && isEarlyOutReviewed;
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
@@ -505,6 +512,15 @@ export function ManualLogModal({
   };
 
   const handleSubmitLog = async () => {
+    if (isEditLocked) {
+      toast({
+        title: 'Editing locked',
+        description: 'This early-out request has already been approved/rejected. Time log edits are disabled to prevent manipulation.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const errors: Record<string, string> = {};
     const userId = Number(logFormData.userId);
 
@@ -592,28 +608,15 @@ export function ManualLogModal({
     }> = [];
 
     if (mode === 'edit') {
-      const selectedLogId = log?.id ?? null;
-      if (!selectedLogId) {
-        errors.shiftLogs = 'Selected log is missing.';
-      } else {
-        const selectedOperation = operations.find(
-          (operation) => operation.logId === selectedLogId,
-        );
-        if (!selectedOperation) {
-          errors.shiftLogs = 'No editable shift found for the selected log.';
-        } else {
-          operationsToProcess.push({
-            ...selectedOperation,
-            action: 'update',
-          });
-        }
+      const updateOperations = operations
+        .filter((operation) => operation.logId !== null)
+        .map((operation) => ({ ...operation, action: 'update' as const }));
 
-        const createOperations = operations
-          .filter((operation) => operation.logId === null)
-          .map((operation) => ({ ...operation, action: 'create' as const }));
+      const createOperations = operations
+        .filter((operation) => operation.logId === null)
+        .map((operation) => ({ ...operation, action: 'create' as const }));
 
-        operationsToProcess.push(...createOperations);
-      }
+      operationsToProcess = [...updateOperations, ...createOperations];
     } else {
       operationsToProcess = operations.map((operation) => ({
         ...operation,
@@ -871,7 +874,7 @@ export function ManualLogModal({
                   definition={definition}
                   value={shiftFields[definition.key]}
                   errors={logFormErrors}
-                  disabled={savingLog || scheduleLoading || !!scheduleError}
+                  disabled={savingLog || scheduleLoading || !!scheduleError || isEditLocked}
                   onClockInChange={(value) =>
                     handleShiftFieldChange(definition.key, 'clockIn', value)
                   }
@@ -897,7 +900,7 @@ export function ManualLogModal({
           </Button>
           <Button
             onClick={handleSubmitLog}
-            disabled={savingLog || scheduleLoading || !!scheduleError}
+            disabled={savingLog || scheduleLoading || !!scheduleError || isEditLocked}
             className="bg-green-600 hover:bg-green-700"
           >
             {savingLog ? (

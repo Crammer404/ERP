@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import type { CashAdvance, CreateCashAdvanceRequest, UpdateCashAdvanceRequest } from '../services/cash-advance-service';
+import type { CashAdvance, CashAdvanceStatus, CreateCashAdvanceRequest, UpdateCashAdvanceRequest } from '../services/cash-advance-service';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { managementService, Employee } from '@/services/management/managementService';
 import { branchService } from '@/app/management/branches/services/branch-service';
@@ -60,6 +60,12 @@ export function CashAdvanceFormModal({
   errors,
   onClearError,
 }: CashAdvanceFormModalProps) {
+  const STATUS_OPTIONS: Array<{ value: CashAdvanceStatus; label: string }> = [
+    { value: 'active', label: 'Active' },
+    { value: 'paid', label: 'Paid' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
+
   const [formData, setFormData] = useState<CreateCashAdvanceRequest>({
     branch_id: 0,
     user_id: 0,
@@ -197,28 +203,29 @@ export function CashAdvanceFormModal({
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
+    const isEditMode = mode === 'edit';
 
-    if (!formData.branch_id || formData.branch_id === 0) {
+    if (!isEditMode && (!formData.branch_id || formData.branch_id === 0)) {
       newErrors.branch_id = 'Branch is required';
     }
 
-    if (!formData.user_id || formData.user_id === 0) {
+    if (!isEditMode && (!formData.user_id || formData.user_id === 0)) {
       newErrors.user_id = 'Employee is required';
     }
 
-    if (!formData.amount || formData.amount <= 0) {
+    if (!isEditMode && (!formData.amount || formData.amount <= 0)) {
       newErrors.amount = 'Amount must be greater than 0';
     }
 
-    if ((formData.outstanding_balance ?? 0) < 0) {
+    if (!isEditMode && (formData.outstanding_balance ?? 0) < 0) {
       newErrors.outstanding_balance = 'Outstanding balance cannot be negative';
     }
 
-    if ((formData.outstanding_balance ?? 0) > (formData.amount ?? 0)) {
+    if (!isEditMode && (formData.outstanding_balance ?? 0) > (formData.amount ?? 0)) {
       newErrors.outstanding_balance = 'Outstanding balance cannot exceed the advance amount';
     }
 
-    if (!formData.date_issued) {
+    if (!isEditMode && !formData.date_issued) {
       newErrors.date_issued = 'Date issued is required';
     }
 
@@ -234,6 +241,11 @@ export function CashAdvanceFormModal({
     e.preventDefault();
     
     if (!validateForm()) {
+      return;
+    }
+
+    if (mode === 'edit') {
+      onSubmit({ status: formData.status });
       return;
     }
 
@@ -288,10 +300,15 @@ export function CashAdvanceFormModal({
   const selectedEmployee = employeeOptions.find(opt => opt.value === formData.user_id?.toString());
 
   const isCreateMode = mode === 'create';
-  const modalTitle = isCreateMode ? 'Create Cash Advance' : 'Edit Cash Advance';
+  const initialStatus = initialData?.status;
+  const isTerminalStatus = initialStatus === 'paid' || initialStatus === 'cancelled';
+  const allowedStatusOptions = isCreateMode || !isTerminalStatus
+    ? STATUS_OPTIONS
+    : STATUS_OPTIONS.filter((option) => option.value === initialStatus);
+  const modalTitle = isCreateMode ? 'Create Cash Advance' : 'Update Cash Advance';
   const modalDescription = isCreateMode 
     ? 'Add a new cash advance for an employee.'
-    : 'Update the cash advance details below.';
+    : 'Only status can be updated for this record.';
   const submitButtonText = isCreateMode 
     ? (loading ? 'Creating...' : 'Create')
     : (loading ? 'Updating...' : 'Update');
@@ -339,12 +356,12 @@ export function CashAdvanceFormModal({
                 </div>
               ) : (
                 <Select
-                  value={formData.user_id?.toString() || ''}
+                  value={formData.user_id && formData.user_id > 0 ? formData.user_id.toString() : ''}
                   onValueChange={handleEmployeeChange}
-                  disabled={loading}
+                  disabled={loading || !isCreateMode}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select employee" />
+                    <SelectValue placeholder="Select an employee" />
                   </SelectTrigger>
                   <SelectContent>
                     {employeeOptions.map((option) => (
@@ -397,7 +414,7 @@ export function CashAdvanceFormModal({
                   handleBlur('amount');
                 }}
                 placeholder="0.00"
-                disabled={loading}
+                disabled={loading || !isCreateMode}
               />
               {allErrors.amount && <p className="text-red-500 text-xs">{allErrors.amount}</p>}
             </div>
@@ -435,7 +452,7 @@ export function CashAdvanceFormModal({
                   handleBlur('outstanding_balance');
                 }}
                 placeholder="0.00"
-                disabled={loading}
+                disabled={loading || !isCreateMode}
               />
               {allErrors.outstanding_balance && <p className="text-red-500 text-xs">{allErrors.outstanding_balance}</p>}
             </div>
@@ -453,7 +470,7 @@ export function CashAdvanceFormModal({
                       "w-full justify-start text-left font-normal",
                       !formData.date_issued && "text-muted-foreground"
                     )}
-                    disabled={loading}
+                    disabled={loading || !isCreateMode}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {formData.date_issued
@@ -488,11 +505,18 @@ export function CashAdvanceFormModal({
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  {allowedStatusOptions.map((statusOption) => (
+                    <SelectItem key={statusOption.value} value={statusOption.value}>
+                      {statusOption.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {!isCreateMode && isTerminalStatus && (
+                <p className="text-xs text-muted-foreground">
+                  This record is already {initialStatus}. Terminal statuses can no longer be changed.
+                </p>
+              )}
               {allErrors.status && <p className="text-red-500 text-xs">{allErrors.status}</p>}
             </div>
 
@@ -504,7 +528,7 @@ export function CashAdvanceFormModal({
                 value={formData.description || ''}
                 onChange={(e) => handleChange('description', e.target.value || null)}
                 placeholder="Enter description..."
-                disabled={loading}
+                disabled={loading || !isCreateMode}
                 rows={3}
               />
               {allErrors.description && <p className="text-red-500 text-xs">{allErrors.description}</p>}

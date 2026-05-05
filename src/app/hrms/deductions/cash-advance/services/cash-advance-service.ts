@@ -1,6 +1,8 @@
 import { api } from '@/services/api';
 import { API_ENDPOINTS } from '@/config/api.config';
 
+export type CashAdvanceStatus = 'active' | 'paid' | 'cancelled';
+
 export interface CashAdvance {
   id: number;
   branch_id: number;
@@ -9,7 +11,7 @@ export interface CashAdvance {
   amount: number;
   outstanding_balance: number;
   date_issued: string;
-  status: string;
+  status: CashAdvanceStatus;
   description: string | null;
   created_by: number | null;
   created_at: string;
@@ -46,7 +48,7 @@ export interface CreateCashAdvanceRequest {
   amount: number;
   outstanding_balance?: number;
   date_issued: string;
-  status?: string;
+  status?: CashAdvanceStatus;
   description?: string | null;
 }
 
@@ -56,7 +58,7 @@ export interface UpdateCashAdvanceRequest {
   amount?: number;
   outstanding_balance?: number;
   date_issued?: string;
-  status?: string;
+  status?: CashAdvanceStatus;
   description?: string | null;
 }
 

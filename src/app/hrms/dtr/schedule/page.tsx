@@ -30,7 +30,7 @@ import { PaginationInfos } from '@/components/ui/pagination-info';
 import { Plus, MoreVertical, Edit, Trash2, Users, Search, CalendarClock, CirclePlus } from 'lucide-react';
 import { AddScheduleModal, ScheduleFormData } from './components/add-schedule-modal';
 import { AssignEmployeesModal } from './components/assign-employees-modal';
-import { dtrService, AssignedEmployee } from '@/services/dtr/dtrService';
+import { dtrService, AssignedEmployee } from './services/schedule-service';
 import { useToast } from '@/hooks/use-toast';
 import { UserAvatarStack } from '@/components/ui/user-avatar-stack';
 import { Loader } from '@/components/ui/loader';
@@ -49,6 +49,7 @@ interface Schedule {
   nightShift: string;
   gracePeriod: number;
   overtimeThreshold: number;
+  allowAutoSplitLogs?: boolean;
   assignedEmployees: AssignedEmployee[];
 }
 
@@ -153,6 +154,7 @@ export default function SchedulePage() {
         night_shift_end: data.nightEnd,
         grace_period: data.gracePeriod,
         overtime: data.overtimeThreshold,
+        allow_auto_split_logs: data.allowAutoSplitLogs,
         user_ids: data.selectedEmployees,
       };
 
@@ -223,6 +225,7 @@ export default function SchedulePage() {
         nightEnd: scheduleDetails.night_shift_end || '',
         gracePeriod: scheduleDetails.grace_period?.toString() || '',
         overtimeThreshold: scheduleDetails.overtime?.toString() || '',
+        allowAutoSplitLogs: Boolean(scheduleDetails.allow_auto_split_logs),
         selectedEmployees: scheduleDetails.assigned_employee_ids?.map((id: number) => id.toString()) || [],
       };
       

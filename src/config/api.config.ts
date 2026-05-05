@@ -104,6 +104,34 @@ export const API_ENDPOINTS = {
     GENERATE_QR: '/hrms/dtr/employee_id/generateUserQrFromData',
     EMPLOYEE_CURRENT_USER: '/hrms/dtr/employee_id/user',
     EXPORT_TIMESHEET: '/hrms/dtr/export-timesheet',
+    USER_SCHEDULE: {
+      DETAILS: '/hrms/dtr/user-schedule/{userId}',
+    },
+    TIME_CLOCK: {
+      LOGS: '/hrms/dtr/logs',
+      LOG: '/hrms/dtr/logs/{id}',
+      RESTORE_LOG: '/hrms/dtr/logs/{id}/restore',
+      FORCE_DELETE_LOG: '/hrms/dtr/logs/{id}/force',
+      CLOCK: '/hrms/dtr/clock',
+      REOPEN_OVERTIME: '/hrms/dtr/clock/reopen-overtime',
+    },
+    EARLY_OUT: {
+      APPROVE: '/hrms/dtr/early-out-requests/{id}/approve',
+      REJECT: '/hrms/dtr/early-out-requests/{id}/reject',
+    },
+    OVERTIME: {
+      BASE: '/hrms/dtr/overtime',
+      MY: '/hrms/dtr/overtime/my',
+      EMPLOYEE: '/hrms/dtr/overtime/employee',
+      EMPLOYEE_REQUEST: '/hrms/dtr/overtime/employee/request',
+      SHOW: '/hrms/dtr/overtime/{id}',
+      APPROVE: '/hrms/dtr/overtime/{id}/approve',
+      REJECT: '/hrms/dtr/overtime/{id}/reject',
+    },
+    ATTENDANCE: {
+      LOGS: '/hrms/dtr/attendance/logs',
+      EXPORT: '/hrms/dtr/attendance/export',
+    },
     CONFIGURATION: {
       GET: '/hrms/dtr/configuration/data',
       STORE: '/hrms/dtr/configuration/store',
