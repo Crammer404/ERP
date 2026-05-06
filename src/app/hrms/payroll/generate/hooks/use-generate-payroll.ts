@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DateRange } from 'react-day-picker';
 import {
   addMonths,
@@ -25,6 +25,9 @@ import {
   approveEarlyOutRequest,
   rejectEarlyOutRequest,
 } from '@/app/hrms/dtr/time-clock/services/early-out-service';
+import { colaService, type ColaEntry } from '@/app/hrms/allowances/cola/services/cola-service';
+import { cashAdvanceService, type CashAdvance } from '@/app/hrms/deductions/cash-advance/services/cash-advance-service';
+import { statutoriesService, type StatutoryEntry, type StatutoryType } from '@/app/hrms/deductions/statutories/services/statutories-service';
 import { ROUTES } from '@/config/api.config';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useToast } from '@/hooks/use-toast';
@@ -34,12 +37,12 @@ export const CUSTOM_RANGE_TYPE = 'Range Date';
 
 export const WIZARD_STEPS = [
   { id: 1, title: 'Payroll Type & Range', subtitle: 'Configure payroll coverage period' },
-  { id: 2, title: 'Overtime Check', subtitle: 'Verify pending overtime requests' },
-  { id: 3, title: 'Early Out Check', subtitle: 'Verify pending early time-out requests' },
-  { id: 4, title: 'COLA Inclusion', subtitle: 'Choose whether to include COLA' },
-  { id: 5, title: 'Cash Advance Rule', subtitle: 'Review included cash advance cutoff' },
-  { id: 6, title: 'Statutory Deductions', subtitle: 'Choose statutory deduction inclusion' },
-  { id: 7, title: 'Employee Selection', subtitle: 'Select employees and finalize' },
+  { id: 2, title: 'Employee Selection', subtitle: 'Select employees for this payroll run' },
+  { id: 3, title: 'Overtime Check', subtitle: 'Verify pending overtime requests' },
+  { id: 4, title: 'Early Out Check', subtitle: 'Verify pending early time-out requests' },
+  { id: 5, title: 'COLA Inclusion', subtitle: 'Choose whether to include COLA' },
+  { id: 6, title: 'Cash Advance Rule', subtitle: 'Review included cash advance cutoff' },
+  { id: 7, title: 'Statutory Deductions', subtitle: 'Choose statutory deduction inclusion' },
 ] as const;
 
 export type CashAdvanceWindow = {
@@ -68,10 +71,29 @@ export type PendingEarlyOutRecord = {
   request_id: number;
   date: string;
   employee_name: string;
+  user_id?: number | null;
   scheduled_clock_out_at?: string | null;
   actual_clock_out_at?: string | null;
   remaining_minutes?: number | null;
   status?: string | null;
+};
+
+export const formatColaEntryEmployeeName = (row: ColaEntry): string => {
+  const full = [row.first_name ?? '', row.last_name ?? ''].filter(Boolean).join(' ').trim();
+  return full || row.email;
+};
+
+export const formatCashAdvanceEmployeeName = (row: CashAdvance): string => {
+  const first =
+    row.user_info?.first_name ??
+    row.user_info?.user?.user_info?.first_name ??
+    '';
+  const last =
+    row.user_info?.last_name ??
+    row.user_info?.user?.user_info?.last_name ??
+    '';
+  const full = [first, last].filter(Boolean).join(' ').trim();
+  return full || row.user_info?.user?.email || `#${row.user_id}`;
 };
 
 export const formatLocalDate = (date: Date): string => {
@@ -81,17 +103,25 @@ export const formatLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+/** Overtime-style display: omits `0h`, omits trailing `0min` when only whole hours. */
+export const formatCompactDurationHoursMinutes = (hours: number, minutes: number): string => {
+  const safeHours = Math.max(0, Math.floor(hours));
+  const safeMinutes = Math.max(0, Math.floor(minutes));
+
+  if (safeHours <= 0 && safeMinutes <= 0) return '0min';
+  if (safeHours <= 0) return `${safeMinutes}min`;
+  if (safeMinutes <= 0) return `${safeHours}h`;
+  return `${safeHours}h ${safeMinutes}min`;
+};
+
+/** Total minutes → same compact rules as requested-hours column (e.g. `1h 5min`, `45min`). */
+export const formatRemainingMinutesLabel = (totalMinutes: number | null | undefined): string => {
+  if (totalMinutes == null || Number.isNaN(Number(totalMinutes))) return '-';
+  const safe = Math.max(0, Math.floor(Number(totalMinutes)));
+  return formatCompactDurationHoursMinutes(Math.floor(safe / 60), safe % 60);
+};
+
 export const formatRequestedHoursLabel = (value: unknown): string => {
-  const toCompactHourMinute = (hours: number, minutes: number): string => {
-    const safeHours = Math.max(0, Math.floor(hours));
-    const safeMinutes = Math.max(0, Math.floor(minutes));
-
-    if (safeHours <= 0 && safeMinutes <= 0) return '0min';
-    if (safeHours <= 0) return `${safeMinutes}min`;
-    if (safeMinutes <= 0) return `${safeHours}h`;
-    return `${safeHours}h ${safeMinutes}min`;
-  };
-
   const raw = String(value ?? '').trim();
   if (!raw) return '0min';
 
@@ -100,7 +130,7 @@ export const formatRequestedHoursLabel = (value: unknown): string => {
     const totalMinutes = Math.max(0, Math.round(numeric * 60));
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
-    return toCompactHourMinute(hours, minutes);
+    return formatCompactDurationHoursMinutes(hours, minutes);
   }
 
   const colonMatch = raw.match(/^(\d{1,2}):(\d{1,2})$/);
@@ -108,11 +138,36 @@ export const formatRequestedHoursLabel = (value: unknown): string => {
     const hours = Number(colonMatch[1] || 0);
     const minutes = Number(colonMatch[2] || 0);
     if (Number.isFinite(hours) && Number.isFinite(minutes)) {
-      return toCompactHourMinute(hours, minutes);
+      return formatCompactDurationHoursMinutes(hours, minutes);
     }
   }
 
   return raw;
+};
+
+/** Scheduled/actual clock-out values: ISO datetime or 24h `HH:MM` / `HH:MM:SS` → e.g. `1:00 PM`. */
+export const formatClockTime12h = (value: string | null | undefined): string => {
+  if (value == null || String(value).trim() === '') return '-';
+  const s = String(value).trim();
+
+  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+  const m = s.match(timeOnly);
+  if (m) {
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    if (Number.isNaN(h) || Number.isNaN(min)) return '-';
+    h = ((h % 24) + 24) % 24;
+    const period = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(min).padStart(2, '0')} ${period}`;
+  }
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  return '-';
 };
 
 const weekRangeContaining = (d: Date): DateRange => {
@@ -166,10 +221,21 @@ export const defaultRangeForPayrollType = (type: string): DateRange => {
 };
 
 export const getCashAdvanceWindowForPayrollRange = (
+  payrollType: string,
   range: DateRange | undefined
 ): CashAdvanceWindow | null => {
   if (!range?.from || !range?.to) {
     return null;
+  }
+
+  // Only Semi-Monthly uses special cutoff windows.
+  // Weekly/Monthly/Custom Range use the same payroll coverage.
+  if (payrollTypeKey(payrollType) !== 'semi-monthly') {
+    return {
+      label: `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`,
+      startDate: range.from,
+      endDate: range.to,
+    };
   }
 
   const fromDay = range.from.getDate();
@@ -269,6 +335,13 @@ export const useGeneratePayrollModal = ({
   const [pendingEarlyOutRecords, setPendingEarlyOutRecords] = useState<PendingEarlyOutRecord[]>([]);
   const [pendingOvertimeLoading, setPendingOvertimeLoading] = useState(false);
   const [pendingEarlyOutLoading, setPendingEarlyOutLoading] = useState(false);
+  const [colaEntries, setColaEntries] = useState<ColaEntry[]>([]);
+  const [colaLoading, setColaLoading] = useState(false);
+  const [cashAdvanceEntries, setCashAdvanceEntries] = useState<CashAdvance[]>([]);
+  const [cashAdvanceLoading, setCashAdvanceLoading] = useState(false);
+  const [statutoryActiveTab, setStatutoryActiveTab] = useState<StatutoryType>('sss');
+  const [statutoryEntries, setStatutoryEntries] = useState<StatutoryEntry[]>([]);
+  const [statutoryLoading, setStatutoryLoading] = useState(false);
   const [selectedOvertimeRecord, setSelectedOvertimeRecord] = useState<OvertimeRequestRecord | null>(null);
   const [approveOvertimeModalOpen, setApproveOvertimeModalOpen] = useState(false);
   const [rejectOvertimeModalOpen, setRejectOvertimeModalOpen] = useState(false);
@@ -276,10 +349,18 @@ export const useGeneratePayrollModal = ({
   const [overtimeActionNotes, setOvertimeActionNotes] = useState('');
   const [approveOvertimeSubmitting, setApproveOvertimeSubmitting] = useState(false);
   const [rejectOvertimeSubmitting, setRejectOvertimeSubmitting] = useState(false);
+  const [selectedEarlyOutRecord, setSelectedEarlyOutRecord] = useState<PendingEarlyOutRecord | null>(null);
+  const [approveEarlyOutModalOpen, setApproveEarlyOutModalOpen] = useState(false);
+  const [rejectEarlyOutModalOpen, setRejectEarlyOutModalOpen] = useState(false);
+  const [earlyOutModalNotes, setEarlyOutModalNotes] = useState('');
+  const [earlyOutModalSubmitting, setEarlyOutModalSubmitting] = useState(false);
   const isCustomRange = payrollTypeKey(payrollType) === payrollTypeKey(CUSTOM_RANGE_TYPE);
   const payrollTypeForSubmit = isCustomRange ? 'Monthly' : payrollType;
   const totalSteps = 7;
-  const cashAdvanceWindow = useMemo(() => getCashAdvanceWindowForPayrollRange(dateRange), [dateRange]);
+  const cashAdvanceWindow = useMemo(
+    () => getCashAdvanceWindowForPayrollRange(payrollTypeForSubmit, dateRange),
+    [payrollTypeForSubmit, dateRange]
+  );
   const activeStepMeta = WIZARD_STEPS.find((step) => step.id === currentStep) ?? WIZARD_STEPS[0];
   const { activeBranchName, selectedRangeLabel } = usePayrollContextSummary(dateRange);
   const isStepConditionSatisfied = useMemo(() => {
@@ -287,11 +368,11 @@ export const useGeneratePayrollModal = ({
       case 1:
         return Boolean(dateRange?.from && dateRange?.to);
       case 2:
-        return !pendingOvertimeLoading && pendingOvertimeRecords.length === 0;
-      case 3:
-        return !pendingEarlyOutLoading && pendingEarlyOutRecords.length === 0;
-      case 7:
         return selectedUserIds.length > 0;
+      case 3:
+        return !pendingOvertimeLoading && pendingOvertimeRecords.length === 0;
+      case 4:
+        return !pendingEarlyOutLoading && pendingEarlyOutRecords.length === 0;
       default:
         return true;
     }
@@ -426,7 +507,99 @@ export const useGeneratePayrollModal = ({
     setCurrentStep(1);
     setStepError(null);
     setShowGenerateConfirm(false);
+    setColaEntries([]);
+    setCashAdvanceEntries([]);
+    setStatutoryActiveTab('sss');
+    setStatutoryEntries([]);
   };
+
+  const fetchColaEntries = useCallback(async () => {
+    setColaLoading(true);
+    try {
+      const data = await colaService.getAll();
+      const scoped = (data || []).filter((row) =>
+        selectedUserIds.length > 0 ? selectedUserIds.includes(row.user_id) : true
+      );
+      const sorted = [...scoped].sort((a, b) =>
+        formatColaEntryEmployeeName(a).localeCompare(formatColaEntryEmployeeName(b), undefined, {
+          sensitivity: 'base',
+        })
+      );
+      setColaEntries(sorted);
+    } catch (error) {
+      console.error('Failed to load COLA entries:', error);
+      setColaEntries([]);
+    } finally {
+      setColaLoading(false);
+    }
+  }, [selectedUserIds]);
+
+  const activeBranchId = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const branch = JSON.parse(localStorage.getItem('branch_context') || '{}');
+      const id = Number(branch?.id);
+      return Number.isFinite(id) && id > 0 ? id : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fetchCashAdvanceEntries = useCallback(async () => {
+    if (!cashAdvanceWindow) {
+      setCashAdvanceEntries([]);
+      return;
+    }
+
+    setCashAdvanceLoading(true);
+    try {
+      const all = await cashAdvanceService.getAll();
+
+      const fromTime = new Date(cashAdvanceWindow.startDate).setHours(0, 0, 0, 0);
+      const toTime = new Date(cashAdvanceWindow.endDate).setHours(23, 59, 59, 999);
+
+      const filtered = (all || [])
+        .filter((row) => (activeBranchId ? row.branch_id === activeBranchId : true))
+        .filter((row) => (selectedUserIds.length > 0 ? selectedUserIds.includes(row.user_id) : true))
+        .filter((row) => {
+          const issued = new Date(row.date_issued);
+          const t = issued.getTime();
+          if (Number.isNaN(t)) return false;
+          return t >= fromTime && t <= toTime;
+        })
+        .filter((row) => String(row.status || '').toLowerCase() === 'active')
+        .filter((row) => Number(row.outstanding_balance ?? 0) > 0);
+
+      const sorted = [...filtered].sort((a, b) =>
+        formatCashAdvanceEmployeeName(a).localeCompare(formatCashAdvanceEmployeeName(b), undefined, {
+          sensitivity: 'base',
+        })
+      );
+
+      setCashAdvanceEntries(sorted);
+    } catch (error) {
+      console.error('Failed to load cash advance entries:', error);
+      setCashAdvanceEntries([]);
+    } finally {
+      setCashAdvanceLoading(false);
+    }
+  }, [activeBranchId, cashAdvanceWindow, selectedUserIds]);
+
+  const fetchStatutoryEntries = useCallback(async (type: StatutoryType = statutoryActiveTab) => {
+    setStatutoryLoading(true);
+    try {
+      const all = await statutoriesService.getAll(type);
+      const scoped = (all || []).filter((row) =>
+        selectedUserIds.length > 0 ? selectedUserIds.includes((row as any).user_id) : true
+      );
+      setStatutoryEntries(scoped);
+    } catch (error) {
+      console.error('Failed to load statutory entries:', error);
+      setStatutoryEntries([]);
+    } finally {
+      setStatutoryLoading(false);
+    }
+  }, [selectedUserIds, statutoryActiveTab]);
 
   useEffect(() => {
     if (!open) {
@@ -446,15 +619,23 @@ export const useGeneratePayrollModal = ({
       setPendingOvertimeRecords([]);
       return [];
     }
+    if (selectedUserIds.length === 0) {
+      setPendingOvertimeRecords([]);
+      return [];
+    }
     setPendingOvertimeLoading(true);
     try {
       const records = await getOvertimeRequests({
         status: 'pending',
         start_date: formatLocalDate(dateRange.from),
         end_date: formatLocalDate(dateRange.to),
+        user_ids: selectedUserIds,
       });
-      setPendingOvertimeRecords(records);
-      return records;
+      const filtered = (records || []).filter((r) =>
+        selectedUserIds.includes((r as any).employee_id ?? -1)
+      );
+      setPendingOvertimeRecords(filtered);
+      return filtered;
     } catch (error) {
       console.error('Failed to load pending overtime records:', error);
       setPendingOvertimeRecords([]);
@@ -469,6 +650,10 @@ export const useGeneratePayrollModal = ({
       setPendingEarlyOutRecords([]);
       return [];
     }
+    if (selectedUserIds.length === 0) {
+      setPendingEarlyOutRecords([]);
+      return [];
+    }
     setPendingEarlyOutLoading(true);
     try {
       const response: any = await getTimeClockLogs({
@@ -477,6 +662,7 @@ export const useGeneratePayrollModal = ({
         start_date: formatLocalDate(dateRange.from),
         end_date: formatLocalDate(dateRange.to),
         early_out: true,
+        user_ids: selectedUserIds,
       });
       const rows: any[] = Array.isArray(response?.data)
         ? response.data
@@ -486,12 +672,15 @@ export const useGeneratePayrollModal = ({
         request_id: Number(row?.request_id ?? row?.early_out_request?.id ?? 0),
         date: String(row?.date ?? ''),
         employee_name: String(row?.employee_name ?? row?.employee ?? ''),
+        user_id: Number(row?.user_id ?? row?.userId ?? row?.employee_id ?? 0),
         scheduled_clock_out_at: row?.scheduled_clock_out_at ?? row?.scheduled_clock_out ?? null,
         actual_clock_out_at: row?.actual_clock_out_at ?? row?.actual_clock_out ?? null,
         remaining_minutes: row?.remaining_minutes ?? row?.early_out_remaining_minutes ?? null,
         status: row?.status ?? row?.early_out_request_status ?? null,
       }));
-      const pendingOnly = normalizedRows.filter((row) => String(row?.status || '').toLowerCase() === 'pending');
+      const pendingOnly = normalizedRows
+        .filter((row) => String(row?.status || '').toLowerCase() === 'pending')
+        .filter((row: any) => selectedUserIds.includes(Number((row as any).user_id || 0)));
       setPendingEarlyOutRecords(pendingOnly);
       return pendingOnly;
     } catch (error) {
@@ -505,16 +694,33 @@ export const useGeneratePayrollModal = ({
 
   useEffect(() => {
     if (!open || !dateRange?.from || !dateRange?.to) return;
-    if (currentStep === 2) fetchPendingOvertimeRecords();
-    if (currentStep === 3) fetchPendingEarlyOutRecords();
+    if (currentStep === 3) fetchPendingOvertimeRecords();
+    if (currentStep === 4) fetchPendingEarlyOutRecords();
   }, [open, currentStep, dateRange?.from, dateRange?.to]);
+
+  useEffect(() => {
+    if (!open || currentStep !== 5) return;
+    void fetchColaEntries();
+  }, [open, currentStep, fetchColaEntries]);
+
+  useEffect(() => {
+    if (!open || currentStep !== 6) return;
+    void fetchCashAdvanceEntries();
+  }, [open, currentStep, fetchCashAdvanceEntries]);
+
+  useEffect(() => {
+    if (!open || currentStep !== 7) return;
+    void fetchStatutoryEntries(statutoryActiveTab);
+  }, [open, currentStep, statutoryActiveTab, fetchStatutoryEntries]);
 
   const handlePayrollRangeChange = (range: DateRange | undefined) => {
     if (isCustomRange) {
       setDateRange(range);
+      setSelectedUserIds([]);
       return;
     }
     setDateRange(normalizeRangeForPayrollType(payrollType, range));
+    setSelectedUserIds([]);
   };
 
   const handleClose = () => setOpen(false);
@@ -595,23 +801,80 @@ export const useGeneratePayrollModal = ({
     }
   };
 
-  const handleApproveEarlyOutFromStep = async (record: PendingEarlyOutRecord) => {
+  const openApproveEarlyOutModalFromStep = (record: PendingEarlyOutRecord) => {
+    setSelectedEarlyOutRecord(record);
+    setEarlyOutModalNotes('');
+    setApproveEarlyOutModalOpen(true);
+  };
+
+  const openRejectEarlyOutModalFromStep = (record: PendingEarlyOutRecord) => {
+    setSelectedEarlyOutRecord(record);
+    setEarlyOutModalNotes('');
+    setRejectEarlyOutModalOpen(true);
+  };
+
+  const confirmApproveEarlyOutFromStep = async () => {
+    if (!selectedEarlyOutRecord?.request_id) {
+      toast({ title: 'Error', description: 'Invalid early-out request.', variant: 'destructive' });
+      return;
+    }
     try {
-      await approveEarlyOutRequest(record.request_id);
+      setEarlyOutModalSubmitting(true);
+      await approveEarlyOutRequest(
+        selectedEarlyOutRecord.request_id,
+        earlyOutModalNotes.trim() || undefined,
+      );
       await fetchPendingEarlyOutRecords();
-      toast({ title: 'Success', description: 'Early out request approved.' });
+      toast({
+        title: 'Success',
+        description: `Early-out request for ${selectedEarlyOutRecord.employee_name || 'employee'} has been approved.`,
+      });
+      setApproveEarlyOutModalOpen(false);
+      setSelectedEarlyOutRecord(null);
+      setEarlyOutModalNotes('');
     } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to approve early out request.', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.message || error?.message || 'Failed to approve early-out request.',
+        variant: 'destructive',
+      });
+    } finally {
+      setEarlyOutModalSubmitting(false);
     }
   };
 
-  const handleRejectEarlyOutFromStep = async (record: PendingEarlyOutRecord) => {
+  const confirmRejectEarlyOutFromStep = async () => {
+    if (!selectedEarlyOutRecord?.request_id) {
+      toast({ title: 'Error', description: 'Invalid early-out request.', variant: 'destructive' });
+      return;
+    }
+    if (!earlyOutModalNotes.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please provide a rejection reason.',
+        variant: 'destructive',
+      });
+      return;
+    }
     try {
-      await rejectEarlyOutRequest(record.request_id, 'Rejected via payroll wizard check');
+      setEarlyOutModalSubmitting(true);
+      await rejectEarlyOutRequest(selectedEarlyOutRecord.request_id, earlyOutModalNotes.trim());
       await fetchPendingEarlyOutRecords();
-      toast({ title: 'Success', description: 'Early out request rejected.' });
+      toast({
+        title: 'Success',
+        description: `Early-out request for ${selectedEarlyOutRecord.employee_name || 'employee'} has been rejected.`,
+      });
+      setRejectEarlyOutModalOpen(false);
+      setSelectedEarlyOutRecord(null);
+      setEarlyOutModalNotes('');
     } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to reject early out request.', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.message || error?.message || 'Failed to reject early-out request.',
+        variant: 'destructive',
+      });
+    } finally {
+      setEarlyOutModalSubmitting(false);
     }
   };
 
@@ -648,6 +911,12 @@ export const useGeneratePayrollModal = ({
       return;
     }
     if (currentStep === 2) {
+      if (selectedUserIds.length === 0) {
+        setStepError('Please select at least one employee.');
+        return;
+      }
+    }
+    if (currentStep === 3) {
       setIsStepChecking(true);
       const pendingOvertime = await fetchPendingOvertimeRecords();
       setIsStepChecking(false);
@@ -656,7 +925,7 @@ export const useGeneratePayrollModal = ({
         return;
       }
     }
-    if (currentStep === 3) {
+    if (currentStep === 4) {
       setIsStepChecking(true);
       const pendingEarlyOut = await fetchPendingEarlyOutRecords();
       setIsStepChecking(false);
@@ -666,10 +935,6 @@ export const useGeneratePayrollModal = ({
       }
     }
     if (currentStep === 7) {
-      if (selectedUserIds.length === 0) {
-        setStepError('Please select at least one employee.');
-        return;
-      }
       setShowGenerateConfirm(true);
       return;
     }
@@ -730,6 +995,17 @@ export const useGeneratePayrollModal = ({
     pendingEarlyOutRecords,
     pendingOvertimeLoading,
     pendingEarlyOutLoading,
+    colaEntries,
+    colaLoading,
+    fetchColaEntries,
+    cashAdvanceEntries,
+    cashAdvanceLoading,
+    fetchCashAdvanceEntries,
+    statutoryActiveTab,
+    setStatutoryActiveTab,
+    statutoryEntries,
+    statutoryLoading,
+    fetchStatutoryEntries,
     selectedOvertimeRecord,
     approveOvertimeModalOpen,
     setApproveOvertimeModalOpen,
@@ -755,14 +1031,22 @@ export const useGeneratePayrollModal = ({
     handleClose,
     fetchPendingOvertimeRecords,
     fetchPendingEarlyOutRecords,
-    handleApproveOvertimeFromStep,
-    handleRejectOvertimeFromStep,
     openApproveOvertimeModalFromStep,
     openRejectOvertimeModalFromStep,
     confirmApproveOvertimeFromStep,
     confirmRejectOvertimeFromStep,
-    handleApproveEarlyOutFromStep,
-    handleRejectEarlyOutFromStep,
+    selectedEarlyOutRecord,
+    approveEarlyOutModalOpen,
+    setApproveEarlyOutModalOpen,
+    rejectEarlyOutModalOpen,
+    setRejectEarlyOutModalOpen,
+    earlyOutModalNotes,
+    setEarlyOutModalNotes,
+    earlyOutModalSubmitting,
+    openApproveEarlyOutModalFromStep,
+    openRejectEarlyOutModalFromStep,
+    confirmApproveEarlyOutFromStep,
+    confirmRejectEarlyOutFromStep,
     handleGenerate,
     handleNextStep,
     handleBackStep,

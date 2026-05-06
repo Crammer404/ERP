@@ -54,12 +54,14 @@ export const getOvertimeRequests = async (params?: {
   search?: string;
   start_date?: string;
   end_date?: string;
+  user_ids?: number[];
 }): Promise<OvertimeRequestRecord[]> => {
   const queryParams = new URLSearchParams();
   if (params?.status) queryParams.append('status', params.status);
   if (params?.search) queryParams.append('search', params.search);
   if (params?.start_date) queryParams.append('start_date', params.start_date);
   if (params?.end_date) queryParams.append('end_date', params.end_date);
+  if (params?.user_ids?.length) queryParams.append('user_ids', params.user_ids.join(','));
 
   const queryString = queryParams.toString();
   const endpoint = `${API_ENDPOINTS.DTR.OVERTIME.BASE}${queryString ? '?' + queryString : ''}`;

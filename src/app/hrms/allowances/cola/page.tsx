@@ -29,9 +29,14 @@ import { MoreVertical, Plus, RefreshCw, Search, Trash2, Edit } from 'lucide-reac
 import { AddColaModal, type ColaEmployeeOption } from './components/add-cola-modal';
 import { EditColaModal } from './components/edit-cola-modal';
 import { DeleteColaModal } from './components/delete-cola-modal';
+import { useCurrencies } from '@/app/settings/currencies/hooks/useCurrencies';
+import { formatCurrencyAmount } from '@/app/settings/currencies/services/currencyService';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 export default function ColaPage() {
   const { toast } = useToast();
+  const { currencies } = useCurrencies();
+  const { defaultCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<ColaEntry[]>([]);
   const [savingUserIds, setSavingUserIds] = useState<Record<number, boolean>>({});
@@ -112,10 +117,13 @@ export default function ColaPage() {
     return full || row.email;
   };
 
-  const formatAmount = (amount: number): string => {
-    const safe = Number.isFinite(amount) ? amount : 0;
-    return safe.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
+  const colaCurrencySymbol = useMemo(() => {
+    if (defaultCurrency?.id != null) {
+      const fromList = currencies.find((c) => c.id === defaultCurrency.id);
+      if (fromList?.symbol) return fromList.symbol;
+    }
+    return defaultCurrency?.symbol;
+  }, [currencies, defaultCurrency]);
 
   const fetchEmployees = async () => {
     setLoadingEmployees(true);
@@ -400,7 +408,12 @@ export default function ColaPage() {
                         </TableCell>
                         <TableCell>{row.email}</TableCell>
                         <TableCell className="text-right">
-                        <span className="tabular-nums">{formatAmount(row.amount)}</span>
+                          <span className="tabular-nums">
+                            {formatCurrencyAmount(
+                              Number.isFinite(row.amount) ? row.amount : 0,
+                              colaCurrencySymbol
+                            )}
+                          </span>
                         </TableCell>
                         <TableCell>
                         <DropdownMenu>

@@ -21,6 +21,7 @@ export const getTimeClockLogs = async (params?: {
   end_date?: string;
   archived?: boolean;
   early_out?: boolean;
+  user_ids?: number[];
 }): Promise<any> => {
   const query = new URLSearchParams();
   if (params?.page) query.append('page', String(params.page));
@@ -31,6 +32,7 @@ export const getTimeClockLogs = async (params?: {
   if (params?.end_date) query.append('end_date', params.end_date);
   if (params?.archived) query.append('archived', '1');
   if (params?.early_out) query.append('early_out', '1');
+  if (params?.user_ids?.length) query.append('user_ids', params.user_ids.join(','));
   const qs = query.toString();
   return await api(`${API_ENDPOINTS.DTR.TIME_CLOCK.LOGS}${qs ? `?${qs}` : ''}`, { method: 'GET' });
 };
