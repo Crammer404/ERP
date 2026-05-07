@@ -458,7 +458,7 @@ export default function PositionsPage() {
                     <TableHead>Code</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Position</TableHead>
-                    <TableHead>Monthly</TableHead>
+                    <TableHead>Rate</TableHead>
                     <TableHead>Employees</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -473,7 +473,17 @@ export default function PositionsPage() {
                         </span>
                       </TableCell>
                       <TableCell>{position.name}</TableCell>
-                      <TableCell>{formatCurrencyAmount(position.base_salary, defaultCurrency?.symbol)}</TableCell>
+                      <TableCell>
+                        <div className="text-xs">
+                          {formatCurrencyAmount(Number(position.base_salary) || 0, defaultCurrency?.symbol)} /mo
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrencyAmount(Number(position.daily_rate) || 0, defaultCurrency?.symbol)} /day
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrencyAmount(Number(position.hourly_rate) || 0, defaultCurrency?.symbol)} /hr
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <UserAvatarStack 
                           users={convertUserInfosToUserData(position.user_infos)}

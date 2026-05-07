@@ -12,11 +12,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { MultiSelect } from "@/components/ui/multi-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import type { PayrollPosition, CreatePositionRequest, UpdatePositionRequest } from '../services/position-service';
+import type { PayrollPosition, CreatePositionRequest, UpdatePositionRequest, RateType } from '../services/position-service';
+import { computeRates, getAmountForRateType } from '../services/position-service';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { managementService, Employee } from '@/services/management/managementService';
 import { branchService } from '@/app/management/branches/services/branch-service';
+import { formatCurrencyAmount } from '@/app/settings/currencies/services/currencyService';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 interface PositionFormModalProps {
   isOpen: boolean;
@@ -41,6 +51,18 @@ const getEmployeeDisplayName = (employee: Employee): string => {
   return employee.name || employee.email;
 };
 
+const rateTypeLabel = (rate: RateType): string => {
+  switch (rate) {
+    case 'daily':
+      return 'Daily';
+    case 'hourly':
+      return 'Hourly';
+    case 'monthly':
+    default:
+      return 'Monthly';
+  }
+};
+
 export function PositionFormModal({
   isOpen,
   onClose,
@@ -58,15 +80,20 @@ export function PositionFormModal({
     branch_id: 0,
     user_info_ids: [],
     name: '',
+    rate_type: 'monthly',
     base_salary: 0,
+    daily_rate: 0,
+    hourly_rate: 0,
     allowance_id: null,
     is_active: true,
   });
-  const [salaryInputValue, setSalaryInputValue] = useState<string>('');
+  const [rateType, setRateType] = useState<RateType>('monthly');
+  const [rateAmountInput, setRateAmountInput] = useState<string>('');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [currentBranchName, setCurrentBranchName] = useState<string>('Loading...');
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const { defaultCurrency } = useCurrency();
 
   useEffect(() => {
     if (isOpen) {
@@ -74,49 +101,62 @@ export function PositionFormModal({
       setLocalErrors({}); // Clear local errors when modal opens
       
       if (mode === 'edit' && initialData) {
+        const initRateType: RateType = initialData.rate_type ?? 'monthly';
+        const baseSalary = Number(initialData.base_salary) || 0;
+        const dailyRate = Number(initialData.daily_rate) || 0;
+        const hourlyRate = Number(initialData.hourly_rate) || 0;
+        const sourceAmount = getAmountForRateType(initRateType, {
+          base_salary: baseSalary,
+          daily_rate: dailyRate,
+          hourly_rate: hourlyRate,
+        });
         setFormData({
           branch_id: initialData.branch_id,
           user_info_ids: initialData.user_infos?.map(ui => ui.id) || [],
           name: initialData.name,
-          base_salary: initialData.base_salary,
+          rate_type: initRateType,
+          base_salary: baseSalary,
+          daily_rate: dailyRate,
+          hourly_rate: hourlyRate,
           allowance_id: initialData.allowance_id,
           is_active: initialData.is_active,
         });
-        setSalaryInputValue(initialData.base_salary.toString());
+        setRateType(initRateType);
+        setRateAmountInput(sourceAmount > 0 ? sourceAmount.toString() : '');
       } else if (mode === 'add-employees' && initialData) {
-        // For add-employees mode, start with empty selection (new employees to add)
+        const initRateType: RateType = initialData.rate_type ?? 'monthly';
+        const baseSalary = Number(initialData.base_salary) || 0;
+        const dailyRate = Number(initialData.daily_rate) || 0;
+        const hourlyRate = Number(initialData.hourly_rate) || 0;
         setFormData({
           branch_id: initialData.branch_id,
           user_info_ids: [],
           name: initialData.name,
-          base_salary: initialData.base_salary,
+          rate_type: initRateType,
+          base_salary: baseSalary,
+          daily_rate: dailyRate,
+          hourly_rate: hourlyRate,
           allowance_id: initialData.allowance_id,
           is_active: initialData.is_active,
         });
-        setSalaryInputValue(initialData.base_salary.toString());
+        setRateType(initRateType);
+        setRateAmountInput(baseSalary > 0 ? baseSalary.toString() : '');
       } else {
-        // Set branch from context for create mode
         const branchContext = tenantContextService.getStoredBranchContext();
-        if (branchContext) {
-          setFormData({
-            branch_id: branchContext.id,
-            user_info_ids: [],
-            name: '',
-            base_salary: 0,
-            allowance_id: null,
-            is_active: true,
-          });
-        } else {
-          setFormData({
-            branch_id: 0,
-            user_info_ids: [],
-            name: '',
-            base_salary: 0,
-            allowance_id: null,
-            is_active: true,
-          });
-        }
-        setSalaryInputValue('');
+        const baseBranchId = branchContext?.id ?? 0;
+        setFormData({
+          branch_id: baseBranchId,
+          user_info_ids: [],
+          name: '',
+          rate_type: 'monthly',
+          base_salary: 0,
+          daily_rate: 0,
+          hourly_rate: 0,
+          allowance_id: null,
+          is_active: true,
+        });
+        setRateType('monthly');
+        setRateAmountInput('');
       }
     }
   }, [mode, initialData, isOpen]);
@@ -225,9 +265,9 @@ export function PositionFormModal({
       newErrors.name = 'Position name is required';
     }
 
-    // Validate monthly salary
-    if (!formData.base_salary || formData.base_salary <= 0) {
-      newErrors.base_salary = 'Monthly salary must be greater than 0';
+    const numericAmount = parseFloat(rateAmountInput);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      newErrors.rate_amount = `${rateTypeLabel(rateType)} rate must be greater than 0`;
     }
 
     setLocalErrors(newErrors);
@@ -265,16 +305,18 @@ export function PositionFormModal({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleBlur = (field: keyof CreatePositionRequest) => {
-    // Validate on blur
+  const handleBlur = (field: keyof CreatePositionRequest | 'rate_amount') => {
     const newErrors: Record<string, string> = {};
 
     if (field === 'name' && (!formData.name || formData.name.trim() === '')) {
       newErrors.name = 'Position name is required';
     }
 
-    if (field === 'base_salary' && (!formData.base_salary || formData.base_salary <= 0)) {
-      newErrors.base_salary = 'Monthly salary must be greater than 0';
+    if (field === 'rate_amount') {
+      const numericAmount = parseFloat(rateAmountInput);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        newErrors.rate_amount = `${rateTypeLabel(rateType)} rate must be greater than 0`;
+      }
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -282,13 +324,57 @@ export function PositionFormModal({
     }
   };
 
-  // Merge local errors with API errors (API errors take precedence)
   const allErrors = { ...localErrors, ...errors };
+
+  const clearAmountErrors = () => {
+    onClearError('base_salary');
+    onClearError('daily_rate');
+    onClearError('hourly_rate');
+    setLocalErrors(prev => {
+      const next = { ...prev };
+      delete next.rate_amount;
+      delete next.base_salary;
+      delete next.daily_rate;
+      delete next.hourly_rate;
+      return next;
+    });
+  };
+
+  const applyRate = (nextRateType: RateType, nextAmountInput: string) => {
+    const numeric = parseFloat(nextAmountInput);
+    const amount = Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+    const rates = computeRates(nextRateType, amount);
+    setFormData(prev => ({
+      ...prev,
+      rate_type: nextRateType,
+      base_salary: rates.base_salary,
+      daily_rate: rates.daily_rate,
+      hourly_rate: rates.hourly_rate,
+    }));
+  };
+
+  const handleRateTypeChange = (next: RateType) => {
+    clearAmountErrors();
+    setRateType(next);
+    applyRate(next, rateAmountInput);
+  };
+
+  const handleRateAmountChange = (next: string) => {
+    clearAmountErrors();
+    setRateAmountInput(next);
+    applyRate(rateType, next);
+  };
 
   const handleEmployeeChange = (selectedValues: string[]) => {
     const userInfoIds = selectedValues.map(v => parseInt(v));
     handleChange('user_info_ids', userInfoIds);
   };
+
+  const currencySymbol = defaultCurrency?.symbol;
+  const showDerivedRates = (() => {
+    const numeric = parseFloat(rateAmountInput);
+    return Number.isFinite(numeric) && numeric > 0;
+  })();
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -349,44 +435,81 @@ export function PositionFormModal({
               </div>
             )}
 
-            {/* Monthly Salary */}
+            {/* Rate Type + Amount */}
             {mode !== 'add-employees' && (
               <div className="space-y-2">
                 <Label>
-                  Monthly Salary <span className="text-red-500">*</span>
+                  {rateTypeLabel(rateType)} Rate <span className="text-red-500">*</span>
                 </Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={salaryInputValue}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSalaryInputValue(value);
-                    const numValue = parseFloat(value);
-                    if (value === '' || isNaN(numValue)) {
-                      handleChange('base_salary', 0);
-                    } else {
-                      handleChange('base_salary', numValue);
-                    }
-                  }}
-                  onBlur={() => {
-                    // Ensure we have a valid number on blur
-                    const numValue = parseFloat(salaryInputValue);
-                    if (salaryInputValue === '' || isNaN(numValue)) {
-                      setSalaryInputValue('');
-                      handleChange('base_salary', 0);
-                    } else {
-                      setSalaryInputValue(numValue.toString());
-                      handleChange('base_salary', numValue);
-                    }
-                    handleBlur('base_salary');
-                  }}
-                  placeholder="0.00"
-                  disabled={loading}
-                />
-                {allErrors.base_salary && (
-                  <p className="text-sm text-destructive">{allErrors.base_salary}</p>
+                <div className="grid grid-cols-[160px_1fr] gap-2">
+                  <Select
+                    value={rateType}
+                    onValueChange={(v) => handleRateTypeChange(v as RateType)}
+                    disabled={loading}
+                  >
+                    <SelectTrigger aria-label="Rate type">
+                      <SelectValue placeholder="Select rate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="hourly">Hourly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={rateAmountInput}
+                    onChange={(e) => handleRateAmountChange(e.target.value)}
+                    onBlur={() => {
+                      const numeric = parseFloat(rateAmountInput);
+                      if (rateAmountInput === '' || !Number.isFinite(numeric)) {
+                        setRateAmountInput('');
+                        applyRate(rateType, '');
+                      } else {
+                        const normalized = numeric.toString();
+                        setRateAmountInput(normalized);
+                        applyRate(rateType, normalized);
+                      }
+                      handleBlur('rate_amount');
+                    }}
+                    placeholder="0.00"
+                    disabled={loading}
+                  />
+                </div>
+                {showDerivedRates && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    {rateType !== 'monthly' && (
+                      <span>
+                        Monthly:{' '}
+                        <span className="font-medium text-foreground">
+                          {formatCurrencyAmount(formData.base_salary, currencySymbol)}
+                        </span>
+                      </span>
+                    )}
+                    {rateType !== 'daily' && (
+                      <span>
+                        Daily:{' '}
+                        <span className="font-medium text-foreground">
+                          {formatCurrencyAmount(formData.daily_rate, currencySymbol)}
+                        </span>
+                      </span>
+                    )}
+                    {rateType !== 'hourly' && (
+                      <span>
+                        Hourly:{' '}
+                        <span className="font-medium text-foreground">
+                          {formatCurrencyAmount(formData.hourly_rate, currencySymbol)}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {(allErrors.rate_amount || allErrors.base_salary || allErrors.daily_rate || allErrors.hourly_rate) && (
+                  <p className="text-sm text-destructive">
+                    {allErrors.rate_amount || allErrors.base_salary || allErrors.daily_rate || allErrors.hourly_rate}
+                  </p>
                 )}
               </div>
             )}
