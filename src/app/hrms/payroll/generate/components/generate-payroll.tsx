@@ -91,6 +91,8 @@ const GeneratePayrollDialog = ({
     setIncludeCola,
     includeCashAdvance,
     setIncludeCashAdvance,
+    includeThirteenthMonthPay,
+    setIncludeThirteenthMonthPay,
     availableUsers,
     employeeSearch,
     setEmployeeSearch,
@@ -269,12 +271,7 @@ const GeneratePayrollDialog = ({
                 );
               })}
             </div>
-            <div className="mt-3 h-1.5 bg-border rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-              />
-            </div>
+            {/* Progress indicator bar removed (stepper already shows status). */}
           </div>
 
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
@@ -806,16 +803,20 @@ const GeneratePayrollDialog = ({
                   </div>
                 </div>
 
-                <div className={`rounded-md border p-3 ${!includeStatutory ? 'opacity-60' : ''}`}>
-                  <Tabs value={statutoryActiveTab} onValueChange={(v) => setStatutoryActiveTab(v as any)} className="w-full">
+                <div className={`rounded-md border p-3 flex-1 min-h-0 ${!includeStatutory ? 'opacity-60' : ''}`}>
+                  <Tabs
+                    value={statutoryActiveTab}
+                    onValueChange={(v) => setStatutoryActiveTab(v as any)}
+                    className="w-full h-full min-h-0 flex flex-col"
+                  >
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="sss">SSS</TabsTrigger>
                       <TabsTrigger value="philhealth">PhilHealth</TabsTrigger>
                       <TabsTrigger value="pagibig">Pag-IBIG</TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value={statutoryActiveTab} className="mt-4">
-                      <div className="rounded-md border max-h-[280px] overflow-y-auto">
+                    <TabsContent value={statutoryActiveTab} className="mt-4 flex-1 min-h-0">
+                      <div className="rounded-md border h-full overflow-y-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -864,6 +865,24 @@ const GeneratePayrollDialog = ({
                       </div>
                     </TabsContent>
                   </Tabs>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 8 && (
+              <div className="p-4 h-full min-h-0 flex flex-col gap-3">
+                <div className="rounded-md border bg-background p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className={`min-w-0 flex-1 space-y-1 ${!includeThirteenthMonthPay ? 'text-muted-foreground' : ''}`}>
+                      <Label>Other's</Label>
+                      <div className="flex items-center gap-2">
+                        <Label>13th Month Pay</Label>
+                        <Switch checked={includeThirteenthMonthPay} onCheckedChange={setIncludeThirteenthMonthPay} />
+                      </div>
+                      <p className="text-sm">Include 13th month pay for the selected employees.</p>
+                      <p className="text-xs text-muted-foreground">Employees: {selectedUserIds.length}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -927,6 +946,9 @@ const GeneratePayrollDialog = ({
             <p><span className="font-medium">Include COLA:</span> {includeCola ? 'Yes' : 'No'}</p>
             <p><span className="font-medium">Include Cash Advance:</span> {includeCashAdvance ? 'Yes' : 'No'}</p>
             <p><span className="font-medium">Include Statutory:</span> {includeStatutory ? 'Yes' : 'No'}</p>
+            <p>
+              <span className="font-medium">Include 13th Month Pay:</span> {includeThirteenthMonthPay ? 'Yes' : 'No'}
+            </p>
           </div>
           <DialogFooter>
             <Button

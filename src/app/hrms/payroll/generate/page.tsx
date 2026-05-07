@@ -576,6 +576,7 @@ export default function GeneratePayrollPage() {
     includeStatutoryDeductions: boolean;
     includeCola: boolean;
     includeCashAdvance: boolean;
+    includeThirteenthMonthPay: boolean;
   }) => {
     if (!payload.payrollRange?.from || !payload.payrollRange?.to) {
       toast({
@@ -625,6 +626,7 @@ export default function GeneratePayrollPage() {
         statutory_include: payload.includeStatutoryDeductions ? 1 : 0,
         include_cola: payload.includeCola ? 1 : 0,
         include_cash_advance: payload.includeCashAdvance ? 1 : 0,
+        include_13th_month_pay: payload.includeThirteenthMonthPay ? 1 : 0,
       };
 
       const response = await generateService.generatePayroll(generatePayload);

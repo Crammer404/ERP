@@ -30,6 +30,7 @@ export interface GeneratePayrollRequest {
   statutory_include?: number;
   include_cola?: number;
   include_cash_advance?: number;
+  include_13th_month_pay?: number;
 }
 
 export interface GeneratePayrollResponse {

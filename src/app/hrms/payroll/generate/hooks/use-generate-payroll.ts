@@ -43,6 +43,7 @@ export const WIZARD_STEPS = [
   { id: 5, title: 'COLA Inclusion', subtitle: 'Choose whether to include COLA' },
   { id: 6, title: 'Cash Advance Rule', subtitle: 'Review included cash advance cutoff' },
   { id: 7, title: 'Statutory Deductions', subtitle: 'Choose statutory deduction inclusion' },
+  { id: 8, title: 'Others', subtitle: 'Optional additional pay & adjustments' },
 ] as const;
 
 export type CashAdvanceWindow = {
@@ -64,6 +65,7 @@ export interface GeneratePayrollPayload {
   includeStatutoryDeductions: boolean;
   includeCola: boolean;
   includeCashAdvance: boolean;
+  includeThirteenthMonthPay: boolean;
 }
 
 export type PendingEarlyOutRecord = {
@@ -320,6 +322,7 @@ export const useGeneratePayrollModal = ({
   const [includeStatutory, setIncludeStatutory] = useState(true);
   const [includeCola, setIncludeCola] = useState(true);
   const [includeCashAdvance, setIncludeCashAdvance] = useState(true);
+  const [includeThirteenthMonthPay, setIncludeThirteenthMonthPay] = useState(true);
   const [availableUsers, setAvailableUsers] = useState<GeneratePayrollUser[]>(users ?? []);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -356,7 +359,7 @@ export const useGeneratePayrollModal = ({
   const [earlyOutModalSubmitting, setEarlyOutModalSubmitting] = useState(false);
   const isCustomRange = payrollTypeKey(payrollType) === payrollTypeKey(CUSTOM_RANGE_TYPE);
   const payrollTypeForSubmit = isCustomRange ? 'Monthly' : payrollType;
-  const totalSteps = 7;
+  const totalSteps = 8;
   const cashAdvanceWindow = useMemo(
     () => getCashAdvanceWindowForPayrollRange(payrollTypeForSubmit, dateRange),
     [payrollTypeForSubmit, dateRange]
@@ -503,6 +506,7 @@ export const useGeneratePayrollModal = ({
     setIncludeStatutory(true);
     setIncludeCola(true);
     setIncludeCashAdvance(true);
+    setIncludeThirteenthMonthPay(true);
     setEmployeeSearch('');
     setCurrentStep(1);
     setStepError(null);
@@ -889,6 +893,7 @@ export const useGeneratePayrollModal = ({
           includeStatutoryDeductions: includeStatutory,
           includeCola,
           includeCashAdvance,
+          includeThirteenthMonthPay,
         });
         handleClose();
       }
@@ -934,7 +939,7 @@ export const useGeneratePayrollModal = ({
         return;
       }
     }
-    if (currentStep === 7) {
+    if (currentStep === 8) {
       setShowGenerateConfirm(true);
       return;
     }
@@ -976,6 +981,8 @@ export const useGeneratePayrollModal = ({
     setIncludeCola,
     includeCashAdvance,
     setIncludeCashAdvance,
+    includeThirteenthMonthPay,
+    setIncludeThirteenthMonthPay,
     availableUsers,
     employeeSearch,
     setEmployeeSearch,
