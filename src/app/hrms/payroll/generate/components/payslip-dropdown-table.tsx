@@ -37,6 +37,9 @@ export function PayslipDropdownTable({
             <TableHead className="text-right text-[11px] px-2 py-1.5">Overtime Pay</TableHead>
             <TableHead className="text-right text-[11px] px-2 py-1.5">Night Differential</TableHead>
             <TableHead className="text-right text-[11px] px-2 py-1.5">Holiday Premium</TableHead>
+            <TableHead className="text-right text-[11px] px-2 py-1.5">Rest Day Premium</TableHead>
+            <TableHead className="text-right text-[11px] px-2 py-1.5">Regular OT</TableHead>
+            <TableHead className="text-right text-[11px] px-2 py-1.5">13th Month Pay</TableHead>
             <TableHead className="text-right text-[11px] px-2 py-1.5">Income Tax</TableHead>
             <TableHead className="text-right text-[11px] px-2 py-1.5">SSS</TableHead>
             <TableHead className="text-right text-[11px] px-2 py-1.5">Pagibig</TableHead>
@@ -54,6 +57,18 @@ export function PayslipDropdownTable({
             const holidayPremium = sumPayslipEntriesByDescription(
               payslip.earnings,
               'Holiday Premium'
+            );
+            const restDayPremium = sumPayslipEntriesByDescription(
+              payslip.earnings,
+              'Rest Day Premium'
+            );
+            const regularOT = sumPayslipEntriesByDescription(
+              payslip.earnings,
+              'Regular OT'
+            );
+            const thirteenthMonth = sumPayslipEntriesByDescription(
+              payslip.earnings,
+              '13th Month Pay'
             );
             const lateAmount = sumPayslipEntriesByDescription(
               payslip.deductions,
@@ -83,6 +98,9 @@ export function PayslipDropdownTable({
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(Number(payslip.overtime_pay || 0))}</TableCell>
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(Number(payslip.night_diff || 0))}</TableCell>
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(holidayPremium)}</TableCell>
+                <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(restDayPremium)}</TableCell>
+                <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(regularOT)}</TableCell>
+                <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(thirteenthMonth)}</TableCell>
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(Number(payslip.income_tax || 0))}</TableCell>
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(Number(payslip.sss || 0))}</TableCell>
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{formatCurrency(Number(payslip.pagibig || 0))}</TableCell>

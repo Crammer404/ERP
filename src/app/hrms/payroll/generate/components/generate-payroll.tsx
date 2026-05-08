@@ -275,7 +275,7 @@ const GeneratePayrollDialog = ({
           </div>
 
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-            <div className="w-full mx-auto flex-1 min-h-0">
+            <div className="w-full flex-1 min-h-0">
               {stepError && (
                 <p className="text-sm text-destructive">{stepError}</p>
               )}
@@ -320,7 +320,7 @@ const GeneratePayrollDialog = ({
             )}
 
             {currentStep === 2 && (
-              <div className="p-4 h-full min-h-0 flex flex-col gap-3">
+              <div className="p-3 h-full min-h-0 flex flex-col gap-2 text-xs">
                 <div className="rounded-md border bg-background p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-1">
@@ -332,7 +332,7 @@ const GeneratePayrollDialog = ({
 
                     <label
                       htmlFor="select-all-users"
-                      className="flex items-center justify-center gap-2 flex-shrink-0 rounded-md border bg-muted/30 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 select-none"
+                      className="flex items-center justify-center gap-2 flex-shrink-0 rounded-md border bg-muted/30 px-3 py-2 text-xs cursor-pointer hover:bg-muted/50 select-none"
                     >
                       <Checkbox
                         id="select-all-users"
@@ -356,20 +356,20 @@ const GeneratePayrollDialog = ({
                   />
                 </div>
 
-                <ScrollArea className="flex-1 min-h-0 rounded-md border p-4">
-                  <div className="space-y-3">
+                <ScrollArea className="flex-1 min-h-0 rounded-md border p-3">
+                  <div className="space-y-2">
                     {loadingUsers ? (
                       <div className="flex justify-center py-4">
                         <Loader size="sm" />
                       </div>
                     ) : usersError ? (
-                      <p className="text-sm text-destructive">{usersError}</p>
+                      <p className="text-xs text-destructive">{usersError}</p>
                     ) : availableUsers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         No users found for this branch/range.
                       </p>
                     ) : filteredUsers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         No employees match your search.
                       </p>
                     ) : (
@@ -389,7 +389,10 @@ const GeneratePayrollDialog = ({
                                 }
                               />
                               <div className="space-y-0.5">
-                                <Label htmlFor={`user-${user.id}`}>
+                                <Label
+                                  htmlFor={`user-${user.id}`}
+                                  className="text-xs"
+                                >
                                   {user.id} - {user.name}
                                 </Label>
                                 {user.role && (
@@ -409,12 +412,12 @@ const GeneratePayrollDialog = ({
             )}
 
             {currentStep === 3 && (
-              <div className="space-y-3 p-4">
+              <div className="space-y-2 p-3 text-xs">
                 <div className="rounded-md border bg-background p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label>Pending Overtime Check</Label>
-                      <p className="text-sm">
+                      <p className="text-xs">
                         <span className="font-bold text-amber-500">{pendingOvertimeRecords.length}</span> pending overtime requests in{' '}
                         <span className="font-medium text-amber-500">{activeBranchName}</span> on{' '}
                         <span className="font-medium text-amber-500">{selectedRangeLabel}</span>.
@@ -442,34 +445,34 @@ const GeneratePayrollDialog = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Requested Hours</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="text-xs">Date</TableHead>
+                        <TableHead className="text-xs">Employee</TableHead>
+                        <TableHead className="text-xs">Requested Hours</TableHead>
+                        <TableHead className="text-xs">Reason</TableHead>
+                        <TableHead className="text-right text-xs">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {pendingOvertimeLoading ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-6">
+                          <TableCell colSpan={5} className="text-center py-6 text-xs">
                             <Loader size="sm" />
                           </TableCell>
                         </TableRow>
                       ) : pendingOvertimeRecords.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-xs">
                             No pending overtime requests found.
                           </TableCell>
                         </TableRow>
                       ) : (
                         pendingOvertimeRecords.map((record) => (
                           <TableRow key={record.id}>
-                            <TableCell>{record.date_formatted}</TableCell>
-                            <TableCell>{record.employee}</TableCell>
-                            <TableCell>{formatRequestedHoursLabel(record.requested_hours)}</TableCell>
-                            <TableCell className="max-w-[220px] truncate">{record.reason || '-'}</TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-xs">{record.date_formatted}</TableCell>
+                            <TableCell className="text-xs">{record.employee}</TableCell>
+                            <TableCell className="text-xs">{formatRequestedHoursLabel(record.requested_hours)}</TableCell>
+                            <TableCell className="max-w-[220px] truncate text-xs">{record.reason || '-'}</TableCell>
+                            <TableCell className="text-right text-xs">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
@@ -502,12 +505,12 @@ const GeneratePayrollDialog = ({
             )}
 
             {currentStep === 4 && (
-              <div className="space-y-3 p-4">
+              <div className="space-y-2 p-3 text-xs">
                 <div className="rounded-md border bg-background p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label>Pending Early Out Check</Label>
-                      <p className="text-sm">
+                      <p className="text-xs">
                         <span className="font-bold text-amber-500">{pendingEarlyOutRecords.length}</span> pending early-out requests in{' '}
                         <span className="font-medium text-amber-500">{activeBranchName}</span> on{' '}
                         <span className="font-medium text-amber-500">{selectedRangeLabel}</span>.
@@ -535,36 +538,36 @@ const GeneratePayrollDialog = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Scheduled Out</TableHead>
-                        <TableHead>Actual Out</TableHead>
-                        <TableHead>Remaining</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="text-xs">Date</TableHead>
+                        <TableHead className="text-xs">Employee</TableHead>
+                        <TableHead className="text-xs">Scheduled Out</TableHead>
+                        <TableHead className="text-xs">Actual Out</TableHead>
+                        <TableHead className="text-xs">Remaining</TableHead>
+                        <TableHead className="text-right text-xs">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {pendingEarlyOutLoading ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-6">
+                          <TableCell colSpan={6} className="text-center py-6 text-xs">
                             <Loader size="sm" />
                           </TableCell>
                         </TableRow>
                       ) : pendingEarlyOutRecords.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-6 text-xs">
                             No pending early-out requests found.
                           </TableCell>
                         </TableRow>
                       ) : (
                         pendingEarlyOutRecords.map((record) => (
                           <TableRow key={record.id}>
-                            <TableCell>{record.date}</TableCell>
-                            <TableCell>{record.employee_name || '-'}</TableCell>
-                            <TableCell>{formatClockTime12h(record.scheduled_clock_out_at)}</TableCell>
-                            <TableCell>{formatClockTime12h(record.actual_clock_out_at)}</TableCell>
-                            <TableCell>{formatRemainingMinutesLabel(record.remaining_minutes)}</TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-xs">{record.date}</TableCell>
+                            <TableCell className="text-xs">{record.employee_name || '-'}</TableCell>
+                            <TableCell className="text-xs">{formatClockTime12h(record.scheduled_clock_out_at)}</TableCell>
+                            <TableCell className="text-xs">{formatClockTime12h(record.actual_clock_out_at)}</TableCell>
+                            <TableCell className="text-xs">{formatRemainingMinutesLabel(record.remaining_minutes)}</TableCell>
+                            <TableCell className="text-right text-xs">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
@@ -599,7 +602,7 @@ const GeneratePayrollDialog = ({
             )}
 
             {currentStep === 5 && (
-              <div className="p-4 h-full min-h-0 flex flex-col gap-3">
+              <div className="p-3 h-full min-h-0 flex flex-col gap-2 text-xs">
                 <div className="rounded-md border bg-background p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className={`flex items-center gap-12 border-r pr-4 ${!includeCola ? 'text-muted-foreground' : ''}`}>
@@ -608,7 +611,7 @@ const GeneratePayrollDialog = ({
                           <Label>COLA Inclusion</Label>
                           
                         </div>
-                        <p className={`text-sm ${!includeCola ? 'text-muted-foreground' : ''}`}>
+                        <p className={`text-xs ${!includeCola ? 'text-muted-foreground' : ''}`}>
                           <span className="font-bold text-amber-500">{colaEntries.length}</span> employees with COLA configured in{' '}
                           <span className="font-medium text-amber-500">{activeBranchName}</span>.
                         </p>
@@ -633,36 +636,36 @@ const GeneratePayrollDialog = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[60px]">Count</TableHead>
-                        <TableHead>Employee</TableHead>
-                        <TableHead className="text-right whitespace-nowrap">COLA Amount</TableHead>
+                        <TableHead className="w-[60px] text-xs">Count</TableHead>
+                        <TableHead className="text-xs">Employee</TableHead>
+                        <TableHead className="text-right whitespace-nowrap text-xs">COLA Amount</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {colaLoading ? (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center py-6">
+                          <TableCell colSpan={3} className="text-center py-6 text-xs">
                             <Loader size="sm" />
                           </TableCell>
                         </TableRow>
                       ) : colaEntries.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
+                          <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-xs">
                             No COLA amounts configured for this branch.
                           </TableCell>
                         </TableRow>
                       ) : (
                         colaEntries.map((row, index) => (
                           <TableRow key={row.user_id}>
-                            <TableCell className="text-muted-foreground tabular-nums">{index + 1}</TableCell>
+                            <TableCell className="text-muted-foreground tabular-nums text-xs">{index + 1}</TableCell>
                             <TableCell>
-                              <div className="font-medium">
+                              <div className="font-medium text-xs">
                                 <span className="text-muted-foreground tabular-nums">{row.user_id}</span>
                                 {' - '}
                                 {formatColaEntryEmployeeName(row)}
                               </div>
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right text-xs">
                               <span className="tabular-nums">
                                 {formatCurrencyAmount(
                                   Number.isFinite(row.amount) ? row.amount : 0,
@@ -680,14 +683,14 @@ const GeneratePayrollDialog = ({
             )}
 
             {currentStep === 6 && (
-              <div className="p-4 h-full min-h-0 flex flex-col gap-3">
+              <div className="p-3 h-full min-h-0 flex flex-col gap-2 text-xs">
                 <div className="rounded-md border bg-background p-3">
                   <div className="flex items-center justify-between gap-3">
                   <div className={`flex items-center gap-12 border-r pr-4 ${!includeCashAdvance ? 'text-muted-foreground' : ''}`}>
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label>Cash Advance Deductions</Label>
                         {cashAdvanceWindow ? (
-                          <p className={`text-sm ${!includeCashAdvance ? 'text-muted-foreground' : ''}`}>
+                          <p className={`text-xs ${!includeCashAdvance ? 'text-muted-foreground' : ''}`}>
                             <span className="font-medium text-amber-500">{activeBranchName}</span>{' '}
                             Cash Advances deduction from{' '}
                             <span className="font-medium text-amber-500">
@@ -696,7 +699,7 @@ const GeneratePayrollDialog = ({
                             .
                           </p>
                         ) : (
-                          <p className="text-sm text-muted-foreground">Please set payroll range first.</p>
+                          <p className="text-xs text-muted-foreground">Please set payroll range first.</p>
                         )}
                        </div>
                        <Switch checked={includeCashAdvance} onCheckedChange={setIncludeCashAdvance} />
@@ -718,40 +721,40 @@ const GeneratePayrollDialog = ({
                 </div>
 
                 <div className={`rounded-md border max-h-[280px] overflow-y-auto ${!includeCashAdvance ? 'opacity-60' : ''}`}>
-                    <Table>
+                    <Table className="text-xs">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Employee: {cashAdvanceEntries.length}</TableHead>
-                          <TableHead className="text-right whitespace-nowrap">Cash Advance</TableHead>
+                          <TableHead className="text-xs">Employee: {cashAdvanceEntries.length}</TableHead>
+                          <TableHead className="text-right whitespace-nowrap text-xs">Cash Advance</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {cashAdvanceLoading ? (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-center py-6">
+                            <TableCell colSpan={2} className="text-center py-6 text-xs">
                               <Loader size="sm" />
                             </TableCell>
                           </TableRow>
                         ) : !cashAdvanceWindow ? (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={2} className="text-center text-muted-foreground py-6 text-xs">
                               Set payroll range first to compute the cash advance window.
                             </TableCell>
                           </TableRow>
                         ) : cashAdvanceEntries.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={2} className="text-center text-muted-foreground py-6 text-xs">
                               No active cash advances found in this window.
                             </TableCell>
                           </TableRow>
                         ) : (
                           cashAdvanceEntries.map((row) => (
                             <TableRow key={row.id}>
-                              <TableCell>
-                                <div className="font-medium">{formatCashAdvanceEmployeeName(row)}</div>
+                              <TableCell className="text-xs">
+                                <div className="font-medium text-xs">{formatCashAdvanceEmployeeName(row)}</div>
                                 <div className="text-xs text-muted-foreground">{row.code}</div>
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="text-right text-xs">
                                 <span className="tabular-nums">
                                   {formatCurrencyAmount(
                                     (() => {
@@ -774,15 +777,15 @@ const GeneratePayrollDialog = ({
             )}
 
             {currentStep === 7 && (
-              <div className="p-4 h-full min-h-0 flex flex-col gap-3">
-                <div className="rounded-md border bg-background p-3">
+              <div className="p-3 h-full min-h-0 flex flex-col gap-2 text-xs">
+                <div className="rounded-md border bg-background px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className={`min-w-0 flex-1 space-y-1 ${!includeStatutory ? 'text-muted-foreground' : ''}`}>
                       <div className="flex items-center gap-2">
                         <Label>Statutory Deductions</Label>
                         <Switch checked={includeStatutory} onCheckedChange={setIncludeStatutory} />
                       </div>
-                      <p className="text-sm">
+                      <p className="text-xs">
                         Preview configured SSS / PhilHealth / Pag-IBIG for the selected employees.
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -803,38 +806,38 @@ const GeneratePayrollDialog = ({
                   </div>
                 </div>
 
-                <div className={`rounded-md border p-3 flex-1 min-h-0 ${!includeStatutory ? 'opacity-60' : ''}`}>
+                <div className={`rounded-md border p-2 flex-1 min-h-0 ${!includeStatutory ? 'opacity-60' : ''}`}>
                   <Tabs
                     value={statutoryActiveTab}
                     onValueChange={(v) => setStatutoryActiveTab(v as any)}
                     className="w-full h-full min-h-0 flex flex-col"
                   >
-                    <TabsList className="grid w-full grid-cols-3">
-                      <TabsTrigger value="sss">SSS</TabsTrigger>
-                      <TabsTrigger value="philhealth">PhilHealth</TabsTrigger>
-                      <TabsTrigger value="pagibig">Pag-IBIG</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-3 text-xs">
+                      <TabsTrigger value="sss" className="text-xs">SSS</TabsTrigger>
+                      <TabsTrigger value="philhealth" className="text-xs">PhilHealth</TabsTrigger>
+                      <TabsTrigger value="pagibig" className="text-xs">Pag-IBIG</TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value={statutoryActiveTab} className="mt-4 flex-1 min-h-0">
+                    <TabsContent value={statutoryActiveTab} className="mt-2 flex-1 min-h-0">
                       <div className="rounded-md border h-full overflow-y-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Employee</TableHead>
-                              <TableHead className="w-[160px]">Mode</TableHead>
-                              <TableHead className="w-[180px] text-right">Amount</TableHead>
+                              <TableHead className="text-xs">Employee</TableHead>
+                              <TableHead className="w-[160px] text-xs">Mode</TableHead>
+                              <TableHead className="w-[180px] text-right text-xs">Amount</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {statutoryLoading ? (
                               <TableRow>
-                                <TableCell colSpan={3} className="text-center py-6">
+                                <TableCell colSpan={3} className="text-center py-6 text-xs">
                                   <Loader size="sm" />
                                 </TableCell>
                               </TableRow>
                             ) : statutoryEntries.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
+                                <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-xs">
                                   No configured entries for selected employees.
                                 </TableCell>
                               </TableRow>
@@ -853,9 +856,9 @@ const GeneratePayrollDialog = ({
 
                                 return (
                                   <TableRow key={e.id}>
-                                    <TableCell className="font-medium">{(e as any).user_id} - {name}</TableCell>
-                                    <TableCell>{e.is_rate ? 'Rate' : 'Fixed'}</TableCell>
-                                    <TableCell className="text-right tabular-nums">{display}</TableCell>
+                                    <TableCell className="font-medium text-xs">{(e as any).user_id} - {name}</TableCell>
+                                    <TableCell className="text-xs">{e.is_rate ? 'Rate' : 'Fixed'}</TableCell>
+                                    <TableCell className="text-right tabular-nums text-xs">{display}</TableCell>
                                   </TableRow>
                                 );
                               })
@@ -870,7 +873,7 @@ const GeneratePayrollDialog = ({
             )}
 
             {currentStep === 8 && (
-              <div className="p-4 h-full min-h-0 flex flex-col gap-3">
+              <div className="p-3 h-full min-h-0 flex flex-col gap-2 text-xs">
                 <div className="rounded-md border bg-background p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className={`min-w-0 flex-1 space-y-1 ${!includeThirteenthMonthPay ? 'text-muted-foreground' : ''}`}>
@@ -879,7 +882,7 @@ const GeneratePayrollDialog = ({
                         <Label>13th Month Pay</Label>
                         <Switch checked={includeThirteenthMonthPay} onCheckedChange={setIncludeThirteenthMonthPay} />
                       </div>
-                      <p className="text-sm">Include 13th month pay for the selected employees.</p>
+                      <p className="text-xs">Include 13th month pay for the selected employees.</p>
                       <p className="text-xs text-muted-foreground">Employees: {selectedUserIds.length}</p>
                     </div>
                   </div>
