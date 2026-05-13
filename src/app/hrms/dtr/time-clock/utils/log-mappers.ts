@@ -141,6 +141,7 @@ export const mapTimeClockLog = (item: DtrLogResponseItem): TimeClockLog => {
       scheduledClockOut: formatTimeOnly(item.scheduled_clock_out_at || null),
       actualClockOut: toTime(item.actual_clock_out_at || null),
       reviewedBy: item.reviewed_by_name || '-',
+      dtrConfigId: item.dtr_config_id ?? null,
     };
   }
 
@@ -183,6 +184,7 @@ export const mapTimeClockLog = (item: DtrLogResponseItem): TimeClockLog => {
     scheduledClockOut: '-',
     actualClockOut: '-',
     reviewedBy: item.reviewed_by_name || '-',
+    dtrConfigId: item.dtr_config_id ?? null,
   };
 };
 

@@ -85,7 +85,11 @@ export interface PayslipData {
   deductions: Array<{ description: string; total: number }>;
   gross: number;
   net: number;
+  /** Full days until hard-delete for archived payslips; null for active. */
+  days_until_permanent_deletion?: number | null;
 }
+
+export type PayslipScope = 'active' | 'archived';
 
 export interface ViewPayslipsResponse {
   company: {
@@ -93,6 +97,9 @@ export interface ViewPayslipsResponse {
     logo: string | null;
   };
   payslips: PayslipData[];
+  active_count?: number;
+  archived_count?: number;
+  scope?: PayslipScope;
 }
 
 export const generateService = {
@@ -122,9 +129,10 @@ export const generateService = {
     });
   },
 
-  async viewPayslips(id: number): Promise<ViewPayslipsResponse> {
-    const endpoint = API_ENDPOINTS.PAYROLL.REPORTS.VIEW.replace('{id}', id.toString());
-    return await api(endpoint);
+  async viewPayslips(id: number, scope: PayslipScope = 'active'): Promise<ViewPayslipsResponse> {
+    const base = API_ENDPOINTS.PAYROLL.REPORTS.VIEW.replace('{id}', id.toString());
+    const query = scope === 'archived' ? '?scope=archived' : '';
+    return await api(`${base}${query}`);
   },
 
   async updatePayslip(payload: {

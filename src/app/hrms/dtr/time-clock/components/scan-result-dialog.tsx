@@ -33,6 +33,14 @@ export interface ScanConfirmData {
   time: string;
 }
 
+/** "Clock In" / "Clock Out" / API variants → title word In | Out */
+function clockInOrOutLabel(action: string): 'In' | 'Out' {
+  const m = action.match(/clock\s+(in|out)/i);
+  if (m?.[1]) return m[1].toLowerCase() === 'out' ? 'Out' : 'In';
+  if (/out/i.test(action)) return 'Out';
+  return 'In';
+}
+
 interface ScanConfirmDialogProps {
   open: boolean;
   data: ScanConfirmData | null;
@@ -66,9 +74,16 @@ export const ScanConfirmDialog = ({ open, data, onClose }: ScanConfirmDialogProp
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <BadgeCheck className="h-5 w-5 text-green-600" />
-            Clock Recorded
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            <BadgeCheck className="h-5 w-5 shrink-0 text-green-600" />
+            {data ? (
+              <>
+                Clock {clockInOrOutLabel(data.action)} Recorded :{' '}
+                <TimeDisplay value={data.time} />
+              </>
+            ) : (
+              'Clock Recorded'
+            )}
           </DialogTitle>
           <DialogDescription>
             The following time entry has been recorded successfully.

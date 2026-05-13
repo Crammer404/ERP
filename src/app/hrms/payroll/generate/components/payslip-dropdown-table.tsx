@@ -15,6 +15,8 @@ interface PayslipDropdownTableProps {
   onPrint: (reportId: number, payslipId: number) => void;
   onEdit: (payslip: PayslipData) => void;
   onDelete: (reportId: number, payslip: PayslipData) => void;
+  /** When true, only print is available (archived payslips). */
+  archiveView?: boolean;
 }
 
 export function PayslipDropdownTable({
@@ -24,12 +26,16 @@ export function PayslipDropdownTable({
   onPrint,
   onEdit,
   onDelete,
+  archiveView = false,
 }: PayslipDropdownTableProps) {
   return (
     <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
+            {archiveView && (
+              <TableHead className="text-center text-[11px] px-2 py-1.5 whitespace-nowrap">Days left</TableHead>
+            )}
             <TableHead className="text-[11px] px-2 py-1.5 text-right">#</TableHead>
             <TableHead className="text-[11px] px-2 py-1.5">Employee</TableHead>
             <TableHead className="text-[11px] px-2 py-1.5">Position</TableHead>
@@ -81,6 +87,13 @@ export function PayslipDropdownTable({
 
             return (
               <TableRow key={`${reportId}-${payslip.employee_name}-${index}`}>
+                {archiveView && (
+                  <TableCell className="text-center px-2 py-1.5 text-[11px] tabular-nums">
+                    {typeof payslip.days_until_permanent_deletion === 'number'
+                      ? payslip.days_until_permanent_deletion
+                      : '—'}
+                  </TableCell>
+                )}
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{index + 1}</TableCell>
                 <TableCell className="whitespace-nowrap px-2 py-1.5 text-[11px]">
                   <div className="flex items-center gap-2">
@@ -122,17 +135,21 @@ export function PayslipDropdownTable({
                         <Printer className="mr-2 h-3.5 w-3.5" />
                         Print
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onEdit(payslip)}>
-                        <Pencil className="mr-2 h-3.5 w-3.5" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => onDelete(reportId, payslip)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="mr-2 h-3.5 w-3.5" />
-                        Delete
-                      </DropdownMenuItem>
+                      {!archiveView && (
+                        <>
+                          <DropdownMenuItem onClick={() => onEdit(payslip)}>
+                            <Pencil className="mr-2 h-3.5 w-3.5" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => onDelete(reportId, payslip)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-3.5 w-3.5" />
+                            Delete
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

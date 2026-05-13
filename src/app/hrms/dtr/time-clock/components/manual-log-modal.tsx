@@ -82,6 +82,7 @@ export interface ManualLogData {
   shift: string;
   clockInRaw: string | null;
   clockOutRaw: string | null;
+  dtrConfigId?: number | null;
   earlyOutRequestStatus?: 'pending' | 'approved' | 'rejected' | null;
   earlyOutRequestId?: number | null;
 }
@@ -382,7 +383,7 @@ export function ManualLogModal({
     }
 
     void loadScheduleContext(userId, logFormData.date);
-  }, [isOpen, logFormData.userId, logFormData.date]);
+  }, [isOpen, logFormData.userId, logFormData.date, mode, log?.id]);
 
   const loadScheduleContext = async (userId: number, selectedDate: Date) => {
     const requestId = ++scheduleRequestRef.current;
@@ -391,7 +392,8 @@ export function ManualLogModal({
 
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const res = await getUserScheduleDetails(userId, dateStr);
+      const editLogId = mode === 'edit' && log ? log.id : undefined;
+      const res = await getUserScheduleDetails(userId, dateStr, editLogId);
       if (requestId !== scheduleRequestRef.current) return;
 
       if (!res.success || !res.data) {

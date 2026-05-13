@@ -39,9 +39,11 @@ export interface UserScheduleDetails {
 export const getUserScheduleDetails = async (
   userId: number,
   date?: string,
+  logId?: number,
 ): Promise<{ success: boolean; data?: UserScheduleDetails; message?: string }> => {
   const params = new URLSearchParams();
   if (date) params.append('date', date);
+  if (logId != null && Number.isFinite(logId)) params.append('log_id', String(logId));
   const query = params.toString();
   const endpoint = API_ENDPOINTS.DTR.USER_SCHEDULE.DETAILS.replace('{userId}', String(userId));
   return await api(`${endpoint}${query ? `?${query}` : ''}`, { method: 'GET' });

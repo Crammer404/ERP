@@ -472,6 +472,7 @@ export default function TimeClockPage() {
       shift: log.shift,
       clockInRaw: log.clockInRaw,
       clockOutRaw: log.clockOutRaw,
+      dtrConfigId: log.dtrConfigId ?? null,
       earlyOutRequestStatus: log.earlyOutRequestStatus,
       earlyOutRequestId: log.earlyOutRequestId,
     };

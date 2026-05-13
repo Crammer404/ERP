@@ -52,6 +52,7 @@ export interface DtrLogResponseItem {
   } | null;
   early_out_request_status?: 'pending' | 'approved' | 'rejected' | null;
   early_out_remaining_minutes?: number | null;
+  dtr_config_id?: number | null;
   request_id?: number;
   employee_name?: string;
   branch_name?: string;
@@ -82,6 +83,7 @@ export interface TimeClockLog {
   totalWorkHours: string;
   clockInRaw: string | null;
   clockOutRaw: string | null;
+  dtrConfigId?: number | null;
   status: string | null;
   earlyOutRequestId: number | null;
   earlyOutRequestStatus: 'pending' | 'approved' | 'rejected' | null;

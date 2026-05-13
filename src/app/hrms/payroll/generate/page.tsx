@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreVertical, Printer, Trash2, Search, RefreshCw, FileSpreadsheet, ChevronDown, Pencil } from 'lucide-react';
 import GeneratePayrollDialog from './components/generate-payroll';
-import { generateService, type PayslipData } from './services/generate-service';
+import { generateService, type PayslipData, type PayslipScope } from './services/generate-service';
 import { useToast } from '@/hooks/use-toast';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { Loader } from '@/components/ui/loader';
@@ -51,8 +51,17 @@ import { Label } from '@/components/ui/label';
 import { PayslipDropdownTable } from './components/payslip-dropdown-table';
 import { EditablePayslipFields, PayrollReport } from './types';
 import { formatGeneratedDateTime, formatLocalDate } from './utils/payroll-view-helpers';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePayrollReports } from './hooks/use-payroll-reports';
 
+type PayslipsReportCache = {
+  active?: PayslipData[];
+  archived?: PayslipData[];
+  activeCount?: number;
+  archivedCount?: number;
+};
+
+const payslipLoadKey = (reportId: number, scope: PayslipScope) => `${reportId}:${scope}`;
 
 export default function GeneratePayrollPage() {
   const [deleteTarget, setDeleteTarget] = useState<PayrollReport | null>(null);
@@ -71,9 +80,10 @@ export default function GeneratePayrollPage() {
   >('preparing');
   const [isGeneratingPayroll, setIsGeneratingPayroll] = useState(false);
   const [expandedReportId, setExpandedReportId] = useState<number | null>(null);
-  const [payslipsByReportId, setPayslipsByReportId] = useState<Record<number, PayslipData[]>>({});
-  const [payslipLoadingByReportId, setPayslipLoadingByReportId] = useState<Record<number, boolean>>({});
-  const [payslipErrorByReportId, setPayslipErrorByReportId] = useState<Record<number, string | null>>({});
+  const [payslipsCacheByReportId, setPayslipsCacheByReportId] = useState<Record<number, PayslipsReportCache>>({});
+  const [payslipScopeTab, setPayslipScopeTab] = useState<Record<number, PayslipScope>>({});
+  const [payslipLoadingByKey, setPayslipLoadingByKey] = useState<Record<string, boolean>>({});
+  const [payslipErrorByKey, setPayslipErrorByKey] = useState<Record<string, string | null>>({});
   const { toast } = useToast();
   const [payslipsToPrint, setPayslipsToPrint] = useState<PayslipTemplateData[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -129,26 +139,50 @@ export default function GeneratePayrollPage() {
     setCurrentPage(page);
   };
 
-  const loadPayslipsForReport = async (reportId: number, force = false) => {
-    if (!force && payslipsByReportId[reportId]) return;
+  const loadPayslipsForReport = async (
+    reportId: number,
+    scope: PayslipScope = 'active',
+    force = false
+  ) => {
+    const cached = payslipsCacheByReportId[reportId];
+    if (!force) {
+      if (scope === 'active' && cached?.active !== undefined) return;
+      if (scope === 'archived' && cached?.archived !== undefined) return;
+    }
 
-    setPayslipLoadingByReportId((prev) => ({ ...prev, [reportId]: true }));
-    setPayslipErrorByReportId((prev) => ({ ...prev, [reportId]: null }));
+    const loadKey = payslipLoadKey(reportId, scope);
+    setPayslipLoadingByKey((prev) => ({ ...prev, [loadKey]: true }));
+    setPayslipErrorByKey((prev) => ({ ...prev, [loadKey]: null }));
     try {
-      const response = await generateService.viewPayslips(reportId);
-      setPayslipsByReportId((prev) => ({
+      const response = await generateService.viewPayslips(reportId, scope);
+      setPayslipsCacheByReportId((prev) => ({
         ...prev,
-        [reportId]: response.payslips || [],
+        [reportId]: {
+          ...prev[reportId],
+          [scope]: response.payslips ?? [],
+          activeCount: response.active_count ?? prev[reportId]?.activeCount ?? 0,
+          archivedCount: response.archived_count ?? prev[reportId]?.archivedCount ?? 0,
+        },
       }));
     } catch (err: any) {
       const message =
         err?.response?.data?.message ||
         err?.message ||
         'Failed to load payslips for this payroll report.';
-      setPayslipErrorByReportId((prev) => ({ ...prev, [reportId]: message }));
+      setPayslipErrorByKey((prev) => ({ ...prev, [loadKey]: message }));
     } finally {
-      setPayslipLoadingByReportId((prev) => ({ ...prev, [reportId]: false }));
+      setPayslipLoadingByKey((prev) => ({ ...prev, [loadKey]: false }));
     }
+  };
+
+  const refreshExpandedPayslipsAfterMutation = async (reportId: number) => {
+    setPayslipsCacheByReportId((prev) => {
+      const next = { ...prev };
+      delete next[reportId];
+      return next;
+    });
+    const tab = payslipScopeTab[reportId] ?? 'active';
+    await loadPayslipsForReport(reportId, tab, true);
   };
 
   const handleToggleRow = async (reportId: number) => {
@@ -158,7 +192,8 @@ export default function GeneratePayrollPage() {
     }
 
     setExpandedReportId(reportId);
-    await loadPayslipsForReport(reportId);
+    setPayslipScopeTab((prev) => ({ ...prev, [reportId]: 'active' }));
+    await loadPayslipsForReport(reportId, 'active');
   };
 
   const handlePrint = async (report: PayrollReport) => {
@@ -166,7 +201,7 @@ export default function GeneratePayrollPage() {
       setIsPrinting(false);
       setPayslipsToPrint([]);
 
-      const response = await generateService.viewPayslips(report.id);
+      const response = await generateService.viewPayslips(report.id, 'active');
       const companyName = response.company?.name || '';
       const logoUrl = response.company?.logo || undefined;
 
@@ -391,8 +426,12 @@ export default function GeneratePayrollPage() {
 
   const handlePrintSinglePayslip = async (reportId: number, payslipId: number) => {
     try {
-      const response = await generateService.viewPayslips(reportId);
-      const target = (response.payslips || []).find((p) => p.id === payslipId);
+      let response = await generateService.viewPayslips(reportId, 'active');
+      let target = (response.payslips || []).find((p) => p.id === payslipId);
+      if (!target) {
+        response = await generateService.viewPayslips(reportId, 'archived');
+        target = (response.payslips || []).find((p) => p.id === payslipId);
+      }
       if (!target) {
         toast({
           title: 'Not found',
@@ -445,7 +484,7 @@ export default function GeneratePayrollPage() {
       });
 
       if (expandedReportId) {
-        await loadPayslipsForReport(expandedReportId, true);
+        await refreshExpandedPayslipsAfterMutation(expandedReportId);
       }
       fetchReports();
       setEditingPayslip(null);
@@ -471,7 +510,7 @@ export default function GeneratePayrollPage() {
       });
 
       if (expandedReportId === reportId) {
-        await loadPayslipsForReport(reportId, true);
+        await refreshExpandedPayslipsAfterMutation(reportId);
       }
       fetchReports();
     } catch (err: any) {
@@ -551,7 +590,16 @@ export default function GeneratePayrollPage() {
         title: 'Success',
         description: 'Payroll report deleted successfully',
       });
+      const deletedId = deleteTarget.id;
       handleCloseDeleteModal();
+      setPayslipsCacheByReportId((prev) => {
+        const next = { ...prev };
+        delete next[deletedId];
+        return next;
+      });
+      if (expandedReportId === deletedId) {
+        setExpandedReportId(null);
+      }
       fetchReports();
     } catch (err: any) {
       const message =
@@ -642,22 +690,39 @@ export default function GeneratePayrollPage() {
         title: 'Success',
         description: successMessage,
       });
-      // Refresh the reports list
-      fetchReports();
+      setPayslipsCacheByReportId({});
+      setPayslipLoadingByKey({});
+      setPayslipErrorByKey({});
+      await fetchReports();
+      if (expandedReportId != null) {
+        setPayslipScopeTab((prev) => ({ ...prev, [expandedReportId]: 'active' }));
+        await loadPayslipsForReport(expandedReportId, 'active', true);
+      }
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message 
-        || err?.response?.data?.errors 
-        || err?.message 
-        || 'Failed to generate payroll';
+      const data = err?.response?.data;
+      const laravelErrors = data?.errors;
+      let errorMessage: string;
+      if (laravelErrors && typeof laravelErrors === 'object') {
+        const lines = Object.values(laravelErrors).flatMap((v) =>
+          Array.isArray(v) ? v.map((x) => String(x)) : [String(v)]
+        );
+        errorMessage =
+          lines.length > 0
+            ? lines.join(' ')
+            : data?.message || err?.message || 'Failed to generate payroll';
+      } else {
+        errorMessage =
+          data?.message || err?.message || 'Failed to generate payroll';
+      }
 
       const earlyOutGateMessage = String(errorMessage).toLowerCase();
       if (earlyOutGateMessage.includes('pending early clock-out requests')) {
         throw err;
       }
-      
+
       toast({
         title: 'Error',
-        description: typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage),
+        description: errorMessage,
         variant: 'destructive',
       });
       throw err;
@@ -749,7 +814,7 @@ export default function GeneratePayrollPage() {
           {error && !loading && (
             <div className="text-center py-8">
               <p className="text-destructive mb-4">{error}</p>
-              <Button onClick={fetchReports} variant="outline">
+              <Button onClick={refresh} variant="outline">
                 Retry
               </Button>
             </div>
@@ -785,9 +850,58 @@ export default function GeneratePayrollPage() {
                   {paginatedReports.length > 0 ? (
                     paginatedReports.map((report) => {
                       const isExpanded = expandedReportId === report.id;
-                      const isPayslipLoading = Boolean(payslipLoadingByReportId[report.id]);
-                      const payslipError = payslipErrorByReportId[report.id];
-                      const payslips = payslipsByReportId[report.id] || [];
+                      const scopeTab = payslipScopeTab[report.id] ?? 'active';
+                      const payslipCache = payslipsCacheByReportId[report.id];
+                      const archivedEmpty =
+                        typeof payslipCache?.archivedCount === 'number' &&
+                        (payslipCache?.archivedCount ?? 0) === 0;
+
+                      const renderPayslipPanel = (scope: PayslipScope) => {
+                        const loadKey = payslipLoadKey(report.id, scope);
+                        const isLoading = Boolean(payslipLoadingByKey[loadKey]);
+                        const payslipError = payslipErrorByKey[loadKey];
+                        const payslips =
+                          scope === 'active'
+                            ? payslipCache?.active ?? []
+                            : payslipCache?.archived ?? [];
+
+                        return (
+                          <>
+                            {isLoading && (
+                              <div className="py-4 flex justify-center">
+                                <Loader size="sm" />
+                              </div>
+                            )}
+
+                            {!isLoading && payslipError && (
+                              <p className="text-sm text-destructive">{payslipError}</p>
+                            )}
+
+                            {!isLoading && !payslipError && payslips.length === 0 && (
+                              <p className="text-sm text-muted-foreground">
+                                {scope === 'archived'
+                                  ? 'No archived payslips for this payroll report.'
+                                  : 'No payslips found for this payroll report.'}
+                              </p>
+                            )}
+
+                            {!isLoading && !payslipError && payslips.length > 0 && (
+                              <PayslipDropdownTable
+                                reportId={report.id}
+                                payslips={payslips}
+                                formatCurrency={formatCurrency}
+                                onPrint={handlePrintSinglePayslip}
+                                onEdit={openEditPayslipDialog}
+                                archiveView={scope === 'archived'}
+                                onDelete={(reportId, payslip) => {
+                                  setDeletePayslipErrors({});
+                                  setDeletePayslipTarget({ reportId, payslip });
+                                }}
+                              />
+                            )}
+                          </>
+                        );
+                      };
 
                       return (
                         <Fragment key={`group-${report.id}`}>
@@ -857,35 +971,22 @@ export default function GeneratePayrollPage() {
                             <TableRow className="bg-muted/20">
                               <TableCell colSpan={18} className="px-2 py-2">
                                 <div className="rounded-md border bg-background p-3">
-                                  {isPayslipLoading && (
-                                    <div className="py-4 flex justify-center">
-                                      <Loader size="sm" />
-                                    </div>
-                                  )}
-
-                                  {!isPayslipLoading && payslipError && (
-                                    <p className="text-sm text-destructive">{payslipError}</p>
-                                  )}
-
-                                  {!isPayslipLoading && !payslipError && payslips.length === 0 && (
-                                    <p className="text-sm text-muted-foreground">
-                                      No payslips found for this payroll report.
-                                    </p>
-                                  )}
-
-                                  {!isPayslipLoading && !payslipError && payslips.length > 0 && (
-                                    <PayslipDropdownTable
-                                      reportId={report.id}
-                                      payslips={payslips}
-                                      formatCurrency={formatCurrency}
-                                      onPrint={handlePrintSinglePayslip}
-                                      onEdit={openEditPayslipDialog}
-                                      onDelete={(reportId, payslip) => {
-                                        setDeletePayslipErrors({});
-                                        setDeletePayslipTarget({ reportId, payslip });
-                                      }}
-                                    />
-                                  )}
+                                  <Tabs
+                                    value={scopeTab}
+                                    onValueChange={(v) => {
+                                      const s = v as PayslipScope;
+                                      setPayslipScopeTab((prev) => ({ ...prev, [report.id]: s }));
+                                      void loadPayslipsForReport(report.id, s);
+                                    }}
+                                  >
+                                    <TabsList className="mb-3">
+                                      <TabsTrigger value="active">Active</TabsTrigger>
+                                      <TabsTrigger value="archived" disabled={archivedEmpty}>
+                                        Archive
+                                      </TabsTrigger>
+                                    </TabsList>
+                                  </Tabs>
+                                  <div className="mt-0">{renderPayslipPanel(scopeTab)}</div>
                                 </div>
                               </TableCell>
                             </TableRow>
