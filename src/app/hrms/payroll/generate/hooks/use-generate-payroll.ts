@@ -153,11 +153,10 @@ export const getCashAdvancePayrollAmount = (row: CashAdvance): number => {
   return Number.isFinite(amount) ? amount : 0;
 };
 
-/** Active (with balance) or paid cash advances can have date_issued moved. */
+/** Active cash advances with balance can have date_issued moved. */
 export const canEditCashAdvanceDate = (row: CashAdvance): boolean => {
   const status = String(row.status || '').toLowerCase();
-  if (status === 'cancelled') return false;
-  if (status === 'paid') return true;
+  if (status === 'cancelled' || status === 'paid') return false;
   return Number(row.outstanding_balance ?? 0) > 0;
 };
 

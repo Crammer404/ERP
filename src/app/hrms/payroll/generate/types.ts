@@ -19,6 +19,8 @@ export interface PayrollReport {
   totalNetPay: number;
   generatedBy: string;
   generatedDate: string;
+  maxGenerationCount?: number;
+  employeesAtGenerationLimit?: number;
 }
 
 export type EditablePayslipFields = {
@@ -55,4 +57,6 @@ export const mapBackendToFrontend = (
   totalNetPay: backend.total_net,
   generatedBy: backend.generated_by,
   generatedDate: backend.generated_at || '',
+  maxGenerationCount: backend.max_generation_count ?? 1,
+  employeesAtGenerationLimit: backend.employees_at_generation_limit ?? 0,
 });

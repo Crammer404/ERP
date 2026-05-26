@@ -20,6 +20,8 @@ export interface PayrollReport {
   total_net: number;
   generated_by: string;
   generated_at?: string;
+  max_generation_count?: number;
+  employees_at_generation_limit?: number;
 }
 
 export interface GeneratePayrollRequest {
@@ -55,12 +57,14 @@ export interface PayslipData {
   employee_name: string;
   profile_pic?: string | null;
   position: string;
+  role?: string;
   branch: string;
   date_range: string;
   date_start: string;
   date_end: string;
   pay_date: string;
   generated_at?: string;
+  generation_count?: number;
   payroll_type: string;
   worked_days?: number;
   regular_hours_worked?: number;
@@ -343,4 +347,3 @@ export const generateService = {
     document.body.removeChild(a);
   },
 };
-

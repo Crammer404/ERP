@@ -37,6 +37,7 @@ export function PayslipDropdownTable({
               <TableHead className="text-center text-[11px] px-2 py-1.5 whitespace-nowrap">Days left</TableHead>
             )}
             <TableHead className="text-[11px] px-2 py-1.5 text-right">#</TableHead>
+            <TableHead className="text-center text-[11px] px-2 py-1.5 whitespace-nowrap">Generation</TableHead>
             <TableHead className="text-[11px] px-2 py-1.5">Employee</TableHead>
             <TableHead className="text-[11px] px-2 py-1.5">Position</TableHead>
             <TableHead className="text-right text-[11px] px-2 py-1.5">Basic Pay</TableHead>
@@ -95,6 +96,9 @@ export function PayslipDropdownTable({
                   </TableCell>
                 )}
                 <TableCell className="text-right px-2 py-1.5 text-[11px]">{index + 1}</TableCell>
+                <TableCell className="text-center px-2 py-1.5 text-[11px] tabular-nums">
+                  {payslip.generation_count ?? 1} / 3
+                </TableCell>
                 <TableCell className="whitespace-nowrap px-2 py-1.5 text-[11px]">
                   <div className="flex items-center gap-2">
                     <Avatar className="h-5 w-5">
