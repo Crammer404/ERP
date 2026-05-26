@@ -195,6 +195,7 @@ export const API_ENDPOINTS = {
       BASE: '/hrms/deductions/cash-advance',
       CREATE: '/hrms/deductions/cash-advance',
       UPDATE: '/hrms/deductions/cash-advance/{id}',
+      UPDATE_DATE_ISSUED: '/hrms/deductions/cash-advance/{id}/date-issued',
       DELETE: '/hrms/deductions/cash-advance/{id}',
       GET: '/hrms/deductions/cash-advance/{id}',
     },

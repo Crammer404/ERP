@@ -27,7 +27,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { CheckCircle2, Circle, FileText, MoreVertical, RefreshCw, Search, X, CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle2, Circle, FileText, MoreVertical, RefreshCw, Search, X, CheckCircle, XCircle, Calendar as CalendarIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -44,10 +44,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/hooks/use-toast';
 import { useCurrencies } from '@/app/settings/currencies/hooks/useCurrencies';
 import { formatCurrencyAmount } from '@/app/settings/currencies/services/currencyService';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { parseApiDate } from '@/lib/dateUtils';
 import {
   DEFAULT_PAYROLL_TYPES,
   WIZARD_STEPS,
@@ -115,6 +120,18 @@ const GeneratePayrollDialog = ({
     cashAdvanceEntries,
     cashAdvanceLoading,
     fetchCashAdvanceEntries,
+    editingCashAdvance,
+    editCashAdvanceDateIssued,
+    setEditCashAdvanceDateIssued,
+    isEditingCashAdvanceDate,
+    isSavingCashAdvanceDate,
+    openEditCashAdvanceDateModal,
+    closeEditCashAdvanceDateModal,
+    saveCashAdvanceDateEdit,
+    canEditCashAdvanceDate,
+    formatCashAdvanceDateIssued,
+    formatCashAdvanceStatusLabel,
+    getCashAdvancePayrollAmount,
     statutoryActiveTab,
     setStatutoryActiveTab,
     statutoryEntries,
@@ -177,6 +194,7 @@ const GeneratePayrollDialog = ({
 
   const { currencies } = useCurrencies();
   const { defaultCurrency } = useCurrency();
+  const { toast } = useToast();
   const colaCurrencySymbol = useMemo(() => {
     if (defaultCurrency?.id != null) {
       const fromList = currencies.find((c) => c.id === defaultCurrency.id);
@@ -184,6 +202,11 @@ const GeneratePayrollDialog = ({
     }
     return defaultCurrency?.symbol;
   }, [currencies, defaultCurrency]);
+
+  const editCashAdvanceSelectedDate = useMemo(
+    () => parseApiDate(editCashAdvanceDateIssued) ?? undefined,
+    [editCashAdvanceDateIssued]
+  );
 
   const stepperScrollRef = useRef<HTMLDivElement>(null);
 
@@ -725,50 +748,83 @@ const GeneratePayrollDialog = ({
                       <TableHeader>
                         <TableRow>
                           <TableHead className="text-xs">Employee: {cashAdvanceEntries.length}</TableHead>
+                          <TableHead className="text-xs">Date Issued</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
                           <TableHead className="text-right whitespace-nowrap text-xs">Cash Advance</TableHead>
+                          <TableHead className="text-center whitespace-nowrap text-xs">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {cashAdvanceLoading ? (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-center py-6 text-xs">
+                            <TableCell colSpan={5} className="text-center py-6 text-xs">
                               <Loader size="sm" />
                             </TableCell>
                           </TableRow>
                         ) : !cashAdvanceWindow ? (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-center text-muted-foreground py-6 text-xs">
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-xs">
                               Set payroll range first to compute the cash advance window.
                             </TableCell>
                           </TableRow>
                         ) : cashAdvanceEntries.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-center text-muted-foreground py-6 text-xs">
-                              No active cash advances found in this window.
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-xs">
+                              No cash advances found in this window.
                             </TableCell>
                           </TableRow>
                         ) : (
-                          cashAdvanceEntries.map((row) => (
-                            <TableRow key={row.id}>
-                              <TableCell className="text-xs">
-                                <div className="font-medium text-xs">{formatCashAdvanceEmployeeName(row)}</div>
-                                <div className="text-xs text-muted-foreground">{row.code}</div>
-                              </TableCell>
-                              <TableCell className="text-right text-xs">
-                                <span className="tabular-nums">
-                                  {formatCurrencyAmount(
-                                    (() => {
-                                      const outstanding = Number((row as any).outstanding_balance);
-                                      if (Number.isFinite(outstanding) && outstanding > 0) return outstanding;
-                                      const amount = Number((row as any).amount);
-                                      return Number.isFinite(amount) ? amount : 0;
-                                    })(),
-                                    colaCurrencySymbol
-                                  )}
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          ))
+                          cashAdvanceEntries.map((row) => {
+                            const canEdit = canEditCashAdvanceDate(row);
+                            return (
+                              <TableRow key={row.id}>
+                                <TableCell className="text-xs">
+                                  <div className="font-medium text-xs">{formatCashAdvanceEmployeeName(row)}</div>
+                                  <div className="text-xs text-muted-foreground">{row.code}</div>
+                                </TableCell>
+                                <TableCell className="text-xs">
+                                  {formatCashAdvanceDateIssued(row.date_issued)}
+                                </TableCell>
+                                <TableCell className="text-xs">
+                                  <Badge
+                                    variant="secondary"
+                                    className={cn(
+                                      'text-[10px] font-normal',
+                                      String(row.status || '').toLowerCase() === 'paid' &&
+                                        'bg-green-100 text-green-800 hover:bg-green-100',
+                                      String(row.status || '').toLowerCase() === 'active' &&
+                                        'bg-yellow-100 text-yellow-800 hover:bg-yellow-100'
+                                    )}
+                                  >
+                                    {formatCashAdvanceStatusLabel(row.status)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right text-xs">
+                                  <span className="tabular-nums">
+                                    {formatCurrencyAmount(getCashAdvancePayrollAmount(row), colaCurrencySymbol)}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-center px-2 py-1.5">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted">
+                                        <MoreVertical className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={() => openEditCashAdvanceDateModal(row)}
+                                        disabled={!canEdit}
+                                        className={!canEdit ? 'text-muted-foreground' : ''}
+                                      >
+                                        Edit Date Issued
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
                         )}
                       </TableBody>
                     </Table>
@@ -1232,6 +1288,101 @@ const GeneratePayrollDialog = ({
             >
               <XCircle className="h-4 w-4 mr-2" />
               {earlyOutModalSubmitting ? 'Rejecting...' : 'Reject'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Cash Advance Date Issued Modal */}
+      <Dialog
+        open={isEditingCashAdvanceDate}
+        onOpenChange={(open) => {
+          if (!open) closeEditCashAdvanceDateModal();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Date Issued</DialogTitle>
+            <DialogDescription>
+              Move the issued date for{' '}
+              {editingCashAdvance ? formatCashAdvanceEmployeeName(editingCashAdvance) : 'this cash advance'} so it
+              falls outside the payroll deduction window and will not be deducted in this run.
+            </DialogDescription>
+          </DialogHeader>
+          {editingCashAdvance && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md bg-muted p-3 space-y-2">
+                <p className="text-xs font-medium">Current information</p>
+                <p className="text-xs">
+                  <span className="text-muted-foreground">Code:</span> {editingCashAdvance.code}
+                </p>
+                <p className="text-xs">
+                  <span className="text-muted-foreground">Current date issued:</span>{' '}
+                  {formatCashAdvanceDateIssued(editingCashAdvance.date_issued)}
+                </p>
+                <p className="text-xs">
+                  <span className="text-muted-foreground">Outstanding:</span>{' '}
+                  {formatCurrencyAmount(
+                    Number(editingCashAdvance.outstanding_balance ?? editingCashAdvance.amount ?? 0),
+                    colaCurrencySymbol
+                  )}
+                </p>
+                {cashAdvanceWindow && (
+                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                    Deduction window: {format(cashAdvanceWindow.startDate, 'MMM d, yyyy')} –{' '}
+                    {format(cashAdvanceWindow.endDate, 'MMM d, yyyy')}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>New date issued</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(
+                        'w-full justify-start text-left font-normal',
+                        !editCashAdvanceDateIssued && 'text-muted-foreground'
+                      )}
+                      disabled={isSavingCashAdvanceDate}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editCashAdvanceDateIssued && editCashAdvanceSelectedDate
+                        ? format(editCashAdvanceSelectedDate, 'PPP')
+                        : 'Pick a date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editCashAdvanceSelectedDate}
+                      onSelect={(date) => {
+                        if (!date) return;
+                        setEditCashAdvanceDateIssued(format(date, 'yyyy-MM-dd'));
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeEditCashAdvanceDateModal}
+              disabled={isSavingCashAdvanceDate}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void saveCashAdvanceDateEdit()}
+              disabled={!editCashAdvanceDateIssued || isSavingCashAdvanceDate}
+            >
+              {isSavingCashAdvanceDate ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

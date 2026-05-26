@@ -23,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { parseApiDate } from '@/lib/dateUtils';
 import type { CashAdvance, CashAdvanceStatus, CreateCashAdvanceRequest, UpdateCashAdvanceRequest } from '../services/cash-advance-service';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { managementService, Employee } from '@/services/management/managementService';
@@ -39,6 +40,13 @@ interface CashAdvanceFormModalProps {
   errors: Record<string, string>;
   onClearError: (field: string) => void;
 }
+
+const toDateInputValue = (value: string | null | undefined): string => {
+  if (!value) return '';
+  const parsed = parseApiDate(value);
+  if (!parsed) return value.length >= 10 ? value.slice(0, 10) : '';
+  return format(parsed, 'yyyy-MM-dd');
+};
 
 const getEmployeeDisplayName = (employee: Employee): string => {
   if (employee.user_info) {
@@ -93,7 +101,7 @@ export function CashAdvanceFormModal({
           user_id: initialData.user_id,
           amount: initialData.amount,
           outstanding_balance: initialData.outstanding_balance,
-          date_issued: initialData.date_issued,
+          date_issued: toDateInputValue(initialData.date_issued),
           status: initialData.status,
           description: initialData.description,
         });
@@ -225,7 +233,7 @@ export function CashAdvanceFormModal({
       newErrors.outstanding_balance = 'Outstanding balance cannot exceed the advance amount';
     }
 
-    if (!isEditMode && !formData.date_issued) {
+    if (!formData.date_issued) {
       newErrors.date_issued = 'Date issued is required';
     }
 
@@ -245,7 +253,10 @@ export function CashAdvanceFormModal({
     }
 
     if (mode === 'edit') {
-      onSubmit({ status: formData.status });
+      onSubmit({
+        status: formData.status,
+        date_issued: formData.date_issued,
+      });
       return;
     }
 
@@ -306,9 +317,10 @@ export function CashAdvanceFormModal({
     ? STATUS_OPTIONS
     : STATUS_OPTIONS.filter((option) => option.value === initialStatus);
   const modalTitle = isCreateMode ? 'Create Cash Advance' : 'Update Cash Advance';
-  const modalDescription = isCreateMode 
+  const modalDescription = isCreateMode
     ? 'Add a new cash advance for an employee.'
-    : 'Only status can be updated for this record.';
+    : 'Update status and date issued for this record.';
+  const dateIssuedSelected = parseApiDate(formData.date_issued) ?? undefined;
   const submitButtonText = isCreateMode 
     ? (loading ? 'Creating...' : 'Create')
     : (loading ? 'Updating...' : 'Update');
@@ -470,18 +482,18 @@ export function CashAdvanceFormModal({
                       "w-full justify-start text-left font-normal",
                       !formData.date_issued && "text-muted-foreground"
                     )}
-                    disabled={loading || !isCreateMode}
+                    disabled={loading}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.date_issued
-                      ? format(new Date(formData.date_issued), "PPP")
+                    {dateIssuedSelected
+                      ? format(dateIssuedSelected, 'PPP')
                       : <span>Pick a date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={formData.date_issued ? new Date(formData.date_issued) : undefined}
+                    selected={dateIssuedSelected}
                     onSelect={(date) => {
                       handleChange('date_issued', date ? format(date, "yyyy-MM-dd") : "");
                     }}

@@ -377,7 +377,7 @@ export default function CashAdvancePage() {
       closeModal();
       resetForm();
       forceRefresh();
-      showToast("success", "Cash Advance Updated", "The cash advance status was successfully updated.");
+      showToast("success", "Cash Advance Updated", "The cash advance was successfully updated.");
     } catch (err: any) {
       handleApiError(err, "Failed to update cash advance");
     } finally {

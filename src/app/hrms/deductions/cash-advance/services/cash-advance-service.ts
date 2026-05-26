@@ -94,4 +94,21 @@ export const cashAdvanceService = {
       method: 'DELETE',
     });
   },
+  async updateDateIssued(
+    id: number,
+    dateIssued: string,
+    payrollStart?: string,
+    payrollEnd?: string
+  ): Promise<CashAdvance> {
+    const payload: any = { date_issued: dateIssued };
+    if (payrollStart) payload.payroll_start = payrollStart;
+    if (payrollEnd) payload.payroll_end = payrollEnd;
+
+    const url = API_ENDPOINTS.DEDUCTIONS.CASH_ADVANCE.UPDATE_DATE_ISSUED.replace('{id}', String(id));
+    const response = await api(url, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    return response?.data ?? response;
+  },
 };

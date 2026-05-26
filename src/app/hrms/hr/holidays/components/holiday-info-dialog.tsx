@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { parseApiDate } from '@/lib/dateUtils';
 
 type HolidayType = 'regular' | 'special_non_working';
 
@@ -30,7 +31,7 @@ export function HolidayInfoDialog(props: {
 }) {
   const { open, onOpenChange, saving, mode, value, onChange, onSave } = props;
 
-  const selectedDate = value.holiday_date ? new Date(`${value.holiday_date}T00:00:00`) : undefined;
+  const selectedDate = parseApiDate(value.holiday_date) ?? undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

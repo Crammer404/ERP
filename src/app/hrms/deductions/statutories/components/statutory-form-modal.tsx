@@ -56,7 +56,7 @@ export function StatutoryFormModal({
       selected.forEach((id) => {
         const initial = initialValues?.[id];
         amountMap[id] = initial ? String(initial.amount ?? '') : '';
-        rateMap[id] = initial ? !!initial.is_rate : true;
+        rateMap[id] = initial ? !!initial.is_rate : false;
       });
     }
     setAmountByUserId(amountMap);
@@ -114,7 +114,7 @@ export function StatutoryFormModal({
       setIsRateByUserId((prev) => {
         const next = { ...prev };
         visibleUserIds.forEach((id) => {
-          if (!(id in next)) next[id] = true;
+          if (!(id in next)) next[id] = false;
         });
         return next;
       });
@@ -140,7 +140,7 @@ export function StatutoryFormModal({
 
     if (checked) {
       setAmountByUserId((prev) => ({ ...prev, [userId]: prev[userId] ?? '' }));
-      setIsRateByUserId((prev) => ({ ...prev, [userId]: prev[userId] ?? true }));
+      setIsRateByUserId((prev) => ({ ...prev, [userId]: prev[userId] ?? false }));
     }
   };
 
@@ -290,7 +290,7 @@ export function StatutoryFormModal({
                       <div className="flex items-center justify-end gap-2">
                         <Label className="text-xs text-muted-foreground">{isRateByUserId[e.user_id] ? 'Rate' : 'Fixed'}</Label>
                         <Switch
-                          checked={isRateByUserId[e.user_id] ?? true}
+                          checked={isRateByUserId[e.user_id] ?? false}
                           onCheckedChange={(checked) => setIsRateByUserId((prev) => ({ ...prev, [e.user_id]: checked }))}
                           disabled={saving}
                         />

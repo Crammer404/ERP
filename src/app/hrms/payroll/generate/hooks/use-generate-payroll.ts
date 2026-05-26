@@ -31,6 +31,7 @@ import { statutoriesService, type StatutoryEntry, type StatutoryType } from '@/a
 import { ROUTES } from '@/config/api.config';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useToast } from '@/hooks/use-toast';
+import { parseApiDate } from '@/lib/dateUtils';
 
 export const DEFAULT_PAYROLL_TYPES = ['Semi-Monthly', 'Monthly', 'Weekly'];
 export const CUSTOM_RANGE_TYPE = 'Range Date';
@@ -83,6 +84,81 @@ export type PendingEarlyOutRecord = {
 export const formatColaEntryEmployeeName = (row: ColaEntry): string => {
   const full = [row.first_name ?? '', row.last_name ?? ''].filter(Boolean).join(' ').trim();
   return full || row.email;
+};
+
+export const normalizeCashAdvanceDateInput = (value: string): string => {
+  if (!value) return '';
+  const parsed = parseApiDate(value);
+  if (!parsed) {
+    return value.length >= 10 ? value.slice(0, 10) : '';
+  }
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const formatCashAdvanceDateIssued = (value: string | null | undefined): string => {
+  const parsed = parseApiDate(value ?? '');
+  if (!parsed) return '—';
+  return format(parsed, 'MMM d, yyyy');
+};
+
+export const isDateWithinCashAdvanceWindow = (
+  dateValue: string | null | undefined,
+  window: CashAdvanceWindow | null
+): boolean => {
+  if (!window || !dateValue) return false;
+  const issued = parseApiDate(dateValue);
+  if (!issued) return false;
+  const start = new Date(window.startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(window.endDate);
+  end.setHours(23, 59, 59, 999);
+  const time = issued.getTime();
+  return time >= start.getTime() && time <= end.getTime();
+};
+
+export const formatCashAdvanceStatusLabel = (status: string | null | undefined): string => {
+  switch (String(status || '').toLowerCase()) {
+    case 'active':
+      return 'Active';
+    case 'paid':
+      return 'Paid';
+    case 'cancelled':
+      return 'Cancelled';
+    default:
+      return status ? String(status) : '—';
+  }
+};
+
+export const isCashAdvanceIncludedInPayrollWindow = (row: CashAdvance): boolean => {
+  const status = String(row.status || '').toLowerCase();
+  if (status === 'cancelled') return false;
+  if (status === 'paid') return true;
+  if (status === 'active') return Number(row.outstanding_balance ?? 0) > 0;
+  return false;
+};
+
+/** Amount shown / deducted in payroll: paid rows use original amount for record. */
+export const getCashAdvancePayrollAmount = (row: CashAdvance): number => {
+  const status = String(row.status || '').toLowerCase();
+  if (status === 'paid') {
+    const amount = Number(row.amount ?? 0);
+    return Number.isFinite(amount) ? amount : 0;
+  }
+  const outstanding = Number(row.outstanding_balance ?? 0);
+  if (Number.isFinite(outstanding) && outstanding > 0) return outstanding;
+  const amount = Number(row.amount ?? 0);
+  return Number.isFinite(amount) ? amount : 0;
+};
+
+/** Active (with balance) or paid cash advances can have date_issued moved. */
+export const canEditCashAdvanceDate = (row: CashAdvance): boolean => {
+  const status = String(row.status || '').toLowerCase();
+  if (status === 'cancelled') return false;
+  if (status === 'paid') return true;
+  return Number(row.outstanding_balance ?? 0) > 0;
 };
 
 export const formatCashAdvanceEmployeeName = (row: CashAdvance): string => {
@@ -322,7 +398,7 @@ export const useGeneratePayrollModal = ({
   const [includeStatutory, setIncludeStatutory] = useState(true);
   const [includeCola, setIncludeCola] = useState(true);
   const [includeCashAdvance, setIncludeCashAdvance] = useState(true);
-  const [includeThirteenthMonthPay, setIncludeThirteenthMonthPay] = useState(true);
+  const [includeThirteenthMonthPay, setIncludeThirteenthMonthPay] = useState(false);
   const [availableUsers, setAvailableUsers] = useState<GeneratePayrollUser[]>(users ?? []);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -342,6 +418,10 @@ export const useGeneratePayrollModal = ({
   const [colaLoading, setColaLoading] = useState(false);
   const [cashAdvanceEntries, setCashAdvanceEntries] = useState<CashAdvance[]>([]);
   const [cashAdvanceLoading, setCashAdvanceLoading] = useState(false);
+  const [editingCashAdvance, setEditingCashAdvance] = useState<CashAdvance | null>(null);
+  const [editCashAdvanceDateIssued, setEditCashAdvanceDateIssued] = useState('');
+  const [isEditingCashAdvanceDate, setIsEditingCashAdvanceDate] = useState(false);
+  const [isSavingCashAdvanceDate, setIsSavingCashAdvanceDate] = useState(false);
   const [statutoryActiveTab, setStatutoryActiveTab] = useState<StatutoryType>('sss');
   const [statutoryEntries, setStatutoryEntries] = useState<StatutoryEntry[]>([]);
   const [statutoryLoading, setStatutoryLoading] = useState(false);
@@ -506,13 +586,17 @@ export const useGeneratePayrollModal = ({
     setIncludeStatutory(true);
     setIncludeCola(true);
     setIncludeCashAdvance(true);
-    setIncludeThirteenthMonthPay(true);
+    setIncludeThirteenthMonthPay(false);
     setEmployeeSearch('');
     setCurrentStep(1);
     setStepError(null);
     setShowGenerateConfirm(false);
     setColaEntries([]);
     setCashAdvanceEntries([]);
+    setEditingCashAdvance(null);
+    setEditCashAdvanceDateIssued('');
+    setIsEditingCashAdvanceDate(false);
+    setIsSavingCashAdvanceDate(false);
     setStatutoryActiveTab('sss');
     setStatutoryEntries([]);
   };
@@ -559,20 +643,11 @@ export const useGeneratePayrollModal = ({
     try {
       const all = await cashAdvanceService.getAll();
 
-      const fromTime = new Date(cashAdvanceWindow.startDate).setHours(0, 0, 0, 0);
-      const toTime = new Date(cashAdvanceWindow.endDate).setHours(23, 59, 59, 999);
-
       const filtered = (all || [])
         .filter((row) => (activeBranchId ? row.branch_id === activeBranchId : true))
         .filter((row) => (selectedUserIds.length > 0 ? selectedUserIds.includes(row.user_id) : true))
-        .filter((row) => {
-          const issued = new Date(row.date_issued);
-          const t = issued.getTime();
-          if (Number.isNaN(t)) return false;
-          return t >= fromTime && t <= toTime;
-        })
-        .filter((row) => String(row.status || '').toLowerCase() === 'active')
-        .filter((row) => Number(row.outstanding_balance ?? 0) > 0);
+        .filter((row) => isDateWithinCashAdvanceWindow(row.date_issued, cashAdvanceWindow))
+        .filter((row) => isCashAdvanceIncludedInPayrollWindow(row));
 
       const sorted = [...filtered].sort((a, b) =>
         formatCashAdvanceEmployeeName(a).localeCompare(formatCashAdvanceEmployeeName(b), undefined, {
@@ -588,6 +663,65 @@ export const useGeneratePayrollModal = ({
       setCashAdvanceLoading(false);
     }
   }, [activeBranchId, cashAdvanceWindow, selectedUserIds]);
+
+  const openEditCashAdvanceDateModal = useCallback((row: CashAdvance) => {
+    if (!canEditCashAdvanceDate(row)) return;
+    setEditingCashAdvance(row);
+    setEditCashAdvanceDateIssued(normalizeCashAdvanceDateInput(row.date_issued));
+    setIsEditingCashAdvanceDate(true);
+  }, []);
+
+  const closeEditCashAdvanceDateModal = useCallback(() => {
+    if (isSavingCashAdvanceDate) return;
+    setIsEditingCashAdvanceDate(false);
+    setEditingCashAdvance(null);
+    setEditCashAdvanceDateIssued('');
+  }, [isSavingCashAdvanceDate]);
+
+  const saveCashAdvanceDateEdit = useCallback(async () => {
+    if (!editingCashAdvance || !editCashAdvanceDateIssued) return;
+
+    const status = String(editingCashAdvance.status || '').toLowerCase();
+    const outstanding = Number(editingCashAdvance.outstanding_balance ?? 0);
+    if (
+      status === 'active' &&
+      outstanding > 0 &&
+      cashAdvanceWindow &&
+      isDateWithinCashAdvanceWindow(editCashAdvanceDateIssued, cashAdvanceWindow)
+    ) {
+      toast({
+        title: 'Invalid date',
+        description: `Choose a date outside ${format(cashAdvanceWindow.startDate, 'MMM d, yyyy')} – ${format(cashAdvanceWindow.endDate, 'MMM d, yyyy')} so this cash advance is not deducted in this payroll.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsSavingCashAdvanceDate(true);
+      const payrollStart = cashAdvanceWindow ? format(cashAdvanceWindow.startDate, 'yyyy-MM-dd') : undefined;
+      const payrollEnd = cashAdvanceWindow ? format(cashAdvanceWindow.endDate, 'yyyy-MM-dd') : undefined;
+
+      await cashAdvanceService.updateDateIssued(
+        editingCashAdvance.id,
+        editCashAdvanceDateIssued,
+        payrollStart,
+        payrollEnd
+      );
+
+      toast({ title: 'Success', description: 'Cash advance date updated.' });
+      setIsEditingCashAdvanceDate(false);
+      setEditingCashAdvance(null);
+      setEditCashAdvanceDateIssued('');
+      await fetchCashAdvanceEntries();
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message || error?.message || 'Failed to update cash advance date.';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    } finally {
+      setIsSavingCashAdvanceDate(false);
+    }
+  }, [cashAdvanceWindow, editCashAdvanceDateIssued, editingCashAdvance, fetchCashAdvanceEntries, toast]);
 
   const fetchStatutoryEntries = useCallback(async (type: StatutoryType = statutoryActiveTab) => {
     setStatutoryLoading(true);
@@ -1008,6 +1142,18 @@ export const useGeneratePayrollModal = ({
     cashAdvanceEntries,
     cashAdvanceLoading,
     fetchCashAdvanceEntries,
+    editingCashAdvance,
+    editCashAdvanceDateIssued,
+    setEditCashAdvanceDateIssued,
+    isEditingCashAdvanceDate,
+    isSavingCashAdvanceDate,
+    openEditCashAdvanceDateModal,
+    closeEditCashAdvanceDateModal,
+    saveCashAdvanceDateEdit,
+    canEditCashAdvanceDate,
+    formatCashAdvanceDateIssued,
+    formatCashAdvanceStatusLabel,
+    getCashAdvancePayrollAmount,
     statutoryActiveTab,
     setStatutoryActiveTab,
     statutoryEntries,
