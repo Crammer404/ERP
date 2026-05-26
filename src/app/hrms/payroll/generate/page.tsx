@@ -53,12 +53,17 @@ import { EditablePayslipFields, PayrollReport } from './types';
 import { formatGeneratedDateTime, formatLocalDate } from './utils/payroll-view-helpers';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePayrollReports } from './hooks/use-payroll-reports';
+import SweetAlert from '@/components/ui/sweetalert';
 
 type PayslipsReportCache = {
   active?: PayslipData[];
   archived?: PayslipData[];
   activeCount?: number;
   archivedCount?: number;
+};
+
+type GenerationLimitWarning = {
+  message: string;
 };
 
 const payslipLoadKey = (reportId: number, scope: PayslipScope) => `${reportId}:${scope}`;
@@ -105,6 +110,7 @@ export default function GeneratePayrollPage() {
   const [deletePayslipTarget, setDeletePayslipTarget] = useState<{ reportId: number; payslip: PayslipData } | null>(null);
   const [deletePayslipLoading, setDeletePayslipLoading] = useState(false);
   const [deletePayslipErrors, setDeletePayslipErrors] = useState<Record<string, string>>({});
+  const [generationLimitWarning, setGenerationLimitWarning] = useState<GenerationLimitWarning | null>(null);
   const {
     currentPage,
     setCurrentPage,
@@ -690,6 +696,19 @@ export default function GeneratePayrollPage() {
         title: 'Success',
         description: successMessage,
       });
+
+      const skippedUsers = response.skipped_generation_limit_users ?? [];
+      if (skippedUsers.length > 0) {
+        const limit = response.generation_limit ?? 3;
+        const names = skippedUsers
+          .map((user) => user.name || user.email || `Employee #${user.id}`)
+          .join(', ');
+
+        setGenerationLimitWarning({
+          message: `${names} ${skippedUsers.length === 1 ? 'has' : 'have'} already reached the ${limit} times payslip generation limit and ${skippedUsers.length === 1 ? 'was' : 'were'} skipped. Payroll generation continued for the remaining employees.`,
+        });
+      }
+
       setPayslipsCacheByReportId({});
       setPayslipLoadingByKey({});
       setPayslipErrorByKey({});
@@ -718,6 +737,18 @@ export default function GeneratePayrollPage() {
       const earlyOutGateMessage = String(errorMessage).toLowerCase();
       if (earlyOutGateMessage.includes('pending early clock-out requests')) {
         throw err;
+      }
+
+      const blockedUsers = data?.blocked_generation_limit_users ?? [];
+      if (Array.isArray(blockedUsers) && blockedUsers.length > 0) {
+        const names = blockedUsers
+          .map((user: { id?: number; name?: string; email?: string | null }) => user?.name || user?.email || `Employee #${user?.id}`)
+          .join(', ');
+
+        setGenerationLimitWarning({
+          message: `${names} ${blockedUsers.length === 1 ? 'has' : 'have'} already reached the payslip generation limit. No payroll was generated because all selected employees are at the limit.`,
+        });
+        return;
       }
 
       toast({
@@ -1219,6 +1250,14 @@ export default function GeneratePayrollPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <SweetAlert
+        open={!!generationLimitWarning}
+        type="warning"
+        title="Some Employees Were Skipped"
+        message={generationLimitWarning?.message}
+        onClose={() => setGenerationLimitWarning(null)}
+      />
     </div>
   );
 }

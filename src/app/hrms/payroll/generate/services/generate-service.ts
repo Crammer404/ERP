@@ -41,6 +41,13 @@ export interface GeneratePayrollResponse {
   action?: 'created' | 'updated';
   payroll_count_id?: number;
   merged_users_count?: number;
+  generated_users_count?: number;
+  generation_limit?: number;
+  skipped_generation_limit_users?: Array<{
+    id: number;
+    name: string;
+    email?: string | null;
+  }>;
 }
 
 export interface PayrollReportUser {
