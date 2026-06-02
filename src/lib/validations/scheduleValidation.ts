@@ -9,6 +9,8 @@ export interface ScheduleValidationData {
   nightEnd: string;
   gracePeriod: string;
   overtimeThreshold: string;
+  lateDeductionMode?: 'rate' | 'fixed';
+  lateDeductionFixedAmount?: string;
   selectedEmployees?: string[];
 }
 
@@ -24,6 +26,16 @@ export function isNotEmpty(value: string): boolean {
 export function isValidNumber(value: string, min: number = 0): boolean {
   const num = parseInt(value);
   return !isNaN(num) && num >= min;
+}
+
+export function isValidDecimal(value: string, min: number = 0): boolean {
+  const trimmed = value.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+    return false;
+  }
+
+  const num = Number(trimmed);
+  return Number.isFinite(num) && num >= min;
 }
 
 export function hasAtLeastOneShift(data: ScheduleValidationData): boolean {
@@ -71,6 +83,15 @@ export function validateScheduleForm(data: ScheduleValidationData): ValidationRe
     errors.overtimeThreshold = 'Overtime threshold is required';
   } else if (!isValidNumber(data.overtimeThreshold, 0)) {
     errors.overtimeThreshold = 'Overtime threshold must be a valid number (0 or greater)';
+  }
+
+  if (data.lateDeductionMode === 'fixed') {
+    const fixedAmount = data.lateDeductionFixedAmount ?? '';
+    if (!isNotEmpty(fixedAmount)) {
+      errors.lateDeductionFixedAmount = 'Fixed late deduction amount is required';
+    } else if (!isValidDecimal(fixedAmount, 0)) {
+      errors.lateDeductionFixedAmount = 'Fixed late deduction amount must be a valid number (0 or greater)';
+    }
   }
 
   // Validate time ranges for each shift

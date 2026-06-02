@@ -38,6 +38,8 @@ export interface ScheduleFormData {
   gracePeriod: string;
   overtimeThreshold: string;
   allowAutoSplitLogs: boolean;
+  lateDeductionMode: 'rate' | 'fixed';
+  lateDeductionFixedAmount: string;
   selectedEmployees: string[];
 }
 
@@ -68,6 +70,8 @@ const getDefaultFormData = (): ScheduleFormData => ({
   gracePeriod: '',
   overtimeThreshold: '',
   allowAutoSplitLogs: false,
+  lateDeductionMode: 'rate',
+  lateDeductionFixedAmount: '1',
   selectedEmployees: [],
 });
 
@@ -219,6 +223,10 @@ export function AddScheduleModal({
         ...prev,
         [field]: value
       };
+
+      if (field === 'lateDeductionMode' && value === 'fixed' && !updated.lateDeductionFixedAmount) {
+        updated.lateDeductionFixedAmount = '1';
+      }
       
       // Check for overlaps after update (only for shift 3 - Mix)
       if (selectedShift === 'shift3') {
@@ -611,7 +619,7 @@ export function AddScheduleModal({
                 )}
 
                 {/* Generic schedule settings (applies to all shifts) */}
-                <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/30">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/30">
                   <div className="space-y-2">
                     <Label htmlFor="grace-period">Grace Period (Minutes)</Label>
                     <Input
@@ -640,6 +648,40 @@ export function AddScheduleModal({
                       <p className="text-red-500 text-xs">{allErrors.overtimeThreshold}</p>
                     )}
                   </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="late-deduction-mode">Late Deduction</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.lateDeductionMode === 'rate'
+                          ? 'Rate based'
+                          : 'Fixed amount per minute'}
+                      </p>
+                    </div>
+                    <Switch
+                      id="late-deduction-mode"
+                      checked={formData.lateDeductionMode === 'rate'}
+                      onCheckedChange={(checked) => handleInputChange('lateDeductionMode', checked ? 'rate' : 'fixed')}
+                      disabled={loading}
+                    />
+                  </div>
+                  {formData.lateDeductionMode === 'fixed' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="late-deduction-fixed-amount">Fixed Amount Per Minute</Label>
+                      <Input
+                        id="late-deduction-fixed-amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        disabled={loading}
+                        value={formData.lateDeductionFixedAmount}
+                        onChange={(e) => handleInputChange('lateDeductionFixedAmount', e.target.value)}
+                        placeholder="1.00"
+                      />
+                      {allErrors.lateDeductionFixedAmount && (
+                        <p className="text-red-500 text-xs">{allErrors.lateDeductionFixedAmount}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between gap-4 p-4 border rounded-lg bg-muted/30">

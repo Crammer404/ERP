@@ -55,6 +55,8 @@ export interface ScheduleConfigRequest {
   grace_period: string;
   overtime: string;
   allow_auto_split_logs?: boolean;
+  late_deduction_mode?: 'rate' | 'fixed';
+  late_deduction_fixed_amount?: string;
   morning_shift_start: string;
   morning_shift_end: string;
   afternoon_shift_start: string;
@@ -80,6 +82,8 @@ export interface Schedule {
   gracePeriod: number;
   overtimeThreshold: number;
   allowAutoSplitLogs?: boolean;
+  lateDeductionMode?: 'rate' | 'fixed';
+  lateDeductionFixedAmount?: number;
   assignedEmployees: AssignedEmployee[];
 }
 

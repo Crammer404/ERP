@@ -50,6 +50,8 @@ interface Schedule {
   gracePeriod: number;
   overtimeThreshold: number;
   allowAutoSplitLogs?: boolean;
+  lateDeductionMode?: 'rate' | 'fixed';
+  lateDeductionFixedAmount?: number;
   assignedEmployees: AssignedEmployee[];
 }
 
@@ -155,6 +157,8 @@ export default function SchedulePage() {
         grace_period: data.gracePeriod,
         overtime: data.overtimeThreshold,
         allow_auto_split_logs: data.allowAutoSplitLogs,
+        late_deduction_mode: data.lateDeductionMode,
+        late_deduction_fixed_amount: data.lateDeductionFixedAmount,
         user_ids: data.selectedEmployees,
       };
 
@@ -226,6 +230,8 @@ export default function SchedulePage() {
         gracePeriod: scheduleDetails.grace_period?.toString() || '',
         overtimeThreshold: scheduleDetails.overtime?.toString() || '',
         allowAutoSplitLogs: Boolean(scheduleDetails.allow_auto_split_logs),
+        lateDeductionMode: scheduleDetails.late_deduction_mode === 'fixed' ? 'fixed' : 'rate',
+        lateDeductionFixedAmount: scheduleDetails.late_deduction_fixed_amount?.toString() || '1',
         selectedEmployees: scheduleDetails.assigned_employee_ids?.map((id: number) => id.toString()) || [],
       };
       
@@ -346,6 +352,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center">Schedule</TableHead>
                     <TableHead className="text-center">Grace Period</TableHead>
                     <TableHead className="text-center">Overtime Threshold</TableHead>
+                    <TableHead className="text-center">Late Deduction</TableHead>
                     <TableHead>Employees Assigned</TableHead>
                     <TableHead className="w-[100px] text-center">Actions</TableHead>
                   </TableRow>
@@ -353,7 +360,7 @@ export default function SchedulePage() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12">
+                        <TableCell colSpan={8} className="text-center py-12">
                         <Loader size="sm" />
                       </TableCell>
                     </TableRow>
@@ -435,6 +442,11 @@ export default function SchedulePage() {
                         </TableCell>
                         <TableCell className="text-center">{schedule.gracePeriod} min</TableCell>
                         <TableCell className="text-center">{schedule.overtimeThreshold} min</TableCell>
+                        <TableCell className="text-center">
+                          {schedule.lateDeductionMode === 'fixed'
+                            ? `Fixed ${Number(schedule.lateDeductionFixedAmount ?? 1).toFixed(2)}/min`
+                            : 'Rate based'}
+                        </TableCell>
                         <TableCell>
                           <UserAvatarStack 
                             users={schedule.assignedEmployees} 
@@ -472,7 +484,7 @@ export default function SchedulePage() {
                     )})
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="p-0">
+                      <TableCell colSpan={8} className="p-0">
                         <EmptyState
                           icon={CalendarClock}
                           title="No schedules found"
