@@ -320,24 +320,21 @@ export const getCashAdvanceWindowForPayrollRange = (
   const fromYear = range.from.getFullYear();
 
   if (fromDay <= 15) {
-    const previousMonthDate = addMonths(new Date(fromYear, fromMonth, 1), -1);
-    const previousMonth = previousMonthDate.getMonth();
-    const previousYear = previousMonthDate.getFullYear();
-    const startDate = new Date(previousYear, previousMonth, 6);
-    const endDate = new Date(previousYear, previousMonth, 20);
+    const startDate = new Date(fromYear, fromMonth, 5);
+    const endDate = new Date(fromYear, fromMonth, 20);
 
     return {
-      label: `6-20 (${format(startDate, 'MMM yyyy')})`,
+      label: `5-20 (${format(startDate, 'MMM yyyy')})`,
       startDate,
       endDate,
     };
   }
 
-  const previousMonthDate = addMonths(new Date(fromYear, fromMonth, 1), -1);
-  const previousMonth = previousMonthDate.getMonth();
-  const previousYear = previousMonthDate.getFullYear();
-  const startDate = new Date(previousYear, previousMonth, 21);
-  const endDate = new Date(fromYear, fromMonth, 5);
+  const nextMonthDate = addMonths(new Date(fromYear, fromMonth, 1), 1);
+  const nextMonth = nextMonthDate.getMonth();
+  const nextYear = nextMonthDate.getFullYear();
+  const startDate = new Date(fromYear, fromMonth, 21);
+  const endDate = new Date(nextYear, nextMonth, 5);
 
   return {
     label: `${format(startDate, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`,
