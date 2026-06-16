@@ -65,6 +65,8 @@ interface PayslipTemplateProps {
 export function PayslipTemplate({ data, className = '' }: PayslipTemplateProps) {
   const currencySymbol = data.currencySymbol || 'PHP'
   const primaryColor = data.primaryColor || '#111827'
+  const branchName = data.branch || data.companyName
+  const branchInitials = getBranchInitials(branchName)
 
   const formatCurrency = (amount: number) => {
     return `${currencySymbol} ${amount.toLocaleString('en-US', {
@@ -146,30 +148,23 @@ export function PayslipTemplate({ data, className = '' }: PayslipTemplateProps) 
     <div className={className} style={styles.page}>
       <div style={styles.header}>
         <div style={styles.companySection}>
-          {data.showLogo && data.logoUrl && (
-            <div style={styles.logoWrap}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={data.logoUrl}
-                alt="Company Logo"
-                style={styles.logo}
-              />
-            </div>
-          )}
-
-          <div>
-            <div style={{ ...styles.companyName, color: primaryColor }}>
-              {data.companyName}
-            </div>
-            {data.companyAddress && (
-              <div style={styles.companyAddress}>{data.companyAddress}</div>
+          <div style={styles.branchLogo}>
+            {data.showLogo && data.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={data.logoUrl} alt={`${branchName} logo`} style={styles.branchLogoImage} />
+            ) : (
+              <span style={styles.branchLogoText}>{branchInitials}</span>
             )}
+          </div>
+          <div style={{ ...styles.headerText, color: primaryColor }}>
+            {branchName}
           </div>
         </div>
 
         <div style={styles.titleSection}>
-          <div style={{ ...styles.title, color: primaryColor }}>PAYSLIP</div>
-          <div style={styles.subtitle}>Payroll Statement</div>
+          <div style={{ ...styles.headerText, color: primaryColor }}>
+            Payroll Statement
+          </div>
         </div>
       </div>
 
@@ -250,6 +245,24 @@ export function PayslipTemplate({ data, className = '' }: PayslipTemplateProps) 
   )
 }
 
+function getBranchInitials(name: string): string {
+  const cleaned = name.trim()
+  if (!cleaned) return 'BR'
+
+  const words = cleaned
+    .replace(/[^a-zA-Z0-9\s-]/g, '')
+    .split(/[\s-]+/)
+    .filter(Boolean)
+
+  if (words.length >= 2) {
+    return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase()
+  }
+
+  const word = words[0] || cleaned
+  const camelSecond = word.slice(1).match(/[A-Z]/)?.[0]
+  return `${word[0] ?? ''}${camelSecond ?? word[1] ?? ''}`.toUpperCase()
+}
+
 const styles: Record<string, CSSProperties> = {
   page: {
     width: '100%',
@@ -266,17 +279,41 @@ const styles: Record<string, CSSProperties> = {
   },
   header: {
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: '12px',
-    paddingBottom: '8px',
+    gap: '6px',
+    padding: '4px 6px',
     borderBottom: '1px solid #e5e7eb',
   },
   companySection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '6px',
     minHeight: '12px',
+  },
+  branchLogo: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '999px',
+    backgroundColor: '#e5e7eb',
+    border: '1px solid #cbd5e1',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  branchLogoImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  branchLogoText: {
+    fontSize: '10px',
+    fontWeight: 800,
+    color: '#334155',
+    letterSpacing: '0.1px',
+    lineHeight: 1,
   },
   logoWrap: {
     width: '66px',
@@ -290,11 +327,11 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: '100%',
     objectFit: 'contain',
   },
-  companyName: {
-    fontSize: '16px',
+  headerText: {
+    fontSize: '13px',
     fontWeight: 700,
-    letterSpacing: '0.2px',
-    lineHeight: 1.2,
+    letterSpacing: 0,
+    lineHeight: 1.05,
     textTransform: 'uppercase',
   },
   companyAddress: {
@@ -304,8 +341,11 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.35,
   },
   titleSection: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
     textAlign: 'right',
-    minWidth: '180px',
+    minWidth: '150px',
   },
   title: {
     fontSize: '24px',
@@ -322,95 +362,98 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
   },
   extraHeader: {
-    marginTop: '10px',
+    marginTop: '4px',
   },
   infoContainer: {
-    marginTop: '14px',
+    marginTop: '6px',
     border: '1px solid #e5e7eb',
-    borderRadius: '8px',
-    padding: '8px 10px',
+    borderRadius: '4px',
+    padding: '4px 6px',
     backgroundColor: '#fafafa',
   },
   infoRow: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: '10px',
-    padding: '3px 0',
+    gap: '6px',
+    padding: '1px 0',
   },
   infoItem: {
     display: 'flex',
     alignItems: 'baseline',
-    gap: '4px',
+    gap: '3px',
     minWidth: 0,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
   infoLabel: {
-    fontSize: '10px',
+    fontSize: '8.5px',
     textTransform: 'uppercase',
-    letterSpacing: '0.7px',
+    letterSpacing: '0.15px',
     color: '#64748b',
     fontWeight: 600,
+    lineHeight: 1.1,
   },
   infoValue: {
-    fontSize: '13px',
+    fontSize: '10.5px',
     fontWeight: 600,
     color: '#0f172a',
     fontVariantNumeric: 'tabular-nums',
-    lineHeight: 1.35,
+    lineHeight: 1.15,
   },
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    marginTop: '14px',
+    marginTop: '6px',
     border: '1px solid #d1d5db',
   },
   th: {
-    fontSize: '11px',
+    fontSize: '9px',
     fontWeight: 700,
-    letterSpacing: '0.6px',
+    letterSpacing: '0.2px',
     textAlign: 'left',
-    padding: '8px 10px',
+    padding: '4px 6px',
     borderBottom: '1px solid #d1d5db',
     backgroundColor: '#f3f4f6',
     color: '#111827',
   },
   thAmount: {
-    fontSize: '11px',
+    fontSize: '9px',
     fontWeight: 700,
-    letterSpacing: '0.6px',
+    letterSpacing: '0.2px',
     textAlign: 'right',
-    padding: '8px 10px',
+    padding: '4px 6px',
     borderBottom: '1px solid #d1d5db',
     backgroundColor: '#f3f4f6',
     color: '#111827',
     width: '22%',
   },
   td: {
-    padding: '7px 10px',
+    padding: '3px 6px',
     borderBottom: '1px solid #e5e7eb',
-    fontSize: '12px',
+    fontSize: '9.5px',
     color: '#1f2937',
     verticalAlign: 'top',
+    lineHeight: 1.15,
   },
   tdAmount: {
-    padding: '7px 10px',
+    padding: '3px 6px',
     borderBottom: '1px solid #e5e7eb',
-    fontSize: '12px',
+    fontSize: '9.5px',
     color: '#111827',
     textAlign: 'right',
     fontVariantNumeric: 'tabular-nums',
     verticalAlign: 'top',
     whiteSpace: 'nowrap',
+    lineHeight: 1.15,
   },
   summaryBox: {
-    marginTop: '14px',
+    marginTop: '6px',
     marginLeft: 'auto',
-    width: '340px',
+    width: '280px',
     maxWidth: '100%',
     border: '1px solid #d1d5db',
-    borderRadius: '6px',
+    borderRadius: '4px',
     overflow: 'hidden',
     backgroundColor: '#ffffff',
   },
@@ -418,16 +461,16 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '8px 12px',
+    padding: '4px 6px',
     borderBottom: '1px solid #e5e7eb',
   },
   summaryLabel: {
-    fontSize: '12px',
+    fontSize: '9.5px',
     color: '#334155',
     fontWeight: 600,
   },
   summaryValue: {
-    fontSize: '12px',
+    fontSize: '9.5px',
     color: '#0f172a',
     fontWeight: 700,
     fontVariantNumeric: 'tabular-nums',
@@ -436,46 +479,46 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '10px 12px',
+    padding: '5px 6px',
     backgroundColor: '#f8fafc',
   },
   summaryNetLabel: {
-    fontSize: '12px',
+    fontSize: '9.5px',
     color: '#0f172a',
     fontWeight: 800,
-    letterSpacing: '0.6px',
+    letterSpacing: '0.2px',
   },
   summaryNetValue: {
-    fontSize: '14px',
+    fontSize: '11px',
     color: '#0f172a',
     fontWeight: 800,
     fontVariantNumeric: 'tabular-nums',
   },
   signatureGrid: {
-    marginTop: '24px',
+    marginTop: '8px',
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: '28px',
+    gap: '12px',
   },
   signatureBlock: {
     textAlign: 'center',
   },
   signatureLine: {
     borderTop: '1px solid #64748b',
-    marginTop: '24px',
+    marginTop: '12px',
   },
   signatureLabel: {
-    marginTop: '6px',
-    fontSize: '11px',
+    marginTop: '3px',
+    fontSize: '9px',
     color: '#334155',
     fontWeight: 600,
   },
   footer: {
-    marginTop: '14px',
+    marginTop: '6px',
     textAlign: 'center',
-    fontSize: '10px',
+    fontSize: '8.5px',
     color: '#64748b',
     borderTop: '1px dashed #d1d5db',
-    paddingTop: '8px',
+    paddingTop: '4px',
   },
 }

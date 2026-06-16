@@ -135,6 +135,7 @@ export const API_ENDPOINTS = {
     CONFIGURATION: {
       GET: '/hrms/dtr/configuration/data',
       STORE: '/hrms/dtr/configuration/store',
+      CALENDAR_EVENTS: '/hrms/dtr/configuration/calendar/events',
       SCHEDULES: '/hrms/dtr/configuration/schedules',
       GET_SCHEDULE: '/hrms/dtr/configuration/schedules/{id}',
       UPDATE_SCHEDULE: '/hrms/dtr/configuration/schedules/{id}',

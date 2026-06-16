@@ -1,12 +1,16 @@
 import { api } from "../../../../services/api";
 import { API_ENDPOINTS } from "../../../../config/api.config";
 import { Address } from "../../../../services/address/addressService";
+import type { UserEmploymentStatus, InactiveUserEmploymentStatus } from "../utils/employment-status";
+
+export type { UserEmploymentStatus, InactiveUserEmploymentStatus };
 
 export interface UserInfo {
   first_name: string;
   middle_name?: string;
   last_name: string;
   payroll_positions_id?: number | string;
+  status?: UserEmploymentStatus;
   address?: Partial<Address>;
   profile_pic?: string;
 }
@@ -144,18 +148,16 @@ export const userService = {
   },
 
   /**
-   * Disable user (admin action).
+   * Disable user (admin action) with employment status.
    *
-   * Flow (no Pusher calls from this file — that is intentional):
-   * 1. DELETE /management/users/{id} → Laravel UserController::destroy
-   * 2. Server sets is_active false, revokes tokens, then dispatches UserAccountStatusChanged
-   * 3. Laravel broadcasts to Pusher (HTTP from PHP → Pusher cloud)
-   * 4. The *disabled user's* browser (AuthProvider + Echo) is subscribed to channel
-   *    `users.{id}.account-status` and shows the modal — not the admin's browser.
+   * PATCH /management/users/{id}/disable with { status }
+   * → Laravel sets is_active false, saves user_infos.status, revokes tokens, broadcasts event.
    */
-  async disable(id: number): Promise<void> {
-    await api(`${API_ENDPOINTS.USERS.BASE}/${id}`, {
-      method: "DELETE",
+  async disable(id: number, status: InactiveUserEmploymentStatus): Promise<void> {
+    await api(`${API_ENDPOINTS.USERS.BASE}/${id}/disable`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+      headers: { "Content-Type": "application/json" },
     });
   },
 

@@ -171,6 +171,7 @@ export default function PayslipPage() {
 
     const currencySymbol = defaultCurrency?.symbol || 'PHP';
     const summaryRows: Array<{ leftLabel: string; leftValue: string; rightLabel: string; rightValue: string }> = [];
+    const formatDays = (value: number) => Number(value || 0).toFixed(3).replace(/\.?0+$/, '');
 
     const pushRowIfNotZero = (
       leftLabel: string,
@@ -185,7 +186,7 @@ export default function PayslipPage() {
       if (left === 0 && right === 0) return;
       summaryRows.push({
         leftLabel,
-        leftValue: `${left}${leftSuffix}`,
+        leftValue: `${leftLabel === 'Days worked' ? formatDays(left) : left}${leftSuffix}`,
         rightLabel,
         rightValue: `${right}${rightSuffix}`,
       });
@@ -249,12 +250,12 @@ export default function PayslipPage() {
   const selectedTemplateData = useMemo(() => {
     if (!selectedPayslip) return null;
     return mapToTemplateData(selectedPayslip.payslipData);
-  }, [selectedPayslip, companyInfo]);
+  }, [selectedPayslip, companyInfo, defaultCurrency]);
 
   const downloadTemplateData = useMemo(() => {
     if (!payslipToDownload) return null;
     return mapToTemplateData(payslipToDownload.payslipData);
-  }, [payslipToDownload, companyInfo]);
+  }, [payslipToDownload, companyInfo, defaultCurrency]);
 
   useEffect(() => {
     if (!downloadTemplateData || !downloadRef.current) return;
@@ -331,8 +332,28 @@ export default function PayslipPage() {
     return `${symbol} ${amount.toFixed(2)}`;
   };
 
-  const handleView = (payslip: PayslipRecord) => {
-    setSelectedPayslip(payslip);
+  const findLatestPayslipMatch = (latest: ApiPayslipData[], payslip: PayslipRecord) => {
+    return latest.find((p) =>
+      p.date_start === payslip.payslipData.date_start &&
+      p.date_end === payslip.payslipData.date_end &&
+      p.pay_date === payslip.payslipData.pay_date
+    );
+  };
+
+  const handleView = async (payslip: PayslipRecord) => {
+    try {
+      const response = await payslipService.getEmployeePayslips();
+      const match = findLatestPayslipMatch(response.payslips || [], payslip);
+
+      setSelectedPayslip({
+        ...payslip,
+        payslipData: match || payslip.payslipData,
+      });
+    } catch (err) {
+      console.error('Failed to refresh payslip before viewing:', err);
+      setSelectedPayslip(payslip);
+    }
+
     setIsViewDialogOpen(true);
   };
 
@@ -344,11 +365,7 @@ export default function PayslipPage() {
       const response = await payslipService.getEmployeePayslips();
       const latest = response.payslips || [];
 
-      const match = latest.find((p) =>
-        p.date_start === payslip.payslipData.date_start &&
-        p.date_end === payslip.payslipData.date_end &&
-        p.pay_date === payslip.payslipData.pay_date
-      );
+      const match = findLatestPayslipMatch(latest, payslip);
 
       setPayslipToDownload({
         ...payslip,

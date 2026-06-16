@@ -22,6 +22,9 @@ import { Loader } from '@/components/ui/loader';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { UserFormModal } from '@/app/management/users/components/user-form-modal';
+import { DisableUserStatusModal } from '@/app/management/users/components/disable-user-status-modal';
+import { getEmploymentStatusLabel } from '@/app/management/users/utils/employment-status';
+import type { InactiveUserEmploymentStatus } from '@/app/management/users/services/userService';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { positionService, type PayrollPosition } from '@/app/hrms/payroll/positions/services/position-service';
@@ -88,6 +91,7 @@ export default function UserPage() {
   }>({ type: null, isOpen: false, user: null });
   
   const [formLoading, setFormLoading] = useState(false);
+  const [disableError, setDisableError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   
   // Digital ID Card state
@@ -621,6 +625,7 @@ export default function UserPage() {
       resetForm();
       setModalState({ type: 'add', isOpen: true, user: null });
     } else if (type === 'disable' && user) {
+      setDisableError('');
       setModalState({ type: 'disable', isOpen: true, user });
     } else if (type === 'enable' && user) {
       setModalState({ type: 'enable', isOpen: true, user });
@@ -768,18 +773,15 @@ export default function UserPage() {
     }
   };
 
-  /**
-   * Confirms disable in UI → userService.disable (DELETE). Realtime modal is triggered
-   * on the *target user's* session via Laravel → Pusher → Echo in auth-provider (not here).
-   */
-  const handleDisable = async () => {
+  const handleDisable = async (status: InactiveUserEmploymentStatus) => {
     if (!modalState.user) return;
 
     setFormLoading(true);
+    setDisableError('');
     setErrors({});
 
     try {
-      await userService.disable(modalState.user.id);
+      await userService.disable(modalState.user.id, status);
 
       if (process.env.NODE_ENV === 'development') {
         console.info(
@@ -794,13 +796,17 @@ export default function UserPage() {
       console.error('Disable error:', err);
 
       if (err.response?.status === 404) {
-        setErrors({ general: "User not found. It may have already been disabled." });
+        setDisableError("User not found. It may have already been disabled.");
         showToast("warning", "User Not Found", "This user may have already been disabled.");
         forceRefresh();
       } else if (err.response?.status === 403) {
-        setErrors({ general: "You do not have permission to disable this user." });
+        setDisableError("You do not have permission to disable this user.");
         showToast("warning", "Permission Denied", "You do not have permission to disable this user.");
+      } else if (err.response?.data?.errors?.status?.[0]) {
+        setDisableError(err.response.data.errors.status[0]);
       } else {
+        const message = err.response?.data?.message || 'Failed to disable user';
+        setDisableError(message);
         handleApiError(err, "Failed to disable user");
       }
     } finally {
@@ -956,7 +962,7 @@ export default function UserPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={user.is_active ? 'default' : 'destructive'}>
-                          {user.is_active ? 'Active' : 'Inactive'}
+                          {getEmploymentStatusLabel(user.user_info?.status, user.is_active)}
                         </Badge>
                       </TableCell>
                       {(canUpdate || canDelete) && (
@@ -1105,18 +1111,15 @@ export default function UserPage() {
 
       {modalState.type === 'disable' && (
         <PermissionGuard module="users" action="delete">
-          <ConfirmDialog
+          <DisableUserStatusModal
             open={modalState.isOpen}
             onOpenChange={(open) => {
               if (!open) closeModal();
             }}
-            title="Disable user?"
-            description={`Disable "${modalState.user ? getDisplayName(modalState.user) : ''}" and revoke API access.`}
-            confirmText="Disable"
-            cancelText="Cancel"
-            onConfirm={handleDisable}
-            variant="destructive"
+            userName={modalState.user ? getDisplayName(modalState.user) : ''}
             loading={formLoading}
+            error={disableError}
+            onConfirm={handleDisable}
           />
         </PermissionGuard>
       )}

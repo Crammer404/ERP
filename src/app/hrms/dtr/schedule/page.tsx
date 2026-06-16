@@ -27,9 +27,11 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { PaginationInfos } from '@/components/ui/pagination-info';
-import { Plus, MoreVertical, Edit, Trash2, Users, Search, CalendarClock, CirclePlus } from 'lucide-react';
+import { MoreVertical, Edit, Trash2, Users, Search, CalendarClock, CirclePlus, Table2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AddScheduleModal, ScheduleFormData } from './components/add-schedule-modal';
 import { AssignEmployeesModal } from './components/assign-employees-modal';
+import { ScheduleCalendarView } from './components/schedule-calendar-view';
 import { dtrService, AssignedEmployee } from './services/schedule-service';
 import { useToast } from '@/hooks/use-toast';
 import { UserAvatarStack } from '@/components/ui/user-avatar-stack';
@@ -83,6 +85,8 @@ export default function SchedulePage() {
   const [deleting, setDeleting] = useState(false);
   const [assignEmployeesOpen, setAssignEmployeesOpen] = useState(false);
   const [scheduleToAssign, setScheduleToAssign] = useState<Schedule | null>(null);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const [activeView, setActiveView] = useState<'table' | 'calendar'>('table');
   const { toast } = useToast();
 
   // Fetch schedules from API
@@ -100,6 +104,7 @@ export default function SchedulePage() {
       });
     } finally {
       setLoading(false);
+      setCalendarRefreshKey((key) => key + 1);
     }
   };
 
@@ -292,6 +297,34 @@ export default function SchedulePage() {
     setAssignEmployeesOpen(true);
   };
 
+  const handleAssignEmployeesById = (scheduleId: number) => {
+    const schedule = schedules.find((item) => item.id === scheduleId);
+    if (schedule) {
+      handleAssignEmployees(schedule);
+      return;
+    }
+
+    toast({
+      title: 'Error',
+      description: 'Schedule not found',
+      variant: 'destructive',
+    });
+  };
+
+  const handleEditById = (scheduleId: number) => {
+    const schedule = schedules.find((item) => item.id === scheduleId);
+    if (schedule) {
+      void handleEdit(schedule);
+      return;
+    }
+
+    toast({
+      title: 'Error',
+      description: 'Schedule not found',
+      variant: 'destructive',
+    });
+  };
+
   const handleAssignEmployeesSuccess = () => {
     fetchSchedules();
   };
@@ -319,21 +352,19 @@ export default function SchedulePage() {
       <div className="space-y-6">
         {/* Dynamic Schedules Section */}
         <Card>
+          <Tabs value={activeView} onValueChange={(value) => setActiveView(value as 'table' | 'calendar')}>
           <CardHeader>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              {/* Search Bar */}
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by schedule name or branch..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1); // Reset to first page when searching
-                  }}
-                  className="pl-10"
-                />
-              </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="table" className="gap-2">
+                  <Table2 className="h-4 w-4" />
+                  Table
+                </TabsTrigger>
+                <TabsTrigger value="calendar" className="gap-2">
+                  <CalendarClock className="h-4 w-4" />
+                  Calendar
+                </TabsTrigger>
+              </TabsList>
               <Button onClick={handleAddSchedule} className="shrink-0">
                 <CirclePlus className="h-4 w-4 mr-2" />
                 Add Schedule
@@ -342,7 +373,20 @@ export default function SchedulePage() {
           </CardHeader>
 
           <CardContent>
-            {/* Table */}
+              <TabsContent value="table" className="mt-0 space-y-4">
+                <div className="relative w-full">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by schedule name or branch..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -499,7 +543,7 @@ export default function SchedulePage() {
 
             {/* Pagination */}
             {!loading && filteredSchedules.length > 0 && (
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6 mb-0">
                 <PaginationInfos.Standard
                   from={(currentPage - 1) * itemsPerPage + 1}
                   to={Math.min(currentPage * itemsPerPage, filteredSchedules.length)}
@@ -551,7 +595,17 @@ export default function SchedulePage() {
                 </Pagination>
               </div>
             )}
+              </TabsContent>
+
+              <TabsContent value="calendar" className="mt-0">
+                <ScheduleCalendarView
+                  refreshKey={calendarRefreshKey}
+                  onEditSchedule={handleEditById}
+                  onAssignEmployees={handleAssignEmployeesById}
+                />
+              </TabsContent>
           </CardContent>
+          </Tabs>
         </Card>
       </div>
 

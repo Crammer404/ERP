@@ -87,9 +87,37 @@ export interface Schedule {
   assignedEmployees: AssignedEmployee[];
 }
 
+export interface CalendarEventShift {
+  shift: 'morning' | 'afternoon' | 'night';
+  shift_label: string;
+  start: string;
+  end: string;
+  is_overnight: boolean;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  employee_id: number;
+  employee_name: string;
+  schedule_id: number;
+  schedule_name: string;
+  branch: string;
+  grace_period: number;
+  overtime_threshold: number;
+  shifts: CalendarEventShift[];
+}
+
 export const dtrService = {
   async getSchedules(): Promise<{ schedules: Schedule[] }> {
     return await api(API_ENDPOINTS.DTR.CONFIGURATION.SCHEDULES);
+  },
+
+  async getCalendarEvents(start: string, end: string): Promise<{ events: CalendarEvent[] }> {
+    const params = new URLSearchParams({ start, end });
+    return await api(`${API_ENDPOINTS.DTR.CONFIGURATION.CALENDAR_EVENTS}?${params.toString()}`);
   },
 
   async getSchedule(id: number): Promise<any> {

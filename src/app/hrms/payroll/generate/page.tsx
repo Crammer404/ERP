@@ -67,6 +67,7 @@ type GenerationLimitWarning = {
 };
 
 const payslipLoadKey = (reportId: number, scope: PayslipScope) => `${reportId}:${scope}`;
+const formatDays = (value: number) => Number(value || 0).toFixed(3).replace(/\.?0+$/, '');
 
 export default function GeneratePayrollPage() {
   const [deleteTarget, setDeleteTarget] = useState<PayrollReport | null>(null);
@@ -272,7 +273,7 @@ export default function GeneratePayrollPage() {
           summaryRows,
           'Days worked',
           workedDays,
-          String(workedDays),
+          formatDays(workedDays),
           'Regular hours worked',
           regularHoursWorked,
           `${regularHoursWorked} hrs`
@@ -378,7 +379,7 @@ export default function GeneratePayrollPage() {
     if (workedDays !== 0 || regularHoursWorked !== 0) {
       summaryRows.push({
         leftLabel: 'Days worked',
-        leftValue: String(workedDays),
+        leftValue: formatDays(workedDays),
         rightLabel: 'Regular hours worked',
         rightValue: `${regularHoursWorked} hrs`,
       });

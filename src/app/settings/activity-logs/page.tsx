@@ -6,12 +6,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { FileText, RefreshCw, Search } from 'lucide-react';
 import { ActivityLogsTable } from './components/ActivityLogsTable';
+import { ActivityLogDetailsModal } from './components/ActivityLogDetailsModal';
 import { useActivityLogs } from './hooks/useActivityLogs';
+import { ActivityLog } from './services/activityLogService';
 
 export default function ActivityLogsPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { activityLogs, loading, error, pagination, refreshActivityLogs, loadActivityLogs } = useActivityLogs();
 
@@ -37,6 +41,11 @@ export default function ActivityLogsPage() {
     setSearchTerm(value);
     setCurrentPage(1);
     loadActivityLogs(1, pagination.per_page, value);
+  };
+
+  const handleViewDetails = (log: ActivityLog) => {
+    setSelectedLog(log);
+    setIsModalOpen(true);
   };
 
   useEffect(() => {
@@ -126,6 +135,7 @@ export default function ActivityLogsPage() {
                       pagination={pagination}
                       currentPage={currentPage}
                       setCurrentPage={handlePageChange}
+                      onViewDetails={handleViewDetails}
                     />
                   )}
                 </CardContent>
@@ -134,6 +144,12 @@ export default function ActivityLogsPage() {
           </Card>
         </div>
       )}
+
+      <ActivityLogDetailsModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        log={selectedLog}
+      />
     </div>
   );
 }

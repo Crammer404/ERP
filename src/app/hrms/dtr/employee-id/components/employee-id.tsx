@@ -258,32 +258,31 @@ export function EmployeeIdCard({
           className="h-[380px] w-[260px] rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 p-4 shadow-2xl"
         >
           <div className="flex h-full flex-col items-center">
-            <div className="mb-2 text-center">
-              <h3 className="text-sm font-bold text-gray-800">Digital ID</h3>
-              <p className="mt-0.5 text-[9px] text-gray-500">Scan to Clock In/Out</p>
+            <div className="mb-1 text-center">
+              <p className="text-[10px] font-semibold tracking-wide text-gray-600">Scan to Clock In/Out</p>
             </div>
-            <div className="my-2 flex flex-1 items-center justify-center">
+            <div className="my-1 flex flex-[1.2] items-center justify-center">
               <div
-                className="rounded-lg border border-gray-300 bg-white p-1.5 shadow-sm [&_svg]:h-[110px] [&_svg]:w-[110px]"
+                className="rounded-lg border border-gray-300 bg-white p-2 shadow-sm [&_svg]:h-[160px] [&_svg]:w-[160px]"
                 dangerouslySetInnerHTML={{ __html: qrCode }}
               />
             </div>
-            <div className="w-full rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
-              <h4 className="mb-1.5 text-[9px] font-bold tracking-wider text-gray-500">EMPLOYEE INFORMATION</h4>
-              <div className="space-y-1 text-[10px]">
+            <div className="w-full rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm">
+              <h4 className="mb-1 text-[8px] font-bold tracking-wider text-gray-500">EMPLOYEE INFORMATION</h4>
+              <div className="space-y-0.5 text-[9px]">
                 <div>
                   <span className="block text-[8px] leading-tight text-gray-500">Name</span>
-                  <span className="text-[10px] font-medium text-gray-800">{employee.name}</span>
+                  <span className="text-[9px] font-medium text-gray-800">{employee.name}</span>
                 </div>
                 <div className="h-px bg-gray-200"></div>
                 <div>
                   <span className="block text-[8px] leading-tight text-gray-500">Employee ID</span>
-                  <span className="text-[10px] font-medium text-gray-800">{employee.id}</span>
+                  <span className="text-[9px] font-medium text-gray-800">{employee.id}</span>
                 </div>
                 <div className="h-px bg-gray-200"></div>
                 <div>
                   <span className="block text-[8px] leading-tight text-gray-500">Branch</span>
-                  <span className="text-[10px] font-medium text-gray-800">{employee.branch}</span>
+                  <span className="text-[9px] font-medium text-gray-800">{employee.branch}</span>
                 </div>
               </div>
             </div>
@@ -330,32 +329,31 @@ export function EmployeeIdCard({
           back={
             <div className="h-full w-full rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 p-4 shadow-2xl">
               <div className="flex h-full flex-col items-center">
-                <div className="mb-2 text-center">
-                  <h3 className="text-sm font-bold text-gray-800">Digital ID</h3>
-                  <p className="mt-0.5 text-[9px] text-gray-500">Scan to Clock In/Out</p>
+                <div className="mb-1 text-center">
+                  <p className="text-[10px] font-semibold tracking-wide text-gray-600">Scan to Clock In/Out</p>
                 </div>
-                <div className="my-2 flex flex-1 items-center justify-center">
+                <div className="my-1 flex flex-[1.2] items-center justify-center">
                   <div
-                    className="rounded-lg border border-gray-300 bg-white p-1.5 shadow-sm [&_svg]:h-[110px] [&_svg]:w-[110px]"
+                    className="rounded-lg border border-gray-300 bg-white p-2 shadow-sm [&_svg]:h-[160px] [&_svg]:w-[160px]"
                     dangerouslySetInnerHTML={{ __html: qrCode }}
                   />
                 </div>
-                <div className="w-full rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
-                  <h4 className="mb-1.5 text-[9px] font-bold tracking-wider text-gray-500">EMPLOYEE INFORMATION</h4>
-                  <div className="space-y-1 text-[10px]">
+                <div className="w-full rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm">
+                  <h4 className="mb-1 text-[8px] font-bold tracking-wider text-gray-500">EMPLOYEE INFORMATION</h4>
+                  <div className="space-y-0.5 text-[9px]">
                     <div>
                       <span className="block text-[8px] leading-tight text-gray-500">Name</span>
-                      <span className="text-[10px] font-medium text-gray-800">{employee.name}</span>
+                      <span className="text-[9px] font-medium text-gray-800">{employee.name}</span>
                     </div>
                     <div className="h-px bg-gray-200"></div>
                     <div>
                       <span className="block text-[8px] leading-tight text-gray-500">Employee ID</span>
-                      <span className="text-[10px] font-medium text-gray-800">{employee.id}</span>
+                      <span className="text-[9px] font-medium text-gray-800">{employee.id}</span>
                     </div>
                     <div className="h-px bg-gray-200"></div>
                     <div>
                       <span className="block text-[8px] leading-tight text-gray-500">Branch</span>
-                      <span className="text-[10px] font-medium text-gray-800">{employee.branch}</span>
+                      <span className="text-[9px] font-medium text-gray-800">{employee.branch}</span>
                     </div>
                   </div>
                 </div>

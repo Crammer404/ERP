@@ -3,11 +3,15 @@ import { api } from "../../../../services/api";
 import { API_ENDPOINTS } from "../../../../config/api.config";
 
 export interface ActivityLog {
+  id: number;
   module: string;
   activity: string;
   item_name: string;
+  subject_type: string | null;
+  subject_id: number | null;
   branch: string;
   created_by: string;
+  properties: Record<string, any> | null;
   created_at: string;
 }
 
