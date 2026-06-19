@@ -95,6 +95,8 @@ export function PositionFormModal({
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
   const { defaultCurrency } = useCurrency();
 
+  const selectedBranch = branches.length === 1 ? branches[0] : null;
+
   useEffect(() => {
     if (isOpen) {
       getCurrentBranch();
@@ -143,7 +145,7 @@ export function PositionFormModal({
         setRateAmountInput(baseSalary > 0 ? baseSalary.toString() : '');
       } else {
         const branchContext = tenantContextService.getStoredBranchContext();
-        const baseBranchId = branchContext?.id ?? 0;
+        const baseBranchId = selectedBranch?.id ?? branchContext?.id ?? 0;
         setFormData({
           branch_id: baseBranchId,
           user_info_ids: [],
@@ -159,7 +161,7 @@ export function PositionFormModal({
         setRateAmountInput('');
       }
     }
-  }, [mode, initialData, isOpen]);
+  }, [mode, initialData, isOpen, selectedBranch?.id]);
 
   // Fetch employees when branch_id is available
   useEffect(() => {
@@ -170,6 +172,11 @@ export function PositionFormModal({
 
   const getCurrentBranch = () => {
     try {
+      if (selectedBranch) {
+        setCurrentBranchName(selectedBranch.name || 'Unknown Branch');
+        return;
+      }
+
       const branchContext = tenantContextService.getStoredBranchContext();
       if (branchContext) {
         setCurrentBranchName(branchContext.name || 'Unknown Branch');

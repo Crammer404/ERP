@@ -20,6 +20,7 @@ import { Loader } from '@/components/ui/loader';
 import { EmptyStates } from '@/components/ui/empty-state';
 import { PaginationInfos } from '@/components/ui/pagination-info';
 import { BranchFormModal } from './components/branch-form-modal';
+import { AssignManagerModal } from './components/assign-manager-modal';
 import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { BranchEmployeesModal } from './components/branch-employees';
@@ -56,7 +57,7 @@ export default function BranchPage() {
   };
 
   const [modalState, setModalState] = useState<{
-    type: 'add' | 'edit' | 'delete' | null;
+    type: 'add' | 'edit' | 'delete' | 'assign-manager' | null;
     isOpen: boolean;
     branch?: Branch | null;
     formData?: any;
@@ -473,6 +474,8 @@ export default function BranchPage() {
       } finally {
         setFormLoading(false);
       }
+    } else if (type === 'assign-manager' && branch) {
+      setModalState({ type: 'assign-manager', isOpen: true, branch, formData: null });
     }
   };
 
@@ -600,6 +603,7 @@ export default function BranchPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Address</TableHead>
+                    <TableHead>Manager</TableHead>
                     <TableHead>Employees</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -628,6 +632,17 @@ export default function BranchPage() {
                               <div>{branch.address.country}</div>
                             </div>
                           ) : "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          <UserAvatarStack
+                            users={branch.manager ? [{
+                              id: branch.manager.id,
+                              name: branch.manager.name || branch.manager.email || 'Manager',
+                              email: branch.manager.email || undefined,
+                            }] : []}
+                            maxVisible={1}
+                            size="sm"
+                          />
                         </TableCell>
                         <TableCell>
                           {isLoading ? (
@@ -661,6 +676,12 @@ export default function BranchPage() {
                               <DropdownMenuItem onClick={() => openViewEmployeesModal(branch)}>
                                 <Users className="h-4 w-4 mr-2" />
                                 View Employees
+                              </DropdownMenuItem>
+                            </PermissionGuard>
+                            <PermissionGuard module="branches" action="update">
+                              <DropdownMenuItem onClick={() => openModal('assign-manager', branch)}>
+                                <Users className="h-4 w-4 mr-2" />
+                                Assign Manager
                               </DropdownMenuItem>
                             </PermissionGuard>
                             <PermissionGuard module="branches" action="delete">
@@ -754,6 +775,24 @@ export default function BranchPage() {
             loading={formLoading}
             errors={errors}
             onClearError={clearError}
+          />
+        </PermissionGuard>
+      )}
+
+      {/* Modal Assign Manager */}
+      {modalState.type === 'assign-manager' && modalState.branch && (
+        <PermissionGuard module="branches" action="update">
+          <AssignManagerModal
+            isOpen={modalState.isOpen}
+            onClose={closeModal}
+            branch={modalState.branch}
+            onAssigned={(updatedBranch) => {
+              setBranches(prev => prev.map(branch => branch.id === updatedBranch.id ? updatedBranch : branch));
+              if (modalState.branch?.id === activeBranchId) {
+                setActiveBranchName(updatedBranch.name);
+              }
+              closeModal();
+            }}
           />
         </PermissionGuard>
       )}

@@ -34,6 +34,7 @@ import {
   requestEmployeeOvertime,
   approveOvertime, 
   rejectOvertime,
+  deleteOvertime,
   MyOvertimeRecord,
   OvertimeRequestRecord
 } from './services/overtime-service';
@@ -41,6 +42,7 @@ import { managementService, Employee } from '@/services/management/managementSer
 import { ManagerApprovalTab } from './components/manager-approval-tab';
 import { EmployeesOvertimeTab } from './components/employees-overtime-tab';
 import { MyOvertimeTab } from './components/my-overtime-tab';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type OvertimeTab = 'approval' | 'employeesOvertime' | 'myOvertime';
 type OvertimeDetailsMode = 'manager' | 'employee';
@@ -349,11 +351,13 @@ export default function OvertimePage() {
   const [isAppeal, setIsAppeal] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [actionNotes, setActionNotes] = useState('');
   const [payType, setPayType] = useState<'overtime' | 'regular'>('overtime');
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [approveSubmitting, setApproveSubmitting] = useState(false);
   const [rejectSubmitting, setRejectSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const latestApprovalRequestRef = useRef(0);
 
   // New overtime request form
@@ -381,6 +385,7 @@ export default function OvertimePage() {
   const canViewManagerApproval = Boolean(overtimePermissions?.update);
   const canViewEmployeesOvertime = canViewManagerApproval;
   const canViewMyOvertime = Boolean(overtimePermissions?.create);
+  const canDeleteOvertime = Boolean(overtimePermissions?.delete);
   const availableTabs = useMemo<OvertimeTab[]>(() => {
     const tabs: OvertimeTab[] = [];
     if (canViewManagerApproval) {
@@ -761,6 +766,11 @@ export default function OvertimePage() {
     setRejectModalOpen(true);
   };
 
+  const handleDelete = (record: OvertimeRequestRecord) => {
+    setSelectedRecord(record);
+    setDeleteModalOpen(true);
+  };
+
   const confirmApprove = async () => {
     if (!selectedRecord) return;
     
@@ -826,6 +836,34 @@ export default function OvertimePage() {
       });
     } finally {
       setRejectSubmitting(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedRecord) return;
+
+    try {
+      setDeleteSubmitting(true);
+      await deleteOvertime(selectedRecord.id);
+
+      toast({
+        title: 'Overtime Deleted',
+        description: `Overtime request for ${selectedRecord.employee} has been permanently deleted`,
+        variant: 'default',
+      });
+
+      setDeleteModalOpen(false);
+      setSelectedRecord(null);
+      fetchApprovalRecords();
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.message || error?.message || 'Failed to delete overtime request';
+      toast({
+        title: 'Error',
+        description: errorMsg,
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -1040,6 +1078,7 @@ export default function OvertimePage() {
             onViewDetails={handleViewDetails}
             onApprove={handleApprove}
             onReject={handleReject}
+            onDelete={canDeleteOvertime ? handleDelete : undefined}
             getStatusBadge={getStatusBadge}
             formatOvertimeFromHours={formatOvertimeFromHours}
           />
@@ -1327,6 +1366,26 @@ export default function OvertimePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteModalOpen}
+        onOpenChange={(open) => {
+          setDeleteModalOpen(open);
+          if (!open && !deleteSubmitting) {
+            setSelectedRecord(null);
+          }
+        }}
+        title="Delete Overtime Request"
+        description={
+          selectedRecord
+            ? `This will permanently delete the overtime request for ${selectedRecord.employee} on ${selectedRecord.date_formatted}. This action cannot be undone.`
+            : 'This will permanently delete the overtime request. This action cannot be undone.'
+        }
+        confirmText="Delete"
+        onConfirm={confirmDelete}
+        variant="destructive"
+        loading={deleteSubmitting}
+      />
     </div>
   );
 }

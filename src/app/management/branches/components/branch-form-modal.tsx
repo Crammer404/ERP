@@ -146,7 +146,7 @@ export const BranchFormModal: React.FC<BranchFormModalProps> = ({
     };
   };
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | number | null) => {
     if (onClearError) {
       const errorKey = field.includes('.') ? field.split('.').pop() : field;
       if (errorKey) {
@@ -156,7 +156,7 @@ export const BranchFormModal: React.FC<BranchFormModalProps> = ({
 
     const keys = field.split('.');
     setFormData(prev => {
-      const newData = { ...prev };
+      const newData = { ...prev } as any;
       let current: any = newData;
       
       for (let i = 0; i < keys.length - 1; i++) {

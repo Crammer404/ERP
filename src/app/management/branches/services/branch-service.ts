@@ -5,6 +5,16 @@ import { Address } from '../../../../services/address/addressService';
 export interface Branch {
   id: number;
   tenant_id: number;
+  user_id?: number | null;
+  manager?: {
+    id: number;
+    name?: string;
+    email?: string;
+    role?: {
+      id: number;
+      name: string;
+    } | null;
+  } | null;
   name: string;
   branch_code?: string;
   email: string;
@@ -16,6 +26,7 @@ export interface Branch {
 
 export interface CreateBranchRequest {
   tenant_id?: number;
+  user_id?: number | null;
   name: string;
   email?: string;
   contact_no?: string;
@@ -31,6 +42,7 @@ export interface CreateBranchRequest {
 
 
 export interface UpdateBranchRequest {
+  user_id?: number | null;
   name?: string;
   email?: string;
   contact_no?: string;

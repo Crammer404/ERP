@@ -111,3 +111,7 @@ export const rejectOvertime = async (id: number, notes: string): Promise<{ messa
   });
 };
 
+export const deleteOvertime = async (id: number): Promise<{ message: string }> => {
+  const endpoint = API_ENDPOINTS.DTR.OVERTIME.DELETE.replace('{id}', String(id));
+  return await api(endpoint, { method: 'DELETE' });
+};

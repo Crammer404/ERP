@@ -36,7 +36,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download, RefreshCw, Clock, MoreVertical, Eye, CheckCircle, XCircle } from 'lucide-react';
+import { Download, RefreshCw, Clock, MoreVertical, Eye, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { OvertimeRequestRecord } from '../services/overtime-service';
@@ -66,6 +66,7 @@ type ManagerApprovalTabProps = {
   onViewDetails: (record: OvertimeRequestRecord) => void;
   onApprove: (record: OvertimeRequestRecord) => void;
   onReject: (record: OvertimeRequestRecord) => void;
+  onDelete?: (record: OvertimeRequestRecord) => void;
   getStatusBadge: (status: string) => ReactNode;
   formatOvertimeFromHours: (hours: number | null | undefined) => string;
 };
@@ -93,6 +94,7 @@ export function ManagerApprovalTab({
   onViewDetails,
   onApprove,
   onReject,
+  onDelete,
   getStatusBadge,
   formatOvertimeFromHours,
 }: ManagerApprovalTabProps) {
@@ -259,6 +261,15 @@ export function ManagerApprovalTab({
                                       Reject
                                     </DropdownMenuItem>
                                   </>
+                                )}
+                                {onDelete && (
+                                  <DropdownMenuItem
+                                    onClick={() => onDelete(record)}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>

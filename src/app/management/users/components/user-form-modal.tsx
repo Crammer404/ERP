@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Plus } from "lucide-react";
+import { PositionFormModal } from '@/app/hrms/payroll/positions/components/position-form-modal';
 import { PhilippineAddressForm } from "@/components/forms/address/philippine-address-form";
 import type { AddressData } from "@/services/address/psgc.service";
 import { positionService, type PayrollPosition } from "@/app/hrms/payroll/positions/services/position-service";
@@ -60,6 +61,11 @@ interface Errors {
   [key: string]: string;
 }
 
+interface ForcedRole {
+  id: string;
+  name: string;
+}
+
 interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -68,6 +74,7 @@ interface UserFormModalProps {
   activeBranchId?: number | null;
   activeBranchName?: string | null;
   initialData?: FormData;
+  forceRole?: ForcedRole;
   onSubmit: (data: FormData) => void;
   loading: boolean;
   errors: Errors;
@@ -118,6 +125,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   activeBranchId,
   activeBranchName,
   initialData,
+  forceRole,
   onSubmit,
   loading,
   errors,
@@ -130,6 +138,47 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [positions, setPositions] = useState<PayrollPosition[]>([]);
   const [positionsLoading, setPositionsLoading] = useState(false);
+  const [isPositionModalOpen, setIsPositionModalOpen] = useState(false);
+  const [createPositionLoading, setCreatePositionLoading] = useState(false);
+  const [createPositionErrors, setCreatePositionErrors] = useState<Record<string, string>>({});
+
+  const clearCreatePositionError = (field: string) => {
+    setCreatePositionErrors(prev => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const getCreatedPosition = (response: any): PayrollPosition | null => {
+    if (response?.id) return response as PayrollPosition;
+    if (response?.data?.id) return response.data as PayrollPosition;
+    if (response?.position?.id) return response.position as PayrollPosition;
+    if (response?.data?.position?.id) return response.data.position as PayrollPosition;
+    return null;
+  };
+
+  const selectCreatedPosition = (position: PayrollPosition) => {
+    setPositions(prev => {
+      const nextPositions = prev.some((item) => item.id === position.id)
+        ? prev
+        : [...prev, position];
+
+      return [...nextPositions].sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    setFormData(prev => ({
+      ...prev,
+      user_info: {
+        ...prev.user_info,
+        payroll_positions_id: String(position.id),
+      },
+    }));
+
+    onClearError?.('payroll_positions_id');
+    onClearError?.('user_info.payroll_positions_id');
+  };
+
   const activeBranchLabel = useMemo(() => {
     if (activeBranchName) return activeBranchName;
     return 'No active branch selected';
@@ -141,7 +190,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     const initializeForm = async () => {
       const baseForm = getDefaultFormData();
 
-      if (mode === 'edit' && initialData) {
+      if (initialData) {
         const userAddress = initialData.user_info?.address || {};
         const mergedForm: FormData = {
           ...baseForm,
@@ -261,7 +310,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, mode, initialData, roles]);
+  }, [isOpen, mode, initialData, roles, forceRole]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -270,8 +319,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     setFormData(prev => ({
       ...prev,
       branch_ids: activeBranchId ? [activeBranchId.toString()] : [],
+      role: forceRole?.id ?? prev.role,
     }));
-  }, [activeBranchId, isOpen, mode]);
+  }, [activeBranchId, forceRole, isOpen, mode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -307,6 +357,47 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       cancelled = true;
     };
   }, [isOpen, activeBranchId]);
+
+  const handleCreatePosition = async (data: any) => {
+    setCreatePositionLoading(true);
+    setCreatePositionErrors({});
+    try {
+      const response = await positionService.create(data as any);
+      // refresh positions for current branch
+      const allPositions = await positionService.getAll();
+      const refreshedPositions = Array.isArray(allPositions) ? allPositions : [];
+      const filteredPositions = refreshedPositions
+        .filter((position) => !activeBranchId || position.branch_id === activeBranchId)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const submittedName = String(data?.name || '').trim().toLowerCase();
+      const created =
+        getCreatedPosition(response) ||
+        refreshedPositions.find((position) => {
+          const sameBranch = !activeBranchId || position.branch_id === activeBranchId;
+          return sameBranch && position.name.trim().toLowerCase() === submittedName;
+        }) ||
+        null;
+      // select the newly created position
+      if (created?.id) {
+        const nextPositions = filteredPositions.some((position) => position.id === created.id)
+          ? filteredPositions
+          : [...filteredPositions, created].sort((a, b) => a.name.localeCompare(b.name));
+
+        setPositions(nextPositions);
+        selectCreatedPosition(created);
+      } else {
+        setPositions(filteredPositions);
+      }
+      setIsPositionModalOpen(false);
+    } catch (error: any) {
+      console.error('Failed to create position:', error);
+      const apiErrors = error?.response?.data?.errors || {};
+      const message = error?.response?.data?.message || 'Failed to create position.';
+      setCreatePositionErrors({ ...apiErrors, general: message });
+    } finally {
+      setCreatePositionLoading(false);
+    }
+  };
 
   const handleInputChange = (field: string, value: string) => {
     if (onClearError) {
@@ -531,32 +622,51 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="payroll_positions_id">Position</Label>
-              <Select
-                value={formData.user_info.payroll_positions_id}
-                onValueChange={(value) => handleInputChange('user_info.payroll_positions_id', value)}
-                disabled={loading || positionsLoading}
-              >
-                <SelectTrigger id="payroll_positions_id">
-                  <SelectValue placeholder={positionsLoading ? 'Loading positions...' : 'Select position'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {!positionsLoading && positions.length === 0 && (
-                    <SelectItem value="__no_position__" disabled>
-                      No positions found for this branch
-                    </SelectItem>
-                  )}
-                  {positions.map((position) => (
-                    <SelectItem key={position.id} value={position.id.toString()}>
-                      {position.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <Select
+                    value={formData.user_info.payroll_positions_id}
+                    onValueChange={(value) => handleInputChange('user_info.payroll_positions_id', value)}
+                    disabled={loading || positionsLoading}
+                  >
+                    <SelectTrigger id="payroll_positions_id">
+                      <SelectValue placeholder={positionsLoading ? 'Loading positions...' : 'Select position'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!positionsLoading && positions.length === 0 && (
+                        <SelectItem value="__no_position__" disabled>
+                          No positions found for this branch
+                        </SelectItem>
+                      )}
+                      {positions.map((position) => (
+                        <SelectItem key={position.id} value={position.id.toString()}>
+                          {position.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {positions.length === 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 w-10 min-w-[40px] rounded-md p-0"
+                    onClick={() => setIsPositionModalOpen(true)}
+                    disabled={createPositionLoading}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
               {positionError && <p className="text-red-500 text-xs">{positionError}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">Role</Label>
-              {roles.length === 0 ? (
+              {forceRole ? (
+                <div className="rounded-md border border-input bg-secondary px-3 py-2 text-sm text-muted-foreground">
+                  {forceRole.name}
+                </div>
+              ) : roles.length === 0 ? (
                 <div className="text-sm text-muted-foreground border rounded-md px-3 py-2 bg-muted">
                   No assignable roles available. Contact your administrator.
                 </div>
@@ -660,6 +770,20 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
           </form>
         </div>
+
+        <PositionFormModal
+          isOpen={isPositionModalOpen}
+          onClose={() => setIsPositionModalOpen(false)}
+          mode="create"
+          branches={activeBranchId ? [{ id: activeBranchId, name: activeBranchName || '' }] : []}
+          userInfos={[]}
+          allowances={[]}
+          onSubmit={handleCreatePosition}
+          loading={createPositionLoading}
+          errors={createPositionErrors}
+          initialData={undefined}
+          onClearError={clearCreatePositionError}
+        />
 
         {/* Modal Footer */}
         <DialogFooter>

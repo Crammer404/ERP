@@ -127,6 +127,7 @@ export const API_ENDPOINTS = {
       SHOW: '/hrms/dtr/overtime/{id}',
       APPROVE: '/hrms/dtr/overtime/{id}/approve',
       REJECT: '/hrms/dtr/overtime/{id}/reject',
+      DELETE: '/hrms/dtr/overtime/{id}',
     },
     ATTENDANCE: {
       LOGS: '/hrms/dtr/attendance/logs',
