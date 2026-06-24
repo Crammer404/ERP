@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -73,7 +73,7 @@ interface UserFormModalProps {
   roles: Role[];
   activeBranchId?: number | null;
   activeBranchName?: string | null;
-  initialData?: FormData;
+  initialData?: Partial<FormData>;
   forceRole?: ForcedRole;
   onSubmit: (data: FormData) => void;
   loading: boolean;
@@ -141,6 +141,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [isPositionModalOpen, setIsPositionModalOpen] = useState(false);
   const [createPositionLoading, setCreatePositionLoading] = useState(false);
   const [createPositionErrors, setCreatePositionErrors] = useState<Record<string, string>>({});
+  const hasInitializedRef = useRef(false);
 
   const clearCreatePositionError = (field: string) => {
     setCreatePositionErrors(prev => {
@@ -184,14 +185,37 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     return 'No active branch selected';
   }, [activeBranchName]);
 
+  const positionBranchId = useMemo(() => {
+    const fromForm = formData.branch_ids?.[0];
+    if (fromForm) {
+      const parsed = Number(fromForm);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    return activeBranchId ?? null;
+  }, [formData.branch_ids, activeBranchId]);
+
   useEffect(() => {
+    if (!isOpen) {
+      hasInitializedRef.current = false;
+      return;
+    }
+
+    if (hasInitializedRef.current) {
+      return;
+    }
+
+    hasInitializedRef.current = true;
+
     let cancelled = false;
 
     const initializeForm = async () => {
       const baseForm = getDefaultFormData();
 
       if (initialData) {
-        const userAddress = initialData.user_info?.address || {};
+        const userAddress: Partial<Address> = initialData.user_info?.address ?? {};
         const mergedForm: FormData = {
           ...baseForm,
           ...initialData,
@@ -303,14 +327,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       }
     };
 
-    if (isOpen) {
-      void initializeForm();
-    }
+    void initializeForm();
 
     return () => {
       cancelled = true;
     };
-  }, [isOpen, mode, initialData, roles, forceRole]);
+  }, [isOpen, mode, initialData, roles, forceRole?.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -321,7 +343,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       branch_ids: activeBranchId ? [activeBranchId.toString()] : [],
       role: forceRole?.id ?? prev.role,
     }));
-  }, [activeBranchId, forceRole, isOpen, mode]);
+  }, [activeBranchId, forceRole?.id, isOpen, mode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -331,9 +353,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     const loadPositions = async () => {
       setPositionsLoading(true);
       try {
-        const allPositions = await positionService.getAll();
-        const filteredPositions = allPositions
-          .filter((position) => !activeBranchId || position.branch_id === activeBranchId)
+        const branchPositions = await positionService.getAll(positionBranchId);
+        const filteredPositions = (Array.isArray(branchPositions) ? branchPositions : [])
           .sort((a, b) => a.name.localeCompare(b.name));
 
         if (!cancelled) {
@@ -356,25 +377,21 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, activeBranchId]);
+  }, [isOpen, positionBranchId]);
 
   const handleCreatePosition = async (data: any) => {
     setCreatePositionLoading(true);
     setCreatePositionErrors({});
     try {
       const response = await positionService.create(data as any);
-      // refresh positions for current branch
-      const allPositions = await positionService.getAll();
-      const refreshedPositions = Array.isArray(allPositions) ? allPositions : [];
-      const filteredPositions = refreshedPositions
-        .filter((position) => !activeBranchId || position.branch_id === activeBranchId)
+      const refreshedPositions = await positionService.getAll(positionBranchId);
+      const filteredPositions = (Array.isArray(refreshedPositions) ? refreshedPositions : [])
         .sort((a, b) => a.name.localeCompare(b.name));
       const submittedName = String(data?.name || '').trim().toLowerCase();
       const created =
         getCreatedPosition(response) ||
-        refreshedPositions.find((position) => {
-          const sameBranch = !activeBranchId || position.branch_id === activeBranchId;
-          return sameBranch && position.name.trim().toLowerCase() === submittedName;
+        filteredPositions.find((position) => {
+          return position.name.trim().toLowerCase() === submittedName;
         }) ||
         null;
       // select the newly created position
@@ -491,8 +508,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       console.warn('UserFormModal: No assignable roles available; submission blocked.');
       return;
     }
-    if (isCreateMode && !activeBranchId) {
-      console.warn('UserFormModal: No active branch context; submission blocked.');
+    if (isCreateMode && !positionBranchId) {
+      console.warn('UserFormModal: No branch context; submission blocked.');
       return;
     }
     onSubmit(formData);
@@ -507,7 +524,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     ? (loading ? 'Creating...' : 'Create User')
     : (loading ? 'Updating...' : 'Update User');
 
-  const canSubmit = !loading && roles.length > 0 && (isCreateMode ? !!activeBranchId : true);
+  const canSubmit = !loading && roles.length > 0 && (isCreateMode ? !!positionBranchId : true);
   const positionError = errors.payroll_positions_id || errors['user_info.payroll_positions_id'];
 
   const addressErrors = useMemo(() => {
@@ -563,6 +580,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         {/* Modal Body */}
         <div className="max-h-[60vh] overflow-y-auto">
           <form onSubmit={handleSubmit} className="space-y-4 my-2 mx-2">
+          {errors.general && (
+            <p className="text-sm text-red-500">{errors.general}</p>
+          )}
           {/* Names */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -701,7 +721,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             className="bg-muted text-sm"
           />
           {errors.branch_ids && <p className="text-red-500 text-xs">{errors.branch_ids}</p>}
-          {isCreateMode && !activeBranchId && (
+          {isCreateMode && !positionBranchId && (
             <p className="text-xs text-muted-foreground">
               Select an active branch from the branch filter before creating a user.
             </p>
@@ -710,9 +730,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             <p className="text-xs text-muted-foreground">
               Branch assignments are managed during user creation and reflect the active branch context.
             </p>
-          )}
-          {errors.general && (
-            <p className="text-xs text-red-500">{errors.general}</p>
           )}
         </div>
 
@@ -775,7 +792,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           isOpen={isPositionModalOpen}
           onClose={() => setIsPositionModalOpen(false)}
           mode="create"
-          branches={activeBranchId ? [{ id: activeBranchId, name: activeBranchName || '' }] : []}
+          branches={positionBranchId ? [{ id: positionBranchId, name: activeBranchName || '' }] : []}
           userInfos={[]}
           allowances={[]}
           onSubmit={handleCreatePosition}

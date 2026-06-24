@@ -129,8 +129,12 @@ export interface UpdatePositionRequest {
 }
 
 export const positionService = {
-  async getAll(): Promise<PayrollPosition[]> {
-    return await api(API_ENDPOINTS.PAYROLL.POSITIONS.BASE);
+  async getAll(branchId?: number | null): Promise<PayrollPosition[]> {
+    const params =
+      branchId != null && Number.isFinite(branchId) && branchId > 0
+        ? `?branch_id=${branchId}`
+        : '';
+    return await api(`${API_ENDPOINTS.PAYROLL.POSITIONS.BASE}${params}`);
   },
 
   async getById(id: number): Promise<PayrollPosition> {

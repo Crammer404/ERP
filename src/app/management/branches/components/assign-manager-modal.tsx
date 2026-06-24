@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -63,10 +63,10 @@ export function AssignManagerModal({
       const currentManagerId = branch.manager?.id;
       const hasCurrentManager = currentManagerId != null && branchUsers.some((user) => user.user_id === currentManagerId);
 
-      const branchUserOptions = branchUsers.map((user) => ({
+      const branchUserOptions: UserEntity[] = branchUsers.map((user) => ({
         id: user.user_id,
         name: user.name || user.email || '',
-        email: user.email,
+        email: user.email ?? '',
         role: typeof user.role === 'string' ? user.role : (user.role?.name ?? ''),
         user_info: user.user?.user_info ?? undefined,
       }));
@@ -79,7 +79,8 @@ export function AssignManagerModal({
               {
                 id: currentManagerId,
                 name: branch.manager?.name || branch.manager?.email || 'Manager',
-                email: branch.manager?.email || undefined,
+                email: branch.manager?.email ?? '',
+                role: branch.manager?.role ?? 'Manager',
               },
             ]
       );
@@ -147,7 +148,29 @@ export function AssignManagerModal({
     setCreateUserErrors({});
 
     try {
-      const createdUser = await userService.create(userData);
+      const payrollPositionId = Number(userData.user_info?.payroll_positions_id);
+      const payload = {
+        email: userData.email.trim(),
+        password: userData.password,
+        password_confirmation: userData.confirmPassword,
+        role_id: userData.role,
+        branch_ids: [branch.id],
+        user_info: {
+          first_name: userData.user_info.first_name.trim(),
+          last_name: userData.user_info.last_name.trim(),
+          ...(userData.user_info.middle_name?.trim()
+            ? { middle_name: userData.user_info.middle_name.trim() }
+            : {}),
+          ...(Number.isFinite(payrollPositionId) && payrollPositionId > 0
+            ? { payroll_positions_id: payrollPositionId }
+            : {}),
+          ...(userData.user_info.address && Object.keys(userData.user_info.address).length > 0
+            ? { address: userData.user_info.address }
+            : {}),
+        },
+      };
+
+      const createdUser = await userService.create(payload);
       toast({
         title: 'User Created',
         description: 'Branch manager user created successfully.',
@@ -160,19 +183,47 @@ export function AssignManagerModal({
       }
     } catch (error: any) {
       console.error('Failed to create user:', error);
-      const apiErrors = error?.response?.data?.errors || {};
-      const message = error?.response?.data?.message || 'Failed to create user.';
-      setCreateUserErrors({ ...apiErrors, general: message });
+      const apiErrors: Record<string, string> = {};
+      const validationErrors = error?.response?.data?.errors;
+
+      if (validationErrors && typeof validationErrors === 'object') {
+        for (const key in validationErrors) {
+          const messages = validationErrors[key];
+          if (Array.isArray(messages) && messages[0]) {
+            apiErrors[key] = messages[0];
+          } else if (typeof messages === 'string') {
+            apiErrors[key] = messages;
+          }
+        }
+      }
+
+      if (Object.keys(apiErrors).length === 0) {
+        apiErrors.general = error?.response?.data?.message || 'Failed to create user.';
+      }
+
+      setCreateUserErrors(apiErrors);
     } finally {
       setCreateUserLoading(false);
     }
   };
 
   const branchManagerRole = roles.find((role) => role.name.toLowerCase() === 'branch manager');
-  const createUserInitialData = {
-    role: branchManagerRole?.id.toString() ?? '',
-    branch_ids: [branch.id.toString()],
-  };
+
+  const forceRole = useMemo(
+    () =>
+      branchManagerRole
+        ? { id: branchManagerRole.id.toString(), name: branchManagerRole.name }
+        : undefined,
+    [branchManagerRole]
+  );
+
+  const createUserInitialData = useMemo(
+    () => ({
+      role: branchManagerRole?.id.toString() ?? '',
+      branch_ids: [branch.id.toString()],
+    }),
+    [branch.id, branchManagerRole?.id]
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -180,7 +231,7 @@ export function AssignManagerModal({
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">Assign Branch Manager</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Select a manager for the branch "{branch.name}".
+            Select a manager for the branch &quot;{branch.name}&quot;, or choose Unassigned to remove the current manager.
           </DialogDescription>
         </DialogHeader>
 
@@ -205,7 +256,7 @@ export function AssignManagerModal({
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <Select
-                    value={selectedManagerId != null ? String(selectedManagerId) : undefined}
+                    value={selectedManagerId != null ? String(selectedManagerId) : 'unassigned'}
                     onValueChange={(value) => setSelectedManagerId(value === 'unassigned' ? null : Number(value))}
                   >
                     <SelectTrigger id="manager-select" className="w-full">
@@ -227,7 +278,9 @@ export function AssignManagerModal({
                         const roleLabel =
                           typeof user.role === 'string'
                             ? user.role
-                            : user.role?.name ?? '';
+                            : typeof user.role === 'number'
+                              ? `Role #${user.role}`
+                              : user.role?.name ?? '';
 
                         return (
                           <SelectItem key={user.id} value={user.id.toString()}>
@@ -287,7 +340,7 @@ export function AssignManagerModal({
         activeBranchId={branch.id}
         activeBranchName={branch.name}
         initialData={createUserInitialData}
-        forceRole={branchManagerRole ? { id: branchManagerRole.id.toString(), name: branchManagerRole.name } : undefined}
+        forceRole={forceRole}
         onSubmit={handleCreateUser}
         loading={createUserLoading}
         errors={createUserErrors}
