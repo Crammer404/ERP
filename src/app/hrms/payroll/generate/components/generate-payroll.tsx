@@ -52,7 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { parseApiDate } from '@/lib/dateUtils';
+import { parseApiDate } from '@/lib/date-utils';
 import {
   DEFAULT_PAYROLL_TYPES,
   WIZARD_STEPS,

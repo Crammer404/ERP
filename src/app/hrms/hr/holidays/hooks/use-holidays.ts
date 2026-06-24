@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { parseApiDate } from '@/lib/dateUtils';
+import { parseApiDate } from '@/lib/date-utils';
 import {
   holidaysService,
   type HolidayPreviewItem,

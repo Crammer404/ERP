@@ -6,7 +6,7 @@ import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, Pagi
 import { Button } from "@/components/ui/button";
 import { MoreVertical, Edit, Trash2, Tag, FileText } from 'lucide-react';
 import { Discount } from '../services/discountService';
-import { formatHumanDate } from '@/lib/dateUtils';
+import { formatHumanDate } from '@/lib/date-utils';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { AssignDiscountModal } from './AssignDiscountModal';
 import { DiscountLogsModal } from './DiscountLogsModal';

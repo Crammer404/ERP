@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/components/providers/auth-provider';
+import { formatLocalDate, normalizeEndOfDay, normalizeStartOfDay, parseApiDate } from '@/lib/date-utils';
 import {
   Clock,
   CheckCircle,
@@ -426,10 +427,10 @@ export default function OvertimePage() {
       if (status !== 'all') params.status = status;
       if (search) params.search = search;
       if (range?.from) {
-        params.start_date = range.from.toISOString().split('T')[0];
+        params.start_date = formatLocalDate(range.from);
       }
       if (range?.to) {
-        params.end_date = range.to.toISOString().split('T')[0];
+        params.end_date = formatLocalDate(range.to);
       }
       
       const data = await getOvertimeRequests(params);
@@ -631,16 +632,16 @@ export default function OvertimePage() {
 
       let matchesDateRange = true;
       if (range?.from || range?.to) {
-        try {
-          const recordDate = new Date(record.date);
-          if (range.from && recordDate < range.from) {
-            matchesDateRange = false;
-          }
-          if (range.to && recordDate > range.to) {
-            matchesDateRange = false;
-          }
-        } catch {
+        const recordDate = parseApiDate(record.date);
+        if (!recordDate) {
           matchesDateRange = false;
+        } else {
+          if (range.from && recordDate < normalizeStartOfDay(range.from)) {
+            matchesDateRange = false;
+          }
+          if (range.to && recordDate > normalizeEndOfDay(range.to)) {
+            matchesDateRange = false;
+          }
         }
       }
 

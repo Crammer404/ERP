@@ -7,7 +7,7 @@ import {
   normalizeStartOfDay,
   normalizeEndOfDay,
   formatHumanDate,
-} from '@/lib/dateUtils';
+} from '@/lib/date-utils';
 import type { StockDiscount } from '../hooks/useProducts';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { ChevronLeft, ChevronRight } from 'lucide-react';

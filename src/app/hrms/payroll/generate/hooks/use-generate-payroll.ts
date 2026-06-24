@@ -31,7 +31,7 @@ import { statutoriesService, type StatutoryEntry, type StatutoryType } from '@/a
 import { ROUTES } from '@/config/api.config';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useToast } from '@/hooks/use-toast';
-import { parseApiDate } from '@/lib/dateUtils';
+import { parseApiDate } from '@/lib/date-utils';
 
 export const DEFAULT_PAYROLL_TYPES = ['Semi-Monthly', 'Monthly', 'Weekly'];
 export const CUSTOM_RANGE_TYPE = 'Range Date';

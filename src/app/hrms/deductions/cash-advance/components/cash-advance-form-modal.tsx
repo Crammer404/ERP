@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { parseApiDate } from '@/lib/dateUtils';
+import { parseApiDate } from '@/lib/date-utils';
 import type { CashAdvance, CashAdvanceStatus, CreateCashAdvanceRequest, UpdateCashAdvanceRequest } from '../services/cash-advance-service';
 import { tenantContextService } from '@/services/tenant/tenantContextService';
 import { managementService, Employee } from '@/services/management/managementService';

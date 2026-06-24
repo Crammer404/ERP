@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { parseApiDate } from '@/lib/dateUtils';
+import { parseApiDate } from '@/lib/date-utils';
 
 type HolidayType = 'regular' | 'special_non_working';
 

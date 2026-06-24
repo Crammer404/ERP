@@ -1,6 +1,4 @@
-/**
- * Parse a date string from API (YYYY-MM-DD or YYYY-MM-DD HH:mm:ss).
- */
+// Parse a date string from API (YYYY-MM-DD or YYYY-MM-DD HH:mm:ss).
 export const parseApiDate = (value?: string | null): Date | null => {
   if (!value) return null;
   const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2}))?$/);
@@ -12,26 +10,28 @@ export const parseApiDate = (value?: string | null): Date | null => {
   return isNaN(dt.getTime()) ? null : dt;
 };
 
-/**
- * Normalize date to start of the day (00:00:00).
- */
+// Normalize date to start of the day (00:00:00).
 export const normalizeStartOfDay = (d: Date): Date => {
   const n = new Date(d);
   n.setHours(0, 0, 0, 0);
   return n;
 };
 
-/**
- * Normalize date to end of the day (23:59:59).
- */
+// Normalize date to end of the day (23:59:59).
 export const normalizeEndOfDay = (d: Date): Date => {
   const n = new Date(d);
   n.setHours(23, 59, 59, 999);
   return n;
 };
 
-/**
- * Format date into a readable "Month Day, Year" string.
- */
+// Format date into a readable "Month Day, Year" string.
 export const formatHumanDate = (d: Date): string =>
   d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+// Format a local Date as YYYY-MM-DD (avoids UTC shift from toISOString()).
+export const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
